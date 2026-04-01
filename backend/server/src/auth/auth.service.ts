@@ -1,40 +1,35 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { SignupDto } from '../dto/signup.dto';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
   constructor(private prisma: PrismaService) {}
 
-  async signup(body: any) {
-    const { name, surname, email, password } = body;
+  async signup(signupDto: SignupDto) {
+    const { name, surname, email, password, isPrimary, inviteCode } = signupDto;
 
-    if (!email || !password || !name || !surname) {
-      throw new BadRequestException('Missing fields');
-    }
-
-    const existing = await this.prisma.caregiver.findUnique({
-      where: { email },
-    });
-
-    if (existing) {
-      throw new BadRequestException('Email already exists');
-    }
+    const existing = await this.prisma.caregiver.findUnique({ where: { email } });
+    if (existing) throw new ConflictException('Email already exists');
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    let myOwnJoinCode: string | null = null;
+    if (isPrimary) {
+      myOwnJoinCode = randomBytes(3).toString('hex').toUpperCase();
+    } else {
+      if (!inviteCode) throw new BadRequestException('Invite code required for secondary caregivers');
+      const primaryOwner = await this.prisma.caregiver.findUnique({ where: { joinCode: inviteCode } });
+      if (!primaryOwner) throw new BadRequestException('Invalid invite code');
+    }
+
     const user = await this.prisma.caregiver.create({
-      data: {
-        name,
-        surname,
-        email,
-        passwordHash: hashedPassword,
-      },
+      data: { name, surname, email, passwordHash: hashedPassword, joinCode: myOwnJoinCode },
     });
 
-    return {
-      message: 'User created successfully',
-      user,
-    };
+    const { passwordHash, ...result } = user;
+    return { message: 'User registered successfully', user: result };
   }
 }
