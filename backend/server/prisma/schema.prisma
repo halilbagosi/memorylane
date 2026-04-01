@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Caregiver {
+  id                String             @id @default(uuid())
+  name              String
+  surname           String
+  email             String             @unique
+  passwordHash      String             @map("password_hash")
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  patientCaregivers PatientCaregiver[]
+  uploadedMedia     Media[]
+
+  @@map("caregivers")
+}
+
+model Patient {
+  id                String             @id @default(uuid())
+  name              String
+  surname            String
+  joinCode          String             @unique @map("join_code")
+  paired            Boolean            @default(false)
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  patientCaregivers PatientCaregiver[]
+  media             Media[]
+  quizSessions      QuizSession[]
+
+  @@map("patients")
+}
+
+model PatientCaregiver {
+  caregiverId String    @map("caregiver_id")
+  patientId   String    @map("patient_id")
+  isPrimary   Boolean   @default(false) @map("is_primary")
+  joinedAt    DateTime  @default(now()) @map("joined_at")
+
+  caregiver   Caregiver @relation(fields: [caregiverId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  @@id([caregiverId, patientId])
+  @@map("patient_caregivers")
+}
+
+model Media {
+  id           String        @id @default(uuid())
+  patientId    String        @map("patient_id")
+  caregiverId  String        @map("caregiver_id")
+  correctName  String        @map("correct_name")
+  relationship String
+  imageUrl     String        @map("image_url")
+  audioUrl     String        @map("audio_url")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  caregiver    Caregiver     @relation(fields: [caregiverId], references: [id])
+  quizAttempts QuizAttempt[]
+
+  @@map("media")
+}
+
+model QuizSession {
+  id           String        @id @default(uuid())
+  patientId    String        @map("patient_id")
+  startedAt    DateTime      @default(now()) @map("started_at")
+  endedAt      DateTime?     @map("ended_at")
+
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  quizAttempts QuizAttempt[]
+
+  @@map("quiz_sessions")
+}
+
+model QuizAttempt {
+  id              String      @id @default(uuid())
+  sessionId       String      @map("session_id")
+  mediaId         String      @map("media_id")
+  firstTapCorrect Boolean     @map("first_tap_correct")
+  totalTaps       Int         @map("total_taps")
+  timeToCorrectMs Int         @map("time_to_correct_ms")
+  attemptedAt     DateTime    @default(now()) @map("attempted_at")
+
+  session         QuizSession @relation(fields: [sessionId], references: [id])
+  media           Media       @relation(fields: [mediaId], references: [id])
+
+  @@map("quiz_attempts")
+}
