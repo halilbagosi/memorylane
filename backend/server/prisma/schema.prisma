@@ -14,6 +14,8 @@ model Caregiver {
   email         String    @unique
   passwordHash  String    @map("password_hash")
   createdAt     DateTime  @default(now()) @map("created_at")
+  
+  // This code is for SECONDARY caregivers to join this primary caregiver's family space
   joinCode      String?   @unique @map("join_code") 
 
   patientCaregivers     PatientCaregiver[]
@@ -27,12 +29,14 @@ model Caregiver {
 
 model Patient {
   id                 String              @id @default(uuid())
-  createdBy          String              @map("created_by")
+  createdBy          String              @map("created_by") // Links to the Primary Caregiver
   name               String
   surname            String
   age                Int?
-  joinCode           String              @unique @map("join_code")
-  networkCode        String              @unique @map("network_code")
+  
+  // This code is what the TABLET scans to identify THIS specific patient
+  patientJoinCode    String              @unique @map("patient_join_code")    
+  
   paired             Boolean             @default(false)
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
