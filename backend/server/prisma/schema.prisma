@@ -15,7 +15,7 @@ model Caregiver {
   passwordHash  String    @map("password_hash")
   createdAt     DateTime  @default(now()) @map("created_at")
   
-  // This code is for SECONDARY caregivers to join this primary caregiver's family space
+  //code for secondaru caregivers to join this primary caregiver's family space
   joinCode      String?   @unique @map("join_code") 
 
   patientCaregivers     PatientCaregiver[]
@@ -29,12 +29,12 @@ model Caregiver {
 
 model Patient {
   id                 String              @id @default(uuid())
-  createdBy          String              @map("created_by") // Links to the Primary Caregiver
+  createdBy          String              @map("created_by") //to the primary caregiver
   name               String
   surname            String
   age                Int?
   
-  // This code is what the TABLET scans to identify THIS specific patient
+  // code scanned by tablet/phone of patient to identify this specific patient
   patientJoinCode    String              @unique @map("patient_join_code")    
   
   paired             Boolean             @default(false)
