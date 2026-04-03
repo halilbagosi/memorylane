@@ -12,12 +12,20 @@ export class SignupDto {
   @IsString()
   //removes spaces written in name
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  //only allow letters (a-z) and spaces, not numbers nor symbols
+   @Matches(/^[a-zA-Z\s]+$/, {
+    message: 'Name must only contain letters and spaces (no numbers or symbols)',
+  })
   name: string;
 
   @IsNotEmpty()
   @IsString()
   //removes spaces written in surname
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  //only allow laters and spaces
+   @Matches(/^[a-zA-Z\s]+$/, {
+    message: 'Surname must only contain letters and spaces (no numbers or symbols)',
+  })
   surname: string;
 
   //email validation example@gmail.com, example@epoka.edu.al
