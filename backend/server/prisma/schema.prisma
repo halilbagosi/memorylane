@@ -15,8 +15,6 @@ model Caregiver {
   passwordHash  String    @map("password_hash")
   createdAt     DateTime  @default(now()) @map("created_at")
   
-  //code for secondaru caregivers to join this primary caregiver's family space
-  joinCode      String?   @unique @map("join_code") 
 
   patientCaregivers     PatientCaregiver[]
   uploadedMedia         Media[]
