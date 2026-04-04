@@ -20,18 +20,14 @@ export class DashboardService {
       const patient = relation.patient;
 
       return {
-        relationshipId: `${relation.caregiverId}-${relation.patientId}`,
+        id: patient.id,
+        name: decrypt(patient.name),       //decrypted
+        surname: decrypt(patient.surname), //decrypted
+        age: patient.age,
         isPrimary: relation.isPrimary,
-        joinedAt: relation.joinedAt,
-        patient: {
-          id: patient.id,
-          name: decrypt(patient.name),       //decrypted
-          surname: decrypt(patient.surname), //decrypted
-          age: patient.age,
-          patientJoinCode: patient.patientJoinCode,
-          paired: patient.paired,
-          createdAt: patient.createdAt,
-        },
+        patientJoinCode: patient.patientJoinCode,
+        paired: patient.paired,
+        createdAt: patient.createdAt,
       };
     });
   }

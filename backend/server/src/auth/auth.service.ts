@@ -60,7 +60,15 @@ export class AuthService {
       data: { tokenHash },
     });
 
-    return { accessToken };
+    return {
+      accessToken,
+      caregiver: {
+        id: caregiver.id,
+        name: caregiver.name,
+        surname: caregiver.surname,
+        email: caregiver.email,
+      },
+    };
   }
 
   async logout(sessionId: string) {
