@@ -2,6 +2,13 @@ import * as SecureStore from 'expo-secure-store';
 
 const TOKEN_KEY = 'memorylane_token';
 const CAREGIVER_KEY = 'memorylane_caregiver';
+const PATIENT_KEY = 'memorylane_patient';
+
+export interface PatientInfo {
+  id: string;
+  name: string;
+  surname: string;
+}
 
 export interface CaregiverInfo {
   id: string;
@@ -44,8 +51,28 @@ export async function deleteCaregiverInfo(): Promise<void> {
   await SecureStore.deleteItemAsync(CAREGIVER_KEY);
 }
 
+// ─── Patient Info ───
+
+export async function savePatientInfo(info: PatientInfo): Promise<void> {
+  await SecureStore.setItemAsync(PATIENT_KEY, JSON.stringify(info));
+}
+
+export async function getPatientInfo(): Promise<PatientInfo | null> {
+  const raw = await SecureStore.getItemAsync(PATIENT_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PatientInfo;
+  } catch {
+    return null;
+  }
+}
+
+export async function deletePatientInfo(): Promise<void> {
+  await SecureStore.deleteItemAsync(PATIENT_KEY);
+}
+
 // ─── Full logout ───
 
 export async function clearAuth(): Promise<void> {
-  await Promise.all([deleteToken(), deleteCaregiverInfo()]);
+  await Promise.all([deleteToken(), deleteCaregiverInfo(), deletePatientInfo()]);
 }

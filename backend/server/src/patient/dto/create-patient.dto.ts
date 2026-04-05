@@ -1,12 +1,10 @@
-import { IsNotEmpty, IsString, IsInt, Min, Max, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, IsDateString, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreatePatientDto {
   @IsNotEmpty()
   @IsString()
-  //cut out extra spaces
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  // only letters allowed
   @Matches(/^[a-zA-Z\s]+$/, {
     message: 'Patient name must only contain letters and spaces',
   })
@@ -20,9 +18,7 @@ export class CreatePatientDto {
   })
   surname: string;
 
-  @IsNotEmpty()
-  @IsInt()
-  @Min(1)
-  @Max(120)
-  age: number;
+  @IsNotEmpty({ message: 'Date of birth is required' })
+  @IsDateString({}, { message: 'Date of birth must be a valid ISO 8601 date string (e.g. 1950-03-15)' })
+  dateOfBirth: string;
 }

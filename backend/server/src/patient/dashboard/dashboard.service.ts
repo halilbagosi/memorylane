@@ -21,9 +21,9 @@ export class DashboardService {
 
       return {
         id: patient.id,
-        name: decrypt(patient.name),       //decrypted
-        surname: decrypt(patient.surname), //decrypted
-        age: patient.age,
+        name: decrypt(patient.name),
+        surname: decrypt(patient.surname),
+        dateOfBirth: patient.dateOfBirth,
         isPrimary: relation.isPrimary,
         patientJoinCode: patient.patientJoinCode,
         paired: patient.paired,

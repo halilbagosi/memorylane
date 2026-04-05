@@ -30,7 +30,7 @@ model Patient {
   createdBy          String              @map("created_by") //to the primary caregiver
   name               String
   surname            String
-  age                Int?
+  dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
   
   // code scanned by tablet/phone of patient to identify this specific patient
   patientJoinCode    String              @unique @map("patient_join_code")    
