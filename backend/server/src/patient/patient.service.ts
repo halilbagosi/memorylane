@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
-import { encrypt } from './encryption.util';
+import { encrypt, decrypt } from './encryption.util';
 
 @Injectable()
 export class PatientService {
@@ -15,9 +15,9 @@ export class PatientService {
     return this.prisma.$transaction(async (tx) => {
       const patient = await tx.patient.create({
         data: {
-          name: encrypt(createPatientDto.name), // encrypted name
-          surname: encrypt(createPatientDto.surname), // encrypted surname
-          age: createPatientDto.age,
+          name: encrypt(createPatientDto.name),
+          surname: encrypt(createPatientDto.surname),
+          dateOfBirth: new Date(createPatientDto.dateOfBirth),
           patientJoinCode: patientJoinCode,
           createdBy: caregiverId,
         },
@@ -41,5 +41,32 @@ export class PatientService {
         },
       };
     });
+  }
+
+  async joinWithCode(joinCode: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { patientJoinCode: joinCode },
+      include: { creator: true },
+    });
+
+    if (!patient) {
+      throw new NotFoundException('Invalid join code');
+    }
+
+    await this.prisma.patient.update({
+      where: { id: patient.id },
+      data: { paired: true },
+    });
+
+    return {
+      id: patient.id,
+      name: decrypt(patient.name),
+      surname: decrypt(patient.surname),
+      dateOfBirth: patient.dateOfBirth,
+      caregiver: {
+        name: patient.creator.name,
+        surname: patient.creator.surname,
+      },
+    };
   }
 }

@@ -1,13 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert,
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
+  TouchableOpacity, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { DatePickerModal } from 'react-native-paper-dates';
 import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
 import { getToken } from '../src/utils/auth';
+import { AdaptiveButton } from '../src/components/AdaptiveButton';
+import { AdaptiveInput } from '../src/components/AdaptiveInput';
+import { AdaptiveCard } from '../src/components/AdaptiveCard';
+import { AppIcon } from '../src/components/AppIcon';
+import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
+
+const isIOS = Platform.OS === 'ios';
+
+function formatDate(date: Date): string {
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+function toISODate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function calculateAge(birthday: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - birthday.getFullYear();
+  const monthDiff = today.getMonth() - birthday.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+    age--;
+  }
+  return age;
+}
 
 export default function AddPatientScreen() {
   const router = useRouter();
@@ -15,12 +50,25 @@ export default function AddPatientScreen() {
 
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
-  const [age, setAge] = useState('');
-  const [errors, setErrors] = useState<{ name?: string; surname?: string; age?: string }>({});
+  const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>(undefined);
+  const [showPicker, setShowPicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date(1950, 0, 1));
+  const [errors, setErrors] = useState<{ name?: string; surname?: string; dateOfBirth?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
-  // Load token from SecureStore
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
+  };
+  const dismissDialog = () => setDialog((prev) => ({ ...prev, visible: false }));
+
   useEffect(() => {
     (async () => {
       const storedToken = await getToken();
@@ -50,28 +98,39 @@ export default function AddPatientScreen() {
     }
   };
 
-  const handleAgeChange = (text: string) => {
-    // Only allow digits
-    if (/^\d*$/.test(text)) {
-      setAge(text);
-      const num = parseInt(text, 10);
-      if (text && (num < 1 || num > 120)) {
-        setErrors(prev => ({ ...prev, age: 'Age must be between 1 and 120.' }));
-      } else {
-        setErrors(prev => ({ ...prev, age: undefined }));
-      }
+  // iOS handlers
+  const onIOSDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (selectedDate) {
+      setTempDate(selectedDate);
     }
   };
 
+  const confirmIOSDate = () => {
+    setDateOfBirth(tempDate);
+    setErrors(prev => ({ ...prev, dateOfBirth: undefined }));
+    setShowPicker(false);
+  };
+
+  const onAndroidDismiss = useCallback(() => {
+    setShowPicker(false);
+  }, []);
+
+  const onAndroidConfirm = useCallback((params: { date: Date | undefined }) => {
+    setShowPicker(false);
+    if (params.date) {
+      setDateOfBirth(params.date);
+      setErrors(prev => ({ ...prev, dateOfBirth: undefined }));
+    }
+  }, []);
+
   const handleSubmit = async () => {
-    if (!name.trim() || !surname.trim() || !age) {
+    if (!name.trim() || !surname.trim() || !dateOfBirth) {
       setApiError('Please fill in all fields.');
       return;
     }
 
-    const ageNum = parseInt(age, 10);
-    if (ageNum < 1 || ageNum > 120) {
-      setApiError('Age must be between 1 and 120.');
+    if (calculateAge(dateOfBirth) < 0) {
+      setErrors(prev => ({ ...prev, dateOfBirth: 'Date of birth cannot be in the future.' }));
       return;
     }
 
@@ -88,7 +147,7 @@ export default function AddPatientScreen() {
         body: JSON.stringify({
           name: name.trim(),
           surname: surname.trim(),
-          age: ageNum,
+          dateOfBirth: toISODate(dateOfBirth),
         }),
       });
 
@@ -99,11 +158,11 @@ export default function AddPatientScreen() {
         throw new Error(msg || 'Failed to create patient');
       }
 
-      // Show join code
-      Alert.alert(
+      const joinCode = data.patient?.patientJoinCode || 'N/A';
+      showDialog(
         'Patient Created',
-        `Join Code: ${data.patient?.patientJoinCode || 'N/A'}\n\nShare this code with the patient's device to pair them.`,
-        [{ text: 'Go to Dashboard', onPress: () => router.back() }]
+        `Join Code: ${joinCode}\n\nShare this code with the patient's device to pair them.`,
+        [{ label: 'Go to Dashboard', onPress: () => { dismissDialog(); router.back(); } }],
       );
     } catch (error: any) {
       setApiError(error.message || 'Failed to connect to the backend');
@@ -115,7 +174,7 @@ export default function AddPatientScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={isIOS ? 'padding' : 'height'}
         style={styles.container}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -124,58 +183,127 @@ export default function AddPatientScreen() {
             Create a profile for your loved one.{'\n'}You will become their primary caregiver.
           </Text>
 
-          {/* Name */}
+          <AdaptiveInput
+            label="First Name"
+            value={name}
+            onChangeText={handleNameChange}
+            placeholder="Enter the patient's first name"
+            error={errors.name}
+          />
+
+          <AdaptiveInput
+            label="Last Name"
+            value={surname}
+            onChangeText={handleSurnameChange}
+            placeholder="Enter the patient's last name"
+            error={errors.surname}
+          />
+
+          {/* Date of Birth picker trigger */}
           <View style={styles.formGroup}>
-            <Text style={styles.label}>First Name</Text>
-            <TextInput
-              style={[styles.input, errors.name ? styles.inputError : null]}
-              value={name}
-              onChangeText={handleNameChange}
-              placeholder="Enter the patient's first name"
-              placeholderTextColor={colors.textMuted}
-            />
-            {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+            <Text style={[styles.label, !isIOS && styles.androidFieldLabel]}>
+              Date of Birth
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.dateButton,
+                isIOS ? styles.iosDateButton : styles.androidDateButton,
+                errors.dateOfBirth && styles.dateButtonError,
+              ]}
+              onPress={() => {
+                if (dateOfBirth) setTempDate(dateOfBirth);
+                setShowPicker(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <AppIcon
+                iosName="calendar"
+                androidFallback="Cal"
+                size={20}
+                color={dateOfBirth ? colors.secondary : colors.textMuted}
+              />
+              <Text style={[
+                styles.dateButtonText,
+                !dateOfBirth && styles.dateButtonPlaceholder,
+              ]}>
+                {dateOfBirth ? formatDate(dateOfBirth) : 'Select date of birth'}
+              </Text>
+              {dateOfBirth && (
+                <AdaptiveCard
+                  style={styles.ageChip}
+                  backgroundColor={isIOS ? 'rgba(180, 174, 232, 0.18)' : 'rgba(180, 174, 232, 0.22)'}
+                >
+                  <Text style={styles.ageChipText}>
+                    Age {calculateAge(dateOfBirth)}
+                  </Text>
+                </AdaptiveCard>
+              )}
+            </TouchableOpacity>
+            {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
           </View>
 
-          {/* Surname */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Last Name</Text>
-            <TextInput
-              style={[styles.input, errors.surname ? styles.inputError : null]}
-              value={surname}
-              onChangeText={handleSurnameChange}
-              placeholder="Enter the patient's last name"
-              placeholderTextColor={colors.textMuted}
+          {/* Android: M3 date picker modal */}
+          {!isIOS && (
+            <DatePickerModal
+              locale="en"
+              mode="single"
+              visible={showPicker}
+              onDismiss={onAndroidDismiss}
+              date={dateOfBirth}
+              onConfirm={onAndroidConfirm}
+              validRange={{ endDate: new Date(), startDate: new Date(1900, 0, 1) }}
+              label="Select date"
+              saveLabel="OK"
             />
-            {errors.surname && <Text style={styles.errorText}>{errors.surname}</Text>}
-          </View>
+          )}
 
-          {/* Age */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Age</Text>
-            <TextInput
-              style={[styles.input, errors.age ? styles.inputError : null]}
-              value={age}
-              onChangeText={handleAgeChange}
-              placeholder="e.g. 75"
-              keyboardType="number-pad"
-              placeholderTextColor={colors.textMuted}
-            />
-            {errors.age && <Text style={styles.errorText}>{errors.age}</Text>}
-          </View>
+          {/* iOS: native inline picker in a modal sheet */}
+          {isIOS && (
+            <Modal visible={showPicker} transparent animationType="slide">
+              <View style={styles.modalOverlay}>
+                <View style={styles.iosPickerContainer}>
+                  <View style={styles.iosPickerHeader}>
+                    <TouchableOpacity onPress={() => setShowPicker(false)}>
+                      <Text style={styles.iosPickerCancel}>Cancel</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.iosPickerTitle}>Date of Birth</Text>
+                    <TouchableOpacity onPress={confirmIOSDate}>
+                      <Text style={styles.iosPickerDone}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={tempDate}
+                    mode="date"
+                    display="inline"
+                    onChange={onIOSDateChange}
+                    maximumDate={new Date()}
+                    minimumDate={new Date(1900, 0, 1)}
+                    style={styles.iosInlinePicker}
+                  />
+                </View>
+              </View>
+            </Modal>
+          )}
 
           {apiError ? <Text style={styles.apiErrorText}>{apiError}</Text> : null}
 
-          <TouchableOpacity
-            style={[styles.primaryButton, isLoading && { opacity: 0.7 }]}
+          <AdaptiveButton
+            title="Create Patient"
             onPress={handleSubmit}
-            activeOpacity={0.8}
-            disabled={isLoading}
-          >
-            <Text style={styles.primaryButtonText}>{isLoading ? 'Creating Profile...' : 'Create Patient'}</Text>
-          </TouchableOpacity>
+            loading={isLoading}
+            loadingText="Creating Profile..."
+            style={{ marginTop: 8 }}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
     </SafeAreaView>
   );
 }
@@ -205,17 +333,52 @@ const styles = StyleSheet.create({
     color: colors.textDark,
     marginBottom: 6,
   },
-  input: {
-    backgroundColor: colors.neutralLight,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 14,
+  androidFieldLabel: {
+    fontSize: 13,
+    letterSpacing: 0.2,
+    color: colors.textMuted,
+  },
+
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
+    gap: 10,
+  },
+  iosDateButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0, 0, 0, 0.12)',
+    borderRadius: 14,
+  },
+  androidDateButton: {
+    backgroundColor: colors.neutralLight,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderRadius: 16,
+  },
+  dateButtonError: { borderColor: '#e74c3c' },
+  dateButtonText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
     color: colors.textDark,
+    flex: 1,
   },
-  inputError: { borderColor: '#e74c3c' },
+  dateButtonPlaceholder: {
+    color: colors.textMuted,
+  },
+
+  ageChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  ageChipText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.secondary,
+  },
+
   errorText: {
     color: '#e74c3c',
     fontFamily: typography.fontFamily.regular,
@@ -229,21 +392,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 12,
   },
-  primaryButton: {
-    backgroundColor: colors.secondary,
-    borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: colors.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  primaryButtonText: {
-    color: colors.textLight,
+  iosPickerContainer: {
+    backgroundColor: colors.neutral,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  iosPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  iosPickerCancel: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 16,
+    color: colors.textMuted,
+  },
+  iosPickerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
+    color: colors.textDark,
+  },
+  iosPickerDone: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: colors.secondary,
+  },
+  iosInlinePicker: {
+    alignSelf: 'center',
   },
 });

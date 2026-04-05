@@ -25,8 +25,38 @@ export class AuthService {
       data: { name, surname, email, passwordHash: hashedPassword },
     });
 
-    const { passwordHash, ...result } = user;
-    return { message: 'User registered successfully', user: result };
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const session = await this.prisma.authSession.create({
+      data: {
+        caregiverId: user.id,
+        tokenHash: '',
+        expiresAt,
+      },
+    });
+
+    const accessToken = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      sessionId: session.id,
+    });
+
+    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
+    await this.prisma.authSession.update({
+      where: { id: session.id },
+      data: { tokenHash },
+    });
+
+    return {
+      message: 'User registered successfully',
+      accessToken,
+      caregiver: {
+        id: user.id,
+        name: user.name,
+        surname: user.surname,
+        email: user.email,
+      },
+    };
   }
 
   async login(loginDto: LoginDto) {
