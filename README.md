@@ -1,6 +1,6 @@
 # MemoryLane
 
-A backend API for a caregiver-patient memory quiz application. Caregivers upload media (photos, audio) of familiar people, and patients take recognition quizzes to help with memory retention. The system tracks quiz performance and provides analytics.
+A caregiver-patient memory application built with NestJS (backend) and React Native / Expo (frontend). Caregivers manage patient profiles and upload media; patients take recognition quizzes on their paired device to help with memory retention.
 
 ## Tech Stack
 
