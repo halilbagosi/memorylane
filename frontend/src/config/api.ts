@@ -1,8 +1,12 @@
-// Each developer sets their own machine's local IP in frontend/.env (never committed to git).
-// Windows: run `ipconfig`  →  find IPv4 Address
-// Mac:     run `ifconfig`  →  find inet under en0
-// Example: EXPO_PUBLIC_API_BASE_URL=http://192.168.1.42:3000
-//
-// For production, set this to the deployed backend URL.
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+import { Platform } from 'react-native';
+
+// EXPO_PUBLIC_API_BASE_URL can be set in .env.local to override defaults.
+// Physical devices on Wi-Fi need the host machine's LAN IP.
+// Simulators/emulators work out of the box with the platform-aware fallback.
+const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+
+const FALLBACK = Platform.OS === 'android'
+  ? 'http://10.0.2.2:3000'
+  : 'http://localhost:3000';
+
+export const API_BASE_URL: string = envUrl || FALLBACK;

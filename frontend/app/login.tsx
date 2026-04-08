@@ -34,10 +34,13 @@ export default function LoginScreen() {
     setApiError('');
 
     try {
+      const url = `${API_BASE_URL}/auth/login`;
+      console.log('[LOGIN] Fetching:', url);
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -59,6 +62,7 @@ export default function LoginScreen() {
 
       router.replace('/dashboard');
     } catch (error: any) {
+      console.log('[LOGIN] Error:', error.name, error.message);
       if (error.name === 'AbortError') {
         setApiError('Connection timed out. Is the backend running?');
       } else {
