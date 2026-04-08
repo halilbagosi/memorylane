@@ -1,20 +1,8 @@
-import { Platform } from 'react-native';
-
-// Dev default: iOS simulator and web can use localhost. Android emulator must use
-// 10.0.2.2 to reach the host machine (localhost inside the emulator is the emulator itself).
-const RAW_BASE = 'http://localhost:3000';
-
-function resolveApiBaseUrl(): string {
-  if (Platform.OS !== 'android') {
-    return RAW_BASE;
-  }
-  if (RAW_BASE.includes('localhost')) {
-    return RAW_BASE.replace('localhost', '10.0.2.2');
-  }
-  if (RAW_BASE.includes('127.0.0.1')) {
-    return RAW_BASE.replace('127.0.0.1', '10.0.2.2');
-  }
-  return RAW_BASE;
-}
-
-export const API_BASE_URL = resolveApiBaseUrl();
+// Each developer sets their own machine's local IP in frontend/.env (never committed to git).
+// Windows: run `ipconfig`  →  find IPv4 Address
+// Mac:     run `ifconfig`  →  find inet under en0
+// Example: EXPO_PUBLIC_API_BASE_URL=http://192.168.1.42:3000
+//
+// For production, set this to the deployed backend URL.
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';

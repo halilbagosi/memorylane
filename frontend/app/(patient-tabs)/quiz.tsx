@@ -1,41 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
-import { AdaptiveButton } from '../../src/components/AdaptiveButton';
-import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
+import { getPatientInfo, PatientInfo } from '../../src/utils/auth';
 
 export default function QuizTab() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const [patient, setPatient] = useState<PatientInfo | null>(null);
 
   useEffect(() => {
     getPatientInfo().then(setPatient);
   }, []);
 
-  const handleLogout = async () => {
-    await deletePatientInfo();
-    router.replace('/');
-  };
-
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
-      <View style={styles.topRow}>
-        {patient && (
-          <Text style={styles.greeting}>Hi, {patient.name}</Text>
-        )}
-        <AdaptiveButton
-          title="Logout"
-          variant="danger"
-          onPress={handleLogout}
-          style={styles.logoutBtn}
-          textStyle={styles.logoutText}
-        />
-      </View>
+      {patient && (
+        <Text style={styles.greeting}>Hi, {patient.name}</Text>
+      )}
 
       <View style={styles.center}>
         <View style={styles.iconCircle}>
@@ -69,15 +52,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: colors.textDark,
     flex: 1,
-  },
-  logoutBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  logoutText: {
-    fontSize: 13,
-    textTransform: 'none',
-    letterSpacing: 0,
   },
   center: {
     flex: 1,

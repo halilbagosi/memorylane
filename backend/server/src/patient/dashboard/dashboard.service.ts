@@ -8,16 +8,22 @@ export class DashboardService {
 
   async getCaregiverOverview(caregiverId: string) {
     const caregiverRelations = await this.prisma.patientCaregiver.findMany({
-      where: {
-        caregiverId: caregiverId,
-      },
+      where: { caregiverId },
       include: {
-        patient: true,
+        patient: {
+          include: {
+            patientCaregivers: {
+              include: { caregiver: true },
+            },
+          },
+        },
       },
     });
 
     return caregiverRelations.map((relation) => {
       const patient = relation.patient;
+      const primaryLink = patient.patientCaregivers.find(pc => pc.isPrimary);
+      const secondaryLinks = patient.patientCaregivers.filter(pc => !pc.isPrimary);
 
       return {
         id: patient.id,
@@ -28,6 +34,14 @@ export class DashboardService {
         patientJoinCode: patient.patientJoinCode,
         paired: patient.paired,
         createdAt: patient.createdAt,
+        primaryCaregiver: primaryLink
+          ? { name: primaryLink.caregiver.name, surname: primaryLink.caregiver.surname }
+          : null,
+        secondaryCaregivers: secondaryLinks.map(pc => ({
+          id: pc.caregiver.id,
+          name: pc.caregiver.name,
+          surname: pc.caregiver.surname,
+        })),
       };
     });
   }

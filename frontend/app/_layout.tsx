@@ -99,7 +99,18 @@ export default function RootLayout() {
           <Stack.Screen
             name="join-space"
             options={{
-              title: 'Join Space',
+              title: 'Start Your Journey',
+              headerShown: true,
+              gestureEnabled: true,
+              headerTransparent: true,
+              headerBlurEffect: 'systemMaterial',
+            }}
+          />
+
+          <Stack.Screen
+            name="join-patient"
+            options={{
+              title: 'Link to Patient',
               headerShown: true,
               gestureEnabled: true,
               headerTransparent: true,

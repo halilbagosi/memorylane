@@ -14,7 +14,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,6 +33,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MemoryLane needs your camera to scan the QR code and link to a patient's account."
+        }
+      ],
       [
         "@react-native-community/datetimepicker",
         {

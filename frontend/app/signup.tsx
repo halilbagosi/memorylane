@@ -164,7 +164,7 @@ export default function SignupScreen() {
               icon: (
                 <AppIcon
                   iosName={showPassword ? 'eye.slash' : 'eye'}
-                  androidFallback={showPassword ? 'Hide' : 'Show'}
+                  androidFallb={showPassword ? 'Hide' : 'Show'}
                   size={20}
                   color={colors.textMuted}
                 />

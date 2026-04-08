@@ -20,16 +20,16 @@ import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
 import { AppIcon } from '../src/components/AppIcon';
 import { API_BASE_URL } from '../src/config/api';
-import { savePatientInfo } from '../src/utils/auth';
+import { getToken } from '../src/utils/auth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
 const isIOS = Platform.OS === 'ios';
 
-const PATIENT_ACCENT = '#8B7355';
-const PATIENT_BG = '#EAE0CE';
+const ACCENT = '#2D4F3E';
+const ACCENT_LIGHT = 'rgba(45, 79, 62, 0.12)';
 
-export default function JoinSpaceScreen() {
+export default function JoinPatientScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -37,7 +37,7 @@ export default function JoinSpaceScreen() {
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successInfo, setSuccessInfo] = useState<{ patientName: string; caregiverName: string } | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{ patientName: string } | null>(null);
   const scannedRef = useRef(false);
   const successOpacity = useRef(new Animated.Value(0)).current;
   const successScale = useRef(new Animated.Value(0.9)).current;
@@ -53,9 +53,13 @@ export default function JoinSpaceScreen() {
     setError('');
 
     try {
-      const res = await fetch(`${API_BASE_URL}/patients/join`, {
+      const token = await getToken();
+      const res = await fetch(`${API_BASE_URL}/patients/join-as-caregiver`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ joinCode: trimmed }),
       });
 
@@ -68,16 +72,7 @@ export default function JoinSpaceScreen() {
         return;
       }
 
-      await savePatientInfo({
-        id: data.id,
-        name: data.name,
-        surname: data.surname,
-      });
-
-      setSuccessInfo({
-        patientName: data.name,
-        caregiverName: `${data.caregiver.name} ${data.caregiver.surname}`,
-      });
+      setSuccessInfo({ patientName: `${data.name} ${data.surname}` });
     } catch {
       setError('Could not connect to server');
       scannedRef.current = false;
@@ -100,13 +95,13 @@ export default function JoinSpaceScreen() {
       ]).start();
 
       const timer = setTimeout(() => {
-        router.replace('/(patient-tabs)/quiz');
+        router.replace('/(caregiver-tabs)/patients');
       }, 2500);
       return () => clearTimeout(timer);
     }
   }, [successInfo]);
 
-  // ─── Success confirmation ───
+  // ─── Success ───
 
   if (successInfo) {
     return (
@@ -116,9 +111,10 @@ export default function JoinSpaceScreen() {
           <View style={styles.successCheckCircle}>
             <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color="#4CAF50" />
           </View>
-          <Text style={styles.successTitle}>You're all set!</Text>
+          <Text style={styles.successTitle}>Patient Added!</Text>
           <Text style={styles.successSubtitle}>
-            Your family is waiting for you inside.{'\n'}Let's look at some memories.
+            <Text style={styles.successPatientName}>{successInfo.patientName}</Text>
+            {' '}has been added to your dashboard as a secondary patient.
           </Text>
         </Animated.View>
       </View>
@@ -141,21 +137,18 @@ export default function JoinSpaceScreen() {
       <View style={[styles.centered, { paddingTop: insets.top }]}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.permCard}>
-          <AppIcon iosName="camera.fill" androidFallback="cam" size={40} color={PATIENT_ACCENT} />
+          <AppIcon iosName="camera.fill" androidFallback="cam" size={40} color={ACCENT} />
           <Text style={styles.permTitle}>Camera Access</Text>
           <Text style={styles.permBody}>
-            We need your camera to scan the QR code provided by your caregiver.
+            We need your camera to scan the patient's QR code.
           </Text>
           <AdaptiveButton
             title="Allow Camera"
             onPress={requestPermission}
-            color={PATIENT_ACCENT}
+            color={ACCENT}
             style={{ marginTop: 20, alignSelf: 'stretch' }}
           />
-          <TouchableOpacity
-            style={styles.altLink}
-            onPress={() => setMode('manual')}
-          >
+          <TouchableOpacity style={styles.altLink} onPress={() => setMode('manual')}>
             <Text style={styles.altLinkText}>Enter code manually instead</Text>
           </TouchableOpacity>
         </View>
@@ -163,7 +156,7 @@ export default function JoinSpaceScreen() {
     );
   }
 
-  // ─── Manual Entry Mode ───
+  // ─── Manual Entry ───
 
   if (mode === 'manual') {
     return (
@@ -172,24 +165,18 @@ export default function JoinSpaceScreen() {
         behavior={isIOS ? 'padding' : undefined}
       >
         <StatusBar barStyle="dark-content" />
-
         <View style={styles.manualContent}>
-          <View style={[styles.iconCircle, { backgroundColor: 'rgba(139, 115, 85, 0.12)' }]}>
-            <AppIcon iosName="keyboard" androidFallback="..." size={32} color={PATIENT_ACCENT} />
+          <View style={[styles.iconCircle, { backgroundColor: ACCENT_LIGHT }]}>
+            <AppIcon iosName="keyboard" androidFallback="..." size={32} color={ACCENT} />
           </View>
-
-          <Text style={styles.manualTitle}>Enter Your Code</Text>
+          <Text style={styles.manualTitle}>Enter Patient Code</Text>
           <Text style={styles.manualSubtitle}>
-            Type the 6-character code your caregiver gave you.
+            Type the 6-character code from the patient's profile.
           </Text>
-
           <AdaptiveInput
             label="Join Code"
             value={joinCode}
-            onChangeText={(t) => {
-              setJoinCode(t.toUpperCase());
-              setError('');
-            }}
+            onChangeText={(t) => { setJoinCode(t.toUpperCase()); setError(''); }}
             placeholder="e.g. 7B2A91"
             maxLength={6}
             autoCapitalize="characters"
@@ -197,24 +184,18 @@ export default function JoinSpaceScreen() {
             error={error}
             containerStyle={{ width: '100%', marginTop: 24 }}
           />
-
           <AdaptiveButton
-            title="Link Account"
+            title="Join Patient Space"
             onPress={() => handleJoin(joinCode)}
             loading={loading}
-            loadingText="Linking..."
+            loadingText="Joining..."
             disabled={joinCode.length < 6}
-            color={PATIENT_ACCENT}
+            color={ACCENT}
             style={{ alignSelf: 'stretch', marginTop: 8 }}
           />
-
           <TouchableOpacity
             style={styles.altLink}
-            onPress={() => {
-              setMode('camera');
-              setError('');
-              scannedRef.current = false;
-            }}
+            onPress={() => { setMode('camera'); setError(''); scannedRef.current = false; }}
           >
             <Text style={styles.altLinkText}>Back to scanner</Text>
           </TouchableOpacity>
@@ -235,17 +216,14 @@ export default function JoinSpaceScreen() {
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
       />
 
-      {/* Overlay */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {/* Top */}
         <View style={[styles.overlaySection, { paddingTop: insets.top + 50 }]}>
-          <Text style={styles.scanTitle}>Scan Your Code</Text>
+          <Text style={styles.scanTitle}>Scan Patient QR Code</Text>
           <Text style={styles.scanSubtitle}>
-            Point your camera at the QR code shown on the caregiver's screen.
+            Point your camera at the QR code.
           </Text>
         </View>
 
-        {/* Scan area cutout */}
         <View style={styles.scanRow}>
           <View style={styles.overlayFill} />
           <View style={styles.scanArea}>
@@ -257,13 +235,9 @@ export default function JoinSpaceScreen() {
           <View style={styles.overlayFill} />
         </View>
 
-        {/* Bottom */}
         <View style={[styles.overlaySection, styles.bottomSection, { paddingBottom: insets.bottom + 24 }]}>
           {error ? (
-            <AdaptiveCard
-              style={styles.errorCard}
-              backgroundColor="rgba(231, 76, 60, 0.15)"
-            >
+            <AdaptiveCard style={styles.errorCard} backgroundColor="rgba(231, 76, 60, 0.15)">
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity onPress={() => { setError(''); scannedRef.current = false; }}>
                 <Text style={styles.errorRetry}>Try again</Text>
@@ -273,17 +247,14 @@ export default function JoinSpaceScreen() {
 
           {loading ? (
             <AdaptiveButton
-              title="Linking..."
+              title="Joining..."
               onPress={() => {}}
               loading
-              color={PATIENT_ACCENT}
+              color={ACCENT}
               style={{ alignSelf: 'stretch', marginHorizontal: 24 }}
             />
           ) : (
-            <TouchableOpacity
-              style={styles.manualBtn}
-              onPress={() => setMode('manual')}
-            >
+            <TouchableOpacity style={styles.manualBtn} onPress={() => setMode('manual')}>
               <AppIcon iosName="keyboard" androidFallback="..." size={18} color="#FFFFFF" />
               <Text style={styles.manualBtnText}>Enter code manually</Text>
             </TouchableOpacity>
@@ -295,7 +266,6 @@ export default function JoinSpaceScreen() {
 }
 
 const styles = StyleSheet.create({
-  // ─── Permission screens ───
   centered: {
     flex: 1,
     backgroundColor: colors.neutral,
@@ -327,12 +297,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-
-  // ─── Manual entry ───
-  manualContainer: {
-    flex: 1,
-    backgroundColor: colors.neutral,
-  },
+  manualContainer: { flex: 1, backgroundColor: colors.neutral },
   manualContent: {
     flex: 1,
     justifyContent: 'center',
@@ -360,22 +325,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-
-  altLink: {
-    marginTop: 20,
-    paddingVertical: 8,
-  },
+  altLink: { marginTop: 20, paddingVertical: 8 },
   altLinkText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: PATIENT_ACCENT,
+    color: ACCENT,
   },
-
-  // ─── Camera overlay ───
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  cameraContainer: { flex: 1, backgroundColor: '#000' },
   overlaySection: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -384,58 +340,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 16,
   },
-  bottomSection: {
-    justifyContent: 'flex-start',
-    paddingTop: 24,
-  },
-  scanRow: {
-    flexDirection: 'row',
-    height: SCAN_AREA_SIZE,
-  },
-  overlayFill: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  scanArea: {
-    width: SCAN_AREA_SIZE,
-    height: SCAN_AREA_SIZE,
-  },
-
-  corner: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderColor: '#FFFFFF',
-  },
-  cornerTL: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-    borderTopLeftRadius: 8,
-  },
-  cornerTR: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-    borderTopRightRadius: 8,
-  },
-  cornerBL: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-    borderBottomLeftRadius: 8,
-  },
-  cornerBR: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    borderBottomRightRadius: 8,
-  },
-
+  bottomSection: { justifyContent: 'flex-start', paddingTop: 24 },
+  scanRow: { flexDirection: 'row', height: SCAN_AREA_SIZE },
+  overlayFill: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  scanArea: { width: SCAN_AREA_SIZE, height: SCAN_AREA_SIZE },
+  corner: { position: 'absolute', width: 24, height: 24, borderColor: '#FFFFFF' },
+  cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 8 },
+  cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 8 },
+  cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 8 },
+  cornerBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 8 },
   scanTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
@@ -449,7 +362,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.75)',
     textAlign: 'center',
   },
-
   manualBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -464,7 +376,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#FFFFFF',
   },
-
   errorCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -487,15 +398,8 @@ const styles = StyleSheet.create({
     color: '#e74c3c',
     marginLeft: 12,
   },
-
-  // ─── Success screen ───
-  successContent: {
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  successCheckCircle: {
-    marginBottom: 20,
-  },
+  successContent: { alignItems: 'center', paddingHorizontal: 32 },
+  successCheckCircle: { marginBottom: 20 },
   successTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
@@ -509,8 +413,8 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  successCaregiverName: {
+  successPatientName: {
     fontFamily: typography.fontFamily.bold,
-    color: PATIENT_ACCENT,
+    color: ACCENT,
   },
 });

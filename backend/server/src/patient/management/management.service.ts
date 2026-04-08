@@ -1,9 +1,35 @@
-import { Injectable, ForbiddenException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class ManagementService {
   constructor(private prisma: PrismaService) {}
+
+  async delegatePrimaryRole(patientId: string, currentPrimaryId: string, targetCaregiverId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const currentRel = await tx.patientCaregiver.findFirst({
+        where: { patientId, caregiverId: currentPrimaryId, isPrimary: true },
+      });
+      if (!currentRel) throw new ForbiddenException('Only the Primary Caregiver can delegate this role.');
+
+      const targetRel = await tx.patientCaregiver.findFirst({
+        where: { patientId, caregiverId: targetCaregiverId, isPrimary: false },
+      });
+      if (!targetRel) throw new BadRequestException('Target user must be a member of the Care Team first.');
+
+      await tx.patientCaregiver.update({
+        where: { caregiverId_patientId: { caregiverId: currentPrimaryId, patientId } },
+        data: { isPrimary: false },
+      });
+
+      await tx.patientCaregiver.update({
+        where: { caregiverId_patientId: { caregiverId: targetCaregiverId, patientId } },
+        data: { isPrimary: true },
+      });
+
+      return { message: 'Role successfully delegated. You are now a Secondary Caregiver.' };
+    });
+  }
 
   async deletePatient(patientId: string, caregiverId: string) {
     // 1. First, check if the current user is actually the PRIMARY for this patient

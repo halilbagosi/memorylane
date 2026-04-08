@@ -1,7 +1,8 @@
-import { Injectable, ConflictException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { decrypt } from '../patient/encryption.util';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignupDto } from '../dto/signup.dto';
 import { LoginDto } from '../dto/login.dto';
@@ -108,5 +109,63 @@ export class AuthService {
     });
 
     return { message: 'Logged out successfully' };
+  }
+
+  async deleteAccount(caregiverId: string) {
+    // Find all patients where this caregiver is primary
+    const primaryRelations = await this.prisma.patientCaregiver.findMany({
+      where: { caregiverId, isPrimary: true },
+      include: {
+        patient: {
+          include: {
+            patientCaregivers: {
+              where: { isPrimary: false },
+              include: { caregiver: true },
+            },
+          },
+        },
+      },
+    });
+
+    // If any primary patient still has secondary caregivers, block deletion
+    const patientsNeedingDelegation = primaryRelations
+      .filter(rel => rel.patient.patientCaregivers.length > 0)
+      .map(rel => ({
+        patientId: rel.patient.id,
+        patientName: `${decrypt(rel.patient.name)} ${decrypt(rel.patient.surname)}`,
+        secondaryCaregivers: rel.patient.patientCaregivers.map(pc => ({
+          id: pc.caregiver.id,
+          name: pc.caregiver.name,
+          surname: pc.caregiver.surname,
+        })),
+      }));
+
+    if (patientsNeedingDelegation.length > 0) {
+      throw new ConflictException({
+        message: 'You must delegate primary caregiver role before deleting your account.',
+        patientsNeedingDelegation,
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const primaryPatientIds = primaryRelations.map(rel => rel.patient.id);
+
+      if (primaryPatientIds.length > 0) {
+        // Remove all caregiver links for those patients, then delete patients
+        await tx.patientCaregiver.deleteMany({ where: { patientId: { in: primaryPatientIds } } });
+        await tx.patient.deleteMany({ where: { id: { in: primaryPatientIds } } });
+      }
+
+      // Remove any secondary caregiver links for this caregiver
+      await tx.patientCaregiver.deleteMany({ where: { caregiverId } });
+
+      // Remove sessions
+      await tx.authSession.deleteMany({ where: { caregiverId } });
+
+      // Delete the caregiver account
+      await tx.caregiver.delete({ where: { id: caregiverId } });
+    });
+
+    return { message: 'Account deleted successfully' };
   }
 }

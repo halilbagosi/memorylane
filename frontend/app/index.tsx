@@ -18,7 +18,8 @@ import { typography } from '../src/theme/typography';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../src/components/AdaptiveBadge';
 import { AppIcon } from '../src/components/AppIcon';
-import { getPatientInfo } from '../src/utils/auth';
+import { getPatientInfo, deletePatientInfo } from '../src/utils/auth';
+import { API_BASE_URL } from '../src/config/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
@@ -42,13 +43,26 @@ export default function WelcomeScreen() {
   const orb3Y = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    getPatientInfo().then((patient) => {
+    (async () => {
+      const patient = await getPatientInfo();
       if (patient) {
-        router.replace('/(patient-tabs)/quiz');
-      } else {
-        setCheckingSession(false);
+        try {
+          const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/paired-status`);
+          const data = await res.json();
+          if (res.ok && data.paired) {
+            router.replace('/(patient-tabs)/quiz');
+            return;
+          }
+        } catch {
+          // Network error — still route to patient tabs so offline use isn't broken
+          router.replace('/(patient-tabs)/quiz');
+          return;
+        }
+        // Server says unpaired — clear local data and show role selection
+        await deletePatientInfo();
       }
-    });
+      setCheckingSession(false);
+    })();
   }, []);
 
   useEffect(() => {
