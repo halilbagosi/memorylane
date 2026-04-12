@@ -389,13 +389,13 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#e74c3c',
+    color: '#C0392B',
     flex: 1,
   },
   errorRetry: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: '#e74c3c',
+    color: '#C0392B',
     marginLeft: 12,
   },
   successContent: { alignItems: 'center', paddingHorizontal: 32 },

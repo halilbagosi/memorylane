@@ -274,7 +274,7 @@ export default function AddPatientScreen() {
                   <DateTimePicker
                     value={tempDate}
                     mode="date"
-                    display="inline"
+                    display="spinner"
                     onChange={onIOSDateChange}
                     maximumDate={new Date()}
                     minimumDate={new Date(1900, 0, 1)}
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 0, 0, 0.08)',
     borderRadius: 16,
   },
-  dateButtonError: { borderColor: '#e74c3c' },
+  dateButtonError: { borderColor: '#C0392B' },
   dateButtonText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
@@ -380,13 +380,13 @@ const styles = StyleSheet.create({
   },
 
   errorText: {
-    color: '#e74c3c',
+    color: '#C0392B',
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     marginTop: 4,
   },
   apiErrorText: {
-    color: '#e74c3c',
+    color: '#C0392B',
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',

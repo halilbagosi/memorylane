@@ -10,11 +10,15 @@ export interface PatientInfo {
   surname: string;
 }
 
+export type CaregiverStatus = 'ACTIVE' | 'PENDING_DELETION' | 'DEACTIVATED';
+
 export interface CaregiverInfo {
   id: string;
   name: string;
   surname: string;
   email: string;
+  avatarUrl?: string | null;
+  status?: CaregiverStatus;
 }
 
 // ─── Token ───

@@ -5,7 +5,7 @@ export class CreatePatientDto {
   @IsNotEmpty()
   @IsString()
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  @Matches(/^[a-zA-Z\s]+$/, {
+  @Matches(/^[a-zA-ZëçËÇ\s]+$/, {
     message: 'Patient name must only contain letters and spaces',
   })
   name: string;
@@ -13,7 +13,7 @@ export class CreatePatientDto {
   @IsNotEmpty()
   @IsString()
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  @Matches(/^[a-zA-Z\s]+$/, {
+  @Matches(/^[a-zA-ZëçËÇ\s]+$/, {
     message: 'Patient surname must only contain letters and spaces',
   })
   surname: string;

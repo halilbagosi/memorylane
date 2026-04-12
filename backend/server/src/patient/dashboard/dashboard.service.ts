@@ -35,12 +35,18 @@ export class DashboardService {
         paired: patient.paired,
         createdAt: patient.createdAt,
         primaryCaregiver: primaryLink
-          ? { name: primaryLink.caregiver.name, surname: primaryLink.caregiver.surname }
+          ? {
+              id: primaryLink.caregiver.id,
+              name: primaryLink.caregiver.name,
+              surname: primaryLink.caregiver.surname,
+              avatarUrl: primaryLink.caregiver.avatarUrl ?? null,
+            }
           : null,
         secondaryCaregivers: secondaryLinks.map(pc => ({
           id: pc.caregiver.id,
           name: pc.caregiver.name,
           surname: pc.caregiver.surname,
+          avatarUrl: pc.caregiver.avatarUrl ?? null,
         })),
       };
     });

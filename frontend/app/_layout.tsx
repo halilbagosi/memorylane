@@ -102,8 +102,6 @@ export default function RootLayout() {
               title: 'Start Your Journey',
               headerShown: true,
               gestureEnabled: true,
-              headerTransparent: true,
-              headerBlurEffect: 'systemMaterial',
             }}
           />
 
@@ -113,8 +111,6 @@ export default function RootLayout() {
               title: 'Link to Patient',
               headerShown: true,
               gestureEnabled: true,
-              headerTransparent: true,
-              headerBlurEffect: 'systemMaterial',
             }}
           />
 
@@ -132,6 +128,14 @@ export default function RootLayout() {
               headerShown: false,
               title: '',
               gestureEnabled: false,
+            }}
+          />
+
+          <Stack.Screen
+            name="account"
+            options={{
+              title: 'Account',
+              gestureEnabled: true,
             }}
           />
         </Stack>

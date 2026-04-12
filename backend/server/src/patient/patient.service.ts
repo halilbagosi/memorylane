@@ -64,6 +64,26 @@ export class PatientService {
       data: { caregiverId, patientId: patient.id, isPrimary: false },
     });
 
+    // Notify the primary caregiver that a new secondary was added
+    const primaryLink = await this.prisma.patientCaregiver.findFirst({
+      where: { patientId: patient.id, isPrimary: true },
+      include: { caregiver: { select: { id: true } } },
+    });
+    const joiner = await this.prisma.caregiver.findUnique({
+      where: { id: caregiverId },
+      select: { name: true, surname: true },
+    });
+    if (primaryLink && joiner && primaryLink.caregiverId !== caregiverId) {
+      await this.prisma.notification.create({
+        data: {
+          caregiverId: primaryLink.caregiverId,
+          type: 'SECONDARY_ADDED' as any,
+          title: 'New team member',
+          body: `${joiner.name} ${joiner.surname} joined the care team for ${decrypt(patient.name)} ${decrypt(patient.surname)}.`,
+        },
+      });
+    }
+
     return {
       id: patient.id,
       name: decrypt(patient.name),
@@ -78,6 +98,42 @@ export class PatientService {
 
     if (!link) throw new NotFoundException('Patient not found in your list');
     if (link.isPrimary) throw new ForbiddenException('Primary caregivers cannot leave — transfer the role first or delete the patient');
+
+    // ── C7: Void any pending delegation requests targeting this caregiver ──
+    const pendingDelegations = await this.prisma.delegationRequest.findMany({
+      where: { toCaregiverId: caregiverId, patientId, status: 'PENDING' },
+      include: { patient: { select: { name: true, surname: true } } },
+    });
+
+    if (pendingDelegations.length > 0) {
+      // Mark them as declined (this caregiver is leaving)
+      await this.prisma.delegationRequest.updateMany({
+        where: { toCaregiverId: caregiverId, patientId, status: 'PENDING' },
+        data: { status: 'DECLINED', respondedAt: new Date() },
+      });
+
+      // Get the departing caregiver's name
+      const leavingCaregiver = await this.prisma.caregiver.findUnique({
+        where: { id: caregiverId },
+        select: { name: true, surname: true },
+      });
+      const leaverName = leavingCaregiver
+        ? `${leavingCaregiver.name} ${leavingCaregiver.surname}`
+        : 'A caregiver';
+
+      // Notify each primary caregiver that this secondary is no longer available
+      for (const del of pendingDelegations) {
+        const patientName = `${decrypt(del.patient.name)} ${decrypt(del.patient.surname)}`;
+        await this.prisma.notification.create({
+          data: {
+            caregiverId: del.fromCaregiverId,
+            type: 'DELEGATION_DECLINED' as any,
+            title: 'Caregiver unavailable',
+            body: `${leaverName} has left the care team for ${patientName} and is no longer available to take over. Please select a new successor.`,
+          },
+        });
+      }
+    }
 
     await this.prisma.patientCaregiver.delete({
       where: { caregiverId_patientId: { caregiverId, patientId } },
@@ -176,6 +232,23 @@ export class PatientService {
       where: { id: patient.id },
       data: { paired: true },
     });
+
+    // Notify all caregivers of this patient that a device was paired
+    const caregiverLinks = await this.prisma.patientCaregiver.findMany({
+      where: { patientId: patient.id },
+      select: { caregiverId: true },
+    });
+    const patientName = `${decrypt(patient.name)} ${decrypt(patient.surname)}`;
+    if (caregiverLinks.length > 0) {
+      await this.prisma.notification.createMany({
+        data: caregiverLinks.map(link => ({
+          caregiverId: link.caregiverId,
+          type: 'DEVICE_PAIRED' as any,
+          title: 'Device paired',
+          body: `A device has been successfully paired for ${patientName}.`,
+        })),
+      });
+    }
 
     return {
       id: patient.id,

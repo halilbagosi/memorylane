@@ -1,4 +1,4 @@
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useCallback, useState } from 'react';
 import {
   View,
   TextInput,
@@ -29,10 +29,22 @@ export function AdaptiveInput({
   containerStyle,
   suffix,
   style,
+  onFocus,
+  onBlur,
   ...inputProps
 }: AdaptiveInputProps) {
   const isIOS = Platform.OS === 'ios';
   const [isFocused, setIsFocused] = useState(false);
+
+  const handleFocus = useCallback((e: any) => {
+    if (!isIOS) setIsFocused(true);
+    onFocus?.(e);
+  }, [onFocus, isIOS]);
+
+  const handleBlur = useCallback((e: any) => {
+    if (!isIOS) setIsFocused(false);
+    onBlur?.(e);
+  }, [onBlur, isIOS]);
 
   const wrapperStyles = [
     styles.inputWrapper,
@@ -51,12 +63,14 @@ export function AdaptiveInput({
           style={[
             styles.input,
             isIOS ? styles.iosInput : styles.androidInput,
-            suffix && { flex: 1 },
+            { flex: 1 },
             style,
           ]}
           placeholderTextColor={colors.textMuted}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          autoCorrect={false}
+          spellCheck={false}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           cursorColor={isIOS ? undefined : colors.secondary}
           selectionColor={isIOS ? undefined : colors.secondary + '40'}
           {...inputProps}
@@ -105,17 +119,15 @@ const styles = StyleSheet.create({
   },
   androidInputWrapper: {
     backgroundColor: colors.neutralLight,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: 'rgba(0, 0, 0, 0.08)',
     borderRadius: 16,
   },
   androidInputWrapperFocused: {
     borderColor: colors.secondary,
-    borderWidth: 2,
-    elevation: 0,
   },
   inputError: {
-    borderColor: '#e74c3c',
+    borderColor: '#C0392B',
   },
 
   input: {
@@ -144,7 +156,7 @@ const styles = StyleSheet.create({
   },
 
   errorText: {
-    color: '#e74c3c',
+    color: '#C0392B',
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     marginTop: 4,

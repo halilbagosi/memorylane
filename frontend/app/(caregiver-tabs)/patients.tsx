@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal,
+  ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
@@ -10,8 +10,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
-import { getToken, getCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
-import { AdaptiveButton } from '../../src/components/AdaptiveButton';
+import { getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
 import { AdaptiveCard } from '../../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../../src/components/AdaptiveBadge';
 import { AppIcon } from '../../src/components/AppIcon';
@@ -29,8 +28,9 @@ interface PatientItem {
   isPrimary: boolean;
   patientJoinCode: string;
   paired: boolean;
-  primaryCaregiver: { name: string; surname: string } | null;
-  secondaryCaregivers: { id: string; name: string; surname: string }[];
+  primaryCaregiver: { id: string; name: string; surname: string; avatarUrl: string | null } | null;
+  secondaryCaregivers: { id: string; name: string; surname: string; avatarUrl: string | null }[];
+  hasPendingRoleRequest?: boolean;
 }
 
 function calculateAge(dateOfBirth: string): number {
@@ -53,17 +53,15 @@ export default function PatientsTab() {
   const [patients, setPatients] = useState<PatientItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<PatientItem | null>(null);
 
-  type DelegationQueueItem = { patient: PatientItem; secondaries: PatientItem['secondaryCaregivers'] };
-  type DelegationChoice = { patientId: string; newPrimaryId: string };
-  const [delegationFlow, setDelegationFlow] = useState<{
-    visible: boolean;
-    queue: DelegationQueueItem[];
-    currentIndex: number;
-    choices: DelegationChoice[];
+  // Resignation progress pill
+  const [resignProgress, setResignProgress] = useState<{
+    total: number;
+    accepted: number;
+    allAccepted: boolean;
+    hasDeclined: boolean;
   } | null>(null);
-
+  const [selectedPatient, setSelectedPatient] = useState<PatientItem | null>(null);
   const [dialog, setDialog] = useState<{
     visible: boolean;
     title: string;
@@ -91,26 +89,64 @@ export default function PatientsTab() {
 
       setToken(storedToken);
       setCaregiver(storedCaregiver);
+
+      // Fetch fresh caregiver info immediately so status (e.g. PENDING_DELETION)
+      // is always up to date without needing to visit the account screen first.
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        });
+        if (res.ok) {
+          const fresh = await res.json();
+          const updated = { ...storedCaregiver, ...fresh };
+          setCaregiver(updated);
+          await saveCaregiverInfo(updated);
+        }
+      } catch { /* silent — stale cache is fine as fallback */ }
     })();
   }, []);
+
+  const fetchResignProgress = async (tok: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/deletion-status`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!res.ok) { setResignProgress(null); return; }
+      const data = await res.json();
+      const total = (data.patients ?? []).length;
+      const accepted = (data.acceptedRequests ?? []).length;
+      if (total === 0) { setResignProgress(null); return; }
+      setResignProgress({
+        total,
+        accepted,
+        allAccepted: !!data.allDelegationsResolved,
+        hasDeclined: !!data.hasSomeDeclined,
+      });
+    } catch { setResignProgress(null); }
+  };
 
   const fetchPatients = async () => {
     if (!token) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/patients/my-list`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const [patientsRes, pendingRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/patients/my-list`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/auth/role-requests/pending-by-me`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
 
-      if (response.ok) {
-        const list = Array.isArray(data) ? data : (data.patients || []);
-        setPatients(list);
-      } else if (response.status === 401) {
+      if (patientsRes.status === 401) {
         await clearAuth();
         router.replace('/login');
+        return;
       }
-    } catch (err) {
-      // Silent for now
+
+      if (patientsRes.ok) {
+        const data = await patientsRes.json();
+        const pendingIds: string[] = pendingRes.ok ? await pendingRes.json() : [];
+        const list: PatientItem[] = Array.isArray(data) ? data : (data.patients || []);
+        setPatients(list.map(p => ({ ...p, hasPendingRoleRequest: pendingIds.includes(p.id) })));
+      }
+    } catch {
+      // silent
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -123,30 +159,22 @@ export default function PatientsTab() {
 
   useFocusEffect(
     useCallback(() => {
-      if (token) fetchPatients();
+      if (token) {
+        fetchPatients();
+        getCaregiverInfo().then(info => {
+          if (info) {
+            setCaregiver(info);
+            if (info.status === 'PENDING_DELETION') fetchResignProgress(token);
+            else setResignProgress(null);
+          }
+        });
+      }
     }, [token])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchPatients();
-  };
-
-  const handleLogout = async () => {
-    try {
-      if (token) {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    } catch {
-      // Even if logout API fails, clear locally
-    }
-    await clearAuth();
-    navigation.dispatch(
-      CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
-    );
   };
 
   const handleDelete = (patient: PatientItem) => {
@@ -281,6 +309,26 @@ export default function PatientsTab() {
     }
   };
 
+  const handleRequestPrimary = async (patient: PatientItem) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/role-requests`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: patient.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Mark locally so the button flips to "Request Pending" immediately
+        setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, hasPendingRoleRequest: true } : p));
+        setSelectedPatient(prev => prev?.id === patient.id ? { ...prev, hasPendingRoleRequest: true } : prev);
+      } else {
+        showDialog('Error', data.message || 'Could not send request', [{ label: 'OK', onPress: dismissDialog }]);
+      }
+    } catch {
+      showDialog('Error', 'Failed to connect to the backend', [{ label: 'OK', onPress: dismissDialog }]);
+    }
+  };
+
   const handleRemoveCaregiver = (patient: PatientItem, caregiverId: string, caregiverName: string) => {
     showDialog(
       'Remove Caregiver',
@@ -317,96 +365,6 @@ export default function PatientsTab() {
     );
   };
 
-  // Executes all collected delegation choices then deletes the account — called only after full confirmation
-  const executeDeleteFlow = async (choices: DelegationChoice[]) => {
-    try {
-      for (const choice of choices) {
-        const res = await fetch(`${API_BASE_URL}/patients/${choice.patientId}/delegate-primary`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetCaregiverId: choice.newPrimaryId }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          showDialog('Error', data.message || 'Could not delegate a role. Please try again.', [{ label: 'OK', onPress: dismissDialog }]);
-          return;
-        }
-      }
-      const res = await fetch(`${API_BASE_URL}/auth/account`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        await clearAuth();
-        navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
-      } else {
-        const data = await res.json();
-        showDialog('Error', data.message || 'Could not delete account', [{ label: 'OK', onPress: dismissDialog }]);
-      }
-    } catch {
-      showDialog('Error', 'Failed to connect to the backend', [{ label: 'OK', onPress: dismissDialog }]);
-    }
-  };
-
-  // Called when user picks a caregiver in the delegation modal — stores choice locally, no API call yet
-  const handlePickInDelegationFlow = (secondary: { id: string; name: string; surname: string }) => {
-    if (!delegationFlow) return;
-    const { queue, currentIndex, choices } = delegationFlow;
-    const { patient } = queue[currentIndex];
-    const newChoice: DelegationChoice = { patientId: patient.id, newPrimaryId: secondary.id };
-    const updatedChoices = [...choices, newChoice];
-    const nextIndex = currentIndex + 1;
-
-    if (nextIndex < queue.length) {
-      // More patients to delegate — advance to next
-      setDelegationFlow(prev => prev ? { ...prev, currentIndex: nextIndex, choices: updatedChoices } : null);
-    } else {
-      // All choices collected — close modal, show final confirmation
-      setDelegationFlow(null);
-      setTimeout(() => {
-        showDialog(
-          'Confirm Account Deletion',
-          'All primary roles will be handed over and your account will be permanently deleted. This cannot be undone.',
-          [
-            { label: 'Cancel', onPress: dismissDialog },
-            { label: 'Delete Account', destructive: true, onPress: () => { dismissDialog(); executeDeleteFlow(updatedChoices); } },
-          ],
-        );
-      }, 350);
-    }
-  };
-
-  const handleDeleteAccount = () => {
-    const primaryPatients = patients.filter(p => p.isPrimary);
-
-    // Confirmation dialog always shown first
-    showDialog(
-      'Delete Account',
-      'This will permanently delete your account and all patient profiles you manage. This cannot be undone.',
-      [
-        { label: 'Cancel', onPress: dismissDialog },
-        {
-          label: 'Continue',
-          destructive: true,
-          onPress: () => {
-            dismissDialog();
-            const queue = primaryPatients
-              .filter(p => p.secondaryCaregivers.length > 0)
-              .map(p => ({ patient: p, secondaries: p.secondaryCaregivers }));
-
-            if (queue.length > 0) {
-              // Need to delegate — show delegation modal
-              setTimeout(() => setDelegationFlow({ visible: true, queue, currentIndex: 0, choices: [] }), 350);
-            } else {
-              // No delegations needed — delete directly
-              executeDeleteFlow([]);
-            }
-          },
-        },
-      ],
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
@@ -416,14 +374,52 @@ export default function PatientsTab() {
             {caregiver ? `Welcome, ${caregiver.name}` : 'Caregiver Dashboard'}
           </Text>
         </View>
-        <AdaptiveButton
-          title="Logout"
-          variant="danger"
-          onPress={handleLogout}
-          style={styles.logoutBtn}
-          textStyle={styles.logoutText}
-        />
+        <TouchableOpacity onPress={() => router.push('/account')} activeOpacity={0.8} style={styles.avatarBtn}>
+          {caregiver?.avatarUrl ? (
+            <Image source={{ uri: caregiver.avatarUrl }} style={styles.avatarBtnImg} />
+          ) : (
+            <View style={styles.avatarBtnCircle}>
+              <Text style={styles.avatarBtnText}>
+                {`${caregiver?.name?.[0] ?? ''}${caregiver?.surname?.[0] ?? ''}`.toUpperCase() || '?'}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
+
+      {caregiver?.status === 'PENDING_DELETION' && resignProgress && (
+        <TouchableOpacity
+          style={[
+            styles.statusPill,
+            resignProgress.allAccepted ? styles.pillGreen
+            : resignProgress.hasDeclined ? styles.pillRed
+            : styles.pillAmber,
+          ]}
+          onPress={() => router.push('/account?openDeletion=1')}
+          activeOpacity={0.85}
+        >
+          <View style={[
+            styles.pillDot,
+            { backgroundColor: resignProgress.allAccepted ? '#6B8C6A' : resignProgress.hasDeclined ? '#C0392B' : '#6B6455' },
+          ]} />
+          <Text style={[
+            styles.pillText,
+            { color: resignProgress.allAccepted ? '#2E5233' : resignProgress.hasDeclined ? '#922B21' : '#4A4236' },
+          ]}>
+            {resignProgress.allAccepted
+              ? 'Roles transferred · Ready to finalize'
+              : resignProgress.hasDeclined
+              ? 'Action required · tap to review'
+              : `Transferring primary roles · ${resignProgress.accepted}/${resignProgress.total} accepted`}
+          </Text>
+          <AppIcon
+            iosName="chevron.right"
+            androidFallback="›"
+            size={12}
+            color={resignProgress.allAccepted ? '#2E5233' : resignProgress.hasDeclined ? '#922B21' : '#4A4236'}
+          />
+        </TouchableOpacity>
+      )}
 
       <View style={styles.actionsRow}>
         <TouchableOpacity
@@ -462,9 +458,6 @@ export default function PatientsTab() {
           <Text style={styles.emptyDesc}>
             Tap "Add Patient" above to create a patient profile and start building their memory lane.
           </Text>
-          <TouchableOpacity style={[styles.deleteAccountBtn, { marginTop: 40 }]} onPress={handleDeleteAccount} activeOpacity={0.7}>
-            <Text style={styles.deleteAccountText}>Delete Account</Text>
-          </TouchableOpacity>
         </View>
       ) : (() => {
         const primaryPatients = patients.filter(p => p.isPrimary);
@@ -511,7 +504,7 @@ export default function PatientsTab() {
                           onPress={() => handleDelete(patient)}
                           activeOpacity={0.7}
                         >
-                          <AppIcon iosName="trash" androidFallback="X" size={18} color="#e74c3c" />
+                          <AppIcon iosName="trash" androidFallback="X" size={18} color="#C0392B" />
                         </TouchableOpacity>
                       </View>
 
@@ -594,9 +587,6 @@ export default function PatientsTab() {
                 ))}
               </>
             )}
-            <TouchableOpacity style={styles.deleteAccountBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
-              <Text style={styles.deleteAccountText}>Delete Account</Text>
-            </TouchableOpacity>
           </ScrollView>
         );
       })()}
@@ -604,7 +594,7 @@ export default function PatientsTab() {
       {/* Patient Detail Bottom Sheet */}
       <M3BottomSheet
         visible={!!selectedPatient}
-        onClose={() => setSelectedPatient(null)}
+        onClose={() => { if (!dialog.visible) setSelectedPatient(null); }}
       >
         <PatientDetailContent
           patient={selectedPatient}
@@ -614,58 +604,10 @@ export default function PatientsTab() {
           onDelete={handleDelete}
           onEdit={handleEditPatient}
           onRemoveCaregiver={handleRemoveCaregiver}
+          onRequestPrimary={handleRequestPrimary}
+          myId={caregiver?.id ?? ''}
         />
       </M3BottomSheet>
-
-      {/* Delegation Flow Modal */}
-      {delegationFlow && (() => {
-        const { queue, currentIndex } = delegationFlow;
-        const { patient, secondaries } = queue[currentIndex];
-        const total = queue.length;
-        return (
-          <Modal visible={delegationFlow.visible} transparent animationType="slide" onRequestClose={() => setDelegationFlow(null)}>
-            <View style={styles.delegationOverlay}>
-              <View style={styles.delegationSheet}>
-                {/* Progress bar */}
-                <View style={styles.delegationProgressTrack}>
-                  <View style={[styles.delegationProgressFill, { width: `${((currentIndex) / total) * 100}%` }]} />
-                </View>
-
-                <Text style={styles.delegationStep}>Step {currentIndex + 1} of {total}</Text>
-                <Text style={styles.delegationTitle}>Hand Over Primary Role</Text>
-                <Text style={styles.delegationBody}>
-                  {'Who should become the primary caregiver for '}
-                  <Text style={{ fontFamily: typography.fontFamily.bold, color: colors.textDark }}>
-                    {patient.name} {patient.surname}
-                  </Text>
-                  {'?'}
-                </Text>
-
-                <View style={styles.delegationList}>
-                  {secondaries.map(s => (
-                    <TouchableOpacity
-                      key={s.id}
-                      style={styles.delegationRow}
-                      onPress={() => handlePickInDelegationFlow(s)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.delegationAvatar}>
-                        <Text style={styles.delegationAvatarText}>{s.name[0]?.toUpperCase()}</Text>
-                      </View>
-                      <Text style={styles.delegationName}>{s.name} {s.surname}</Text>
-                      <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <TouchableOpacity style={styles.delegationCancelBtn} onPress={() => setDelegationFlow(null)}>
-                  <Text style={styles.delegationCancelText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        );
-      })()}
 
       {/* Custom Dialog */}
       <M3Dialog
@@ -675,12 +617,13 @@ export default function PatientsTab() {
         actions={dialog.actions}
         onDismiss={dismissDialog}
       />
+
     </SafeAreaView>
   );
 }
 
 function PatientDetailContent({
-  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onRemoveCaregiver,
+  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onRemoveCaregiver, onRequestPrimary, myId,
 }: {
   patient: PatientItem | null;
   onClose: () => void;
@@ -689,6 +632,8 @@ function PatientDetailContent({
   onDelete: (patient: PatientItem) => void;
   onEdit: (patient: PatientItem, newName: string, newSurname: string) => Promise<void>;
   onRemoveCaregiver: (patient: PatientItem, caregiverId: string, caregiverName: string) => void;
+  onRequestPrimary: (patient: PatientItem) => void;
+  myId: string;
 }) {
   const [view, setView] = React.useState<'detail' | 'careTeam'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
@@ -729,25 +674,78 @@ function PatientDetailContent({
           <View style={{ width: 60 }} />
         </View>
 
+        {/* Primary row — always shown */}
+        {patient.primaryCaregiver && (
+          <View style={styles.careTeamRow}>
+            {patient.primaryCaregiver.avatarUrl ? (
+              <Image source={{ uri: patient.primaryCaregiver.avatarUrl }} style={styles.careTeamMemberAvatarImg} />
+            ) : (
+              <View style={[styles.careTeamMemberAvatar, { backgroundColor: colors.secondary }]}>
+                <Text style={styles.careTeamMemberAvatarText}>
+                  {patient.primaryCaregiver.name[0]?.toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.careTeamName}>
+                {patient.primaryCaregiver.name} {patient.primaryCaregiver.surname}
+              </Text>
+              <Text style={styles.careTeamRoleLabel}>Primary caregiver</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Secondary rows */}
         {secondaries.length === 0 ? (
           <View style={styles.careTeamEmpty}>
             <Text style={styles.careTeamEmptyText}>No secondary caregivers yet.</Text>
           </View>
         ) : (
-          secondaries.map(member => (
-            <View key={member.id} style={styles.careTeamRow}>
-              <View style={styles.careTeamMemberAvatar}>
-                <Text style={styles.careTeamMemberAvatarText}>{member.name[0]?.toUpperCase()}</Text>
+          secondaries.map(member => {
+            const isMe = member.id === myId;
+            return (
+              <View key={member.id} style={styles.careTeamRow}>
+                {member.avatarUrl ? (
+                  <Image source={{ uri: member.avatarUrl }} style={styles.careTeamMemberAvatarImg} />
+                ) : (
+                  <View style={styles.careTeamMemberAvatar}>
+                    <Text style={styles.careTeamMemberAvatarText}>{member.name[0]?.toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.careTeamName}>
+                    {member.name} {member.surname}
+                    {isMe && <Text style={styles.careTeamYouLabel}> · You</Text>}
+                  </Text>
+                </View>
+                {/* Primary manages: Remove button */}
+                {patient.isPrimary && (
+                  <TouchableOpacity
+                    style={styles.removeCaregiverBtn}
+                    onPress={() => onRemoveCaregiver(patient, member.id, `${member.name} ${member.surname}`)}
+                  >
+                    <Text style={styles.removeCaregiverText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+                {/* Secondary sees their own entry: Request / Pending */}
+                {!patient.isPrimary && isMe && (
+                  patient.hasPendingRoleRequest ? (
+                    <View style={styles.careTeamPendingBadge}>
+                      <Text style={styles.careTeamPendingText}>Pending</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.careTeamRequestBtn}
+                      onPress={() => onRequestPrimary(patient)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.careTeamRequestText}>Request Primary</Text>
+                    </TouchableOpacity>
+                  )
+                )}
               </View>
-              <Text style={styles.careTeamName}>{member.name} {member.surname}</Text>
-              <TouchableOpacity
-                style={styles.removeCaregiverBtn}
-                onPress={() => onRemoveCaregiver(patient, member.id, `${member.name} ${member.surname}`)}
-              >
-                <Text style={styles.removeCaregiverText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
     );
@@ -841,9 +839,9 @@ function PatientDetailContent({
         {patient.isPrimary && patient.paired && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onUnpair(patient)}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
-              <AppIcon iosName="iphone.slash" androidFallback="✕" size={18} color="#e74c3c" />
+              <AppIcon iosName="iphone.slash" androidFallback="✕" size={18} color="#C0392B" />
             </View>
-            <Text style={[styles.actionRowLabel, { color: '#e74c3c' }]}>Unpair Device</Text>
+            <Text style={[styles.actionRowLabel, { color: '#C0392B' }]}>Unpair Device</Text>
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
@@ -866,9 +864,24 @@ function PatientDetailContent({
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => { onClose(); onDelete(patient); }}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
-              <AppIcon iosName="trash" androidFallback="🗑" size={18} color="#e74c3c" />
+              <AppIcon iosName="trash" androidFallback="🗑" size={18} color="#C0392B" />
             </View>
-            <Text style={[styles.actionRowLabel, { color: '#e74c3c' }]}>Delete Patient</Text>
+            <Text style={[styles.actionRowLabel, { color: '#C0392B' }]}>Delete Patient</Text>
+            <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+
+        {!patient.isPrimary && (
+          <TouchableOpacity style={styles.actionRow} onPress={() => setView('careTeam')} activeOpacity={0.7}>
+            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.08)' }]}>
+              <AppIcon iosName="person.2" androidFallback="👥" size={18} color={colors.secondary} />
+            </View>
+            <Text style={styles.actionRowLabel}>Care Team</Text>
+            {patient.hasPendingRoleRequest && (
+              <View style={styles.careTeamPendingBadge}>
+                <Text style={styles.careTeamPendingText}>Request Pending</Text>
+              </View>
+            )}
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
@@ -876,9 +889,9 @@ function PatientDetailContent({
         {!patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onLeave(patient)}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
-              <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#e74c3c" />
+              <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#C0392B" />
             </View>
-            <Text style={[styles.actionRowLabel, { color: '#e74c3c' }]}>Leave Care Team</Text>
+            <Text style={[styles.actionRowLabel, { color: '#C0392B' }]}>Leave Care Team</Text>
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
@@ -911,14 +924,27 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
-  logoutBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  avatarBtn: {
+    padding: 2,
   },
-  logoutText: {
-    fontSize: 13,
-    textTransform: 'none',
-    letterSpacing: 0,
+  avatarBtnCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarBtnImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarBtnText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: colors.textLight,
+    letterSpacing: 0.5,
   },
 
   actionsRow: {
@@ -1225,7 +1251,32 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
 
-  // Section headers
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  pillAmber: { backgroundColor: '#E2DFCF' },
+  pillGreen: { backgroundColor: '#D8E8D8' },
+  pillRed: { backgroundColor: '#FADBD8' },
+  pillDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    flexShrink: 0,
+  },
+  pillText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: 0.1,
+  },
+
   sectionLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
@@ -1234,6 +1285,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 10,
   },
+
 
   // Primary patient card
   primaryPatientCard: {
@@ -1439,7 +1491,7 @@ const styles = StyleSheet.create({
   deleteAccountText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#e74c3c',
+    color: '#C0392B',
   },
 
   // Care Team nav view
@@ -1487,6 +1539,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
     color: colors.secondary,
+  },
+  careTeamMemberAvatarImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 12,
   },
 
   // Action list rows
@@ -1643,6 +1701,41 @@ const styles = StyleSheet.create({
   removeCaregiverText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: '#e74c3c',
+    color: '#C0392B',
+  },
+
+  careTeamRoleLabel: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  careTeamYouLabel: {
+    fontFamily: typography.fontFamily.regular,
+    color: colors.textMuted,
+  },
+  careTeamRequestBtn: {
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(45,79,62,0.08)',
+  },
+  careTeamRequestText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.secondary,
+  },
+  careTeamPendingBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  careTeamPendingText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.textMuted,
   },
 });
+

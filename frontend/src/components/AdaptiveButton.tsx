@@ -192,6 +192,6 @@ const styles = StyleSheet.create({
     color: colors.textLight,
   },
   dangerLabel: {
-    color: '#e74c3c',
+    color: '#C0392B',
   },
 });
