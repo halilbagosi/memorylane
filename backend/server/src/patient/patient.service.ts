@@ -18,6 +18,7 @@ export class PatientService {
           name: encrypt(createPatientDto.name),
           surname: encrypt(createPatientDto.surname),
           dateOfBirth: new Date(createPatientDto.dateOfBirth),
+          avatarUrl: createPatientDto.avatarUrl ?? null,
           patientJoinCode: patientJoinCode,
           createdBy: caregiverId,
         },
@@ -36,8 +37,9 @@ export class PatientService {
         message: 'Patient profile created successfully with encryption',
         patient: {
           ...patient,
-          name: createPatientDto.name, //decrypted, readable name for ui
+          name: createPatientDto.name,
           surname: createPatientDto.surname,
+          avatarUrl: patient.avatarUrl ?? null,
         },
       };
     });
@@ -186,19 +188,23 @@ export class PatientService {
     return { message: 'Device unpaired successfully' };
   }
 
-  async updatePatient(patientId: string, caregiverId: string, data: { name?: string; surname?: string }) {
+  async updatePatient(patientId: string, caregiverId: string, data: { name?: string; surname?: string; avatarUrl?: string | null }) {
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId } },
     });
     if (!link) throw new NotFoundException('Patient not found');
     if (!link.isPrimary) throw new ForbiddenException('Only the primary caregiver can edit patient details');
 
-    const updateData: Record<string, string> = {};
+    const updateData: Record<string, any> = {};
     if (data.name) updateData.name = encrypt(data.name);
     if (data.surname) updateData.surname = encrypt(data.surname);
+    if ('avatarUrl' in data) updateData.avatarUrl = data.avatarUrl ?? null;
 
-    await this.prisma.patient.update({ where: { id: patientId }, data: updateData });
-    return { message: 'Patient updated successfully' };
+    const updated = await this.prisma.patient.update({ where: { id: patientId }, data: updateData });
+    return {
+      message: 'Patient updated successfully',
+      avatarUrl: updated.avatarUrl ?? null,
+    };
   }
 
   async removeCaregiver(patientId: string, primaryCaregiverId: string, targetCaregiverId: string) {
@@ -255,6 +261,7 @@ export class PatientService {
       name: decrypt(patient.name),
       surname: decrypt(patient.surname),
       dateOfBirth: patient.dateOfBirth,
+      avatarUrl: patient.avatarUrl ?? null,
       caregiver: {
         name: patient.creator.name,
         surname: patient.creator.surname,

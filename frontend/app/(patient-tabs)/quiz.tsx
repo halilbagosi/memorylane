@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
@@ -17,7 +17,16 @@ export default function QuizTab() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
       {patient && (
-        <Text style={styles.greeting}>Hi, {patient.name}</Text>
+        <View style={styles.topRow}>
+          <Text style={styles.greeting}>Hi, {patient.name}</Text>
+          {patient.avatarUrl ? (
+            <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.headerAvatarFallback}>
+              <Text style={styles.headerAvatarText}>{patient.name?.[0]?.toUpperCase() || '?'}</Text>
+            </View>
+          )}
+        </View>
       )}
 
       <View style={styles.center}>
@@ -52,6 +61,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: colors.textDark,
     flex: 1,
+  },
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  headerAvatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerAvatarText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: colors.textLight,
   },
   center: {
     flex: 1,

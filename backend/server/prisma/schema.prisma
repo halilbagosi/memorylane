@@ -127,6 +127,7 @@ model Patient {
   name               String
   surname            String
   dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
+  avatarUrl          String?             @map("avatar_url") @db.Text
   
   // code scanned by tablet/phone of patient to identify this specific patient
   patientJoinCode    String              @unique @map("patient_join_code")    

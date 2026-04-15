@@ -30,6 +30,7 @@ export class DashboardService {
         name: decrypt(patient.name),
         surname: decrypt(patient.surname),
         dateOfBirth: patient.dateOfBirth,
+        avatarUrl: patient.avatarUrl ?? null,
         isPrimary: relation.isPrimary,
         patientJoinCode: patient.patientJoinCode,
         paired: patient.paired,

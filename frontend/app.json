@@ -15,6 +15,8 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.memorylane.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account."
       }
@@ -25,6 +27,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -44,13 +47,31 @@
         {
           "android": {
             "datePicker": {
-              "colorAccent": { "light": "#2D4F3E" },
-              "colorControlActivated": { "light": "#2D4F3E" },
-              "textColorPrimary": { "light": "#1A1A1A" },
-              "textColorSecondary": { "light": "#666666" },
-              "windowBackground": { "light": "#F2F0E6" }
+              "colorAccent": {
+                "light": "#2D4F3E"
+              },
+              "colorControlActivated": {
+                "light": "#2D4F3E"
+              },
+              "textColorPrimary": {
+                "light": "#1A1A1A"
+              },
+              "textColorSecondary": {
+                "light": "#666666"
+              },
+              "windowBackground": {
+                "light": "#F2F0E6"
+              }
             }
           }
+        }
+      ],
+      "./plugins/withAndroidGradleJvm.js",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
         }
       ]
     ]

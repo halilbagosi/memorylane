@@ -14,7 +14,6 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'questionmark.circle': 'help-circle-outline',
   'questionmark.circle.fill': 'help-circle',
   'photo.on.rectangle.angled': 'image-multiple-outline',
-  'brain.head.profile': 'brain',
   'person.fill': 'account',
   'heart.text.clipboard': 'clipboard-pulse-outline',
   'plus': 'plus',

@@ -72,6 +72,7 @@ export default function JoinSpaceScreen() {
         id: data.id,
         name: data.name,
         surname: data.surname,
+        avatarUrl: data.avatarUrl ?? null,
       });
 
       setSuccessInfo({

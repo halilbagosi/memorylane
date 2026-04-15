@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
-import { View, Text, ActivityIndicator, Platform } from 'react-native';
+import { GothicA1_700Bold } from '@expo-google-fonts/gothic-a1';
+import * as SplashScreen from 'expo-splash-screen';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { registerTranslation, en } from 'react-native-paper-dates';
@@ -8,17 +11,21 @@ import { colors } from '../src/theme/colors';
 
 registerTranslation('en', en);
 
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* already hidden or unavailable in some environments */
+});
+
 const isAndroid = Platform.OS === 'android';
 
 const paperTheme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary: colors.secondary,
-    primaryContainer: 'rgba(45, 79, 62, 0.12)',
+    primary: colors.primary,
+    primaryContainer: 'rgba(30, 77, 48, 0.12)',
     onPrimary: colors.textLight,
-    onPrimaryContainer: colors.secondary,
-    secondary: colors.primary,
+    onPrimaryContainer: colors.primary,
+    secondary: colors.secondary,
     secondaryContainer: 'rgba(180, 174, 232, 0.18)',
     surface: colors.neutral,
     surfaceVariant: colors.neutralLight,
@@ -30,19 +37,21 @@ const paperTheme = {
 };
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_700Bold,
+    GothicA1_700Bold,
   });
 
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.neutral }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 16, color: colors.textMuted, fontSize: 16 }}>Loading MemoryLane...</Text>
-      </View>
-    );
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
   }
 
   return (
@@ -53,7 +62,7 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: colors.neutral },
             headerStyle: { backgroundColor: colors.neutral },
             headerTintColor: colors.textDark,
-            headerTitleStyle: { fontFamily: 'DMSans_700Bold' },
+            headerTitleStyle: { fontFamily: 'GothicA1_700Bold' },
             headerShadowVisible: false,
             headerBackTitle: '',
             gestureEnabled: true,
@@ -72,6 +81,22 @@ export default function RootLayout() {
 
           <Stack.Screen
             name="login"
+            options={{
+              title: '',
+              gestureEnabled: true,
+            }}
+          />
+
+          <Stack.Screen
+            name="forgot-password"
+            options={{
+              title: '',
+              gestureEnabled: true,
+            }}
+          />
+
+          <Stack.Screen
+            name="reset-password"
             options={{
               title: '',
               gestureEnabled: true,

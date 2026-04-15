@@ -9,20 +9,210 @@ import {
 import { decrypt } from '../patient/encryption.util';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { createHash } from 'crypto';
+import { createHash, randomInt, randomBytes } from 'crypto';
+import * as nodemailer from 'nodemailer';
+import { OAuth2Client } from 'google-auth-library';
+import * as jwksRsa from 'jwks-rsa';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignupDto } from '../dto/signup.dto';
 import { LoginDto } from '../dto/login.dto';
+import { SocialLoginDto } from '../dto/social-login.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { ChangeEmailDto } from '../dto/change-email.dto';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+  private appleJwksClient: jwksRsa.JwksClient;
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-  ) { }
+  ) {
+    this.googleClient = new OAuth2Client();
+    this.appleJwksClient = jwksRsa({
+      jwksUri: 'https://appleid.apple.com/auth/keys',
+      cache: true,
+      rateLimit: true,
+    });
+  }
+
+  // ─── Shared Helpers ──────────────────────────────────────────────────────
+
+  private async createSessionToken(caregiverId: string, email: string, deviceLabel?: string | null) {
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    const session = await this.prisma.authSession.create({
+      data: { caregiverId, tokenHash: '', expiresAt, deviceLabel: deviceLabel ?? null },
+    });
+
+    const accessToken = this.jwtService.sign({
+      sub: caregiverId,
+      email,
+      sessionId: session.id,
+    });
+
+    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
+    await this.prisma.authSession.update({
+      where: { id: session.id },
+      data: { tokenHash },
+    });
+
+    return accessToken;
+  }
+
+  private async handleDeactivatedAccount(caregiver: { id: string; status: string; scheduledDeleteAt: Date | null }) {
+    const now = new Date();
+    if (caregiver.scheduledDeleteAt && caregiver.scheduledDeleteAt <= now) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.delegationRequest.deleteMany({ where: { fromCaregiverId: caregiver.id } });
+        await tx.delegationRequest.deleteMany({ where: { toCaregiverId: caregiver.id } });
+        await tx.authSession.deleteMany({ where: { caregiverId: caregiver.id } });
+        await tx.passwordHistory.deleteMany({ where: { caregiverId: caregiver.id } });
+        await tx.patientCaregiver.deleteMany({ where: { caregiverId: caregiver.id } });
+        await tx.caregiver.delete({ where: { id: caregiver.id } });
+      });
+      throw new UnauthorizedException('This account has been permanently deleted.');
+    }
+    const daysLeft = caregiver.scheduledDeleteAt
+      ? Math.ceil((caregiver.scheduledDeleteAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : 10;
+    return {
+      accountStatus: 'DEACTIVATED' as const,
+      scheduledDeleteAt: caregiver.scheduledDeleteAt,
+      daysLeft,
+      caregiverId: caregiver.id,
+    };
+  }
+
+  private async assertNotRecentPassword(caregiverId: string, currentHash: string, newPassword: string) {
+    const sameAsCurrent = await bcrypt.compare(newPassword, currentHash);
+    if (sameAsCurrent) {
+      throw new BadRequestException('New password must be different from your current password.');
+    }
+
+    const history = await this.prisma.passwordHistory.findMany({
+      where: { caregiverId },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    for (const entry of history) {
+      if (await bcrypt.compare(newPassword, entry.passwordHash)) {
+        throw new BadRequestException('You cannot reuse a recent password. Please choose a different one.');
+      }
+    }
+  }
+
+  // ─── Social / OAuth Login ────────────────────────────────────────────────
+
+  async socialLogin(dto: SocialLoginDto) {
+    const { provider, idToken, deviceLabel, fullName } = dto;
+
+    let email: string;
+    let name: string;
+    let surname: string;
+
+    if (provider === 'google') {
+      const payload = await this.verifyGoogleToken(idToken);
+      email = payload.email;
+      name = payload.givenName || 'User';
+      surname = payload.familyName || '';
+    } else {
+      const payload = await this.verifyAppleToken(idToken);
+      email = payload.email;
+      if (fullName) {
+        const parts = fullName.trim().split(/\s+/);
+        name = parts[0] || 'User';
+        surname = parts.slice(1).join(' ') || '';
+      } else {
+        name = 'User';
+        surname = '';
+      }
+    }
+
+    let caregiver = await this.prisma.caregiver.findUnique({ where: { email } });
+
+    if (!caregiver) {
+      const placeholderHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+      caregiver = await this.prisma.caregiver.create({
+        data: {
+          name,
+          surname,
+          email,
+          passwordHash: placeholderHash,
+        },
+      });
+    }
+
+    if (caregiver.status === 'DEACTIVATED') {
+      return this.handleDeactivatedAccount(caregiver);
+    }
+
+    const accessToken = await this.createSessionToken(caregiver.id, caregiver.email, deviceLabel);
+
+    return {
+      accessToken,
+      caregiver: {
+        id: caregiver.id,
+        name: caregiver.name,
+        surname: caregiver.surname,
+        email: caregiver.email,
+        avatarUrl: caregiver.avatarUrl,
+        status: caregiver.status,
+      },
+    };
+  }
+
+  private async verifyGoogleToken(idToken: string): Promise<{ email: string; givenName?: string; familyName?: string }> {
+    const googleClientIds = [
+      process.env.GOOGLE_IOS_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GOOGLE_WEB_CLIENT_ID,
+    ].filter(Boolean) as string[];
+
+    const ticket = await this.googleClient.verifyIdToken({
+      idToken,
+      audience: googleClientIds,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      throw new UnauthorizedException('Invalid Google token');
+    }
+
+    return {
+      email: payload.email,
+      givenName: payload.given_name,
+      familyName: payload.family_name,
+    };
+  }
+
+  private async verifyAppleToken(idToken: string): Promise<{ email: string }> {
+    const decoded = jwt.decode(idToken, { complete: true });
+    if (!decoded || !decoded.header.kid) {
+      throw new UnauthorizedException('Invalid Apple token');
+    }
+
+    const key = await this.appleJwksClient.getSigningKey(decoded.header.kid);
+    const signingKey = key.getPublicKey();
+
+    const payload = jwt.verify(idToken, signingKey, {
+      algorithms: ['RS256'],
+      issuer: 'https://appleid.apple.com',
+      audience: process.env.APPLE_BUNDLE_ID || '',
+    }) as jwt.JwtPayload;
+
+    if (!payload.email) {
+      throw new UnauthorizedException('Apple token missing email');
+    }
+
+    return { email: payload.email as string };
+  }
 
   async signup(signupDto: SignupDto) {
     const { name, surname, email, password, avatarUrl, deviceLabel } = signupDto;
@@ -36,33 +226,11 @@ export class AuthService {
       data: { name, surname, email, passwordHash: hashedPassword, avatarUrl: avatarUrl ?? null },
     });
 
-    // Store initial password in history
     await this.prisma.passwordHistory.create({
       data: { caregiverId: user.id, passwordHash: hashedPassword },
     });
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-    const session = await this.prisma.authSession.create({
-      data: {
-        caregiverId: user.id,
-        tokenHash: '',
-        expiresAt,
-        deviceLabel: deviceLabel ?? null,
-      },
-    });
-
-    const accessToken = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-      sessionId: session.id,
-    });
-
-    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
-    await this.prisma.authSession.update({
-      where: { id: session.id },
-      data: { tokenHash },
-    });
+    const accessToken = await this.createSessionToken(user.id, user.email, deviceLabel);
 
     return {
       message: 'User registered successfully',
@@ -86,55 +254,11 @@ export class AuthService {
     const passwordValid = await bcrypt.compare(password, caregiver.passwordHash);
     if (!passwordValid) throw new UnauthorizedException('Invalid email or password');
 
-    // Handle deactivated accounts
     if (caregiver.status === 'DEACTIVATED') {
-      const now = new Date();
-      if (caregiver.scheduledDeleteAt && caregiver.scheduledDeleteAt <= now) {
-        // Grace period over — permanently delete
-        await this.prisma.$transaction(async (tx) => {
-          await tx.delegationRequest.deleteMany({ where: { fromCaregiverId: caregiver.id } });
-          await tx.delegationRequest.deleteMany({ where: { toCaregiverId: caregiver.id } });
-          await tx.authSession.deleteMany({ where: { caregiverId: caregiver.id } });
-          await tx.passwordHistory.deleteMany({ where: { caregiverId: caregiver.id } });
-          await tx.patientCaregiver.deleteMany({ where: { caregiverId: caregiver.id } });
-          await tx.caregiver.delete({ where: { id: caregiver.id } });
-        });
-        throw new UnauthorizedException('This account has been permanently deleted.');
-      }
-      // Still within grace period — return special response so frontend shows restore screen
-      const daysLeft = caregiver.scheduledDeleteAt
-        ? Math.ceil((caregiver.scheduledDeleteAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-        : 10;
-      return {
-        accountStatus: 'DEACTIVATED',
-        scheduledDeleteAt: caregiver.scheduledDeleteAt,
-        daysLeft,
-        caregiverId: caregiver.id,
-      };
+      return this.handleDeactivatedAccount(caregiver);
     }
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-    const session = await this.prisma.authSession.create({
-      data: {
-        caregiverId: caregiver.id,
-        tokenHash: '',
-        expiresAt,
-        deviceLabel: deviceLabel ?? null,
-      },
-    });
-
-    const accessToken = this.jwtService.sign({
-      sub: caregiver.id,
-      email: caregiver.email,
-      sessionId: session.id,
-    });
-
-    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
-    await this.prisma.authSession.update({
-      where: { id: session.id },
-      data: { tokenHash },
-    });
+    const accessToken = await this.createSessionToken(caregiver.id, caregiver.email, deviceLabel);
 
     return {
       accessToken,
@@ -201,25 +325,7 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.currentPassword, caregiver.passwordHash);
     if (!valid) throw new UnauthorizedException('Current password is incorrect');
 
-    // Always block reuse of the current password directly
-    const sameAsCurrent = await bcrypt.compare(dto.newPassword, caregiver.passwordHash);
-    if (sameAsCurrent) {
-      throw new BadRequestException('New password must be different from your current password.');
-    }
-
-    // Also check against the last 5 stored history entries (covers older passwords)
-    const history = await this.prisma.passwordHistory.findMany({
-      where: { caregiverId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    });
-
-    for (const entry of history) {
-      const reused = await bcrypt.compare(dto.newPassword, entry.passwordHash);
-      if (reused) {
-        throw new BadRequestException('You cannot reuse a recent password. Please choose a different one.');
-      }
-    }
+    await this.assertNotRecentPassword(caregiverId, caregiver.passwordHash, dto.newPassword);
 
     const newHash = await bcrypt.hash(dto.newPassword, 10);
 
@@ -686,14 +792,7 @@ export class AuthService {
       data: { status: 'ACTIVE', scheduledDeleteAt: null },
     });
 
-    // Issue a new session
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const session = await this.prisma.authSession.create({
-      data: { caregiverId, tokenHash: '', expiresAt },
-    });
-    const accessToken = this.jwtService.sign({ sub: caregiverId, email: caregiver.email, sessionId: session.id });
-    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
-    await this.prisma.authSession.update({ where: { id: session.id }, data: { tokenHash } });
+    const accessToken = await this.createSessionToken(caregiverId, caregiver.email);
 
     const roleChangedPatients = acceptedDelegations.map(d => ({
       patientName: `${decrypt(d.patient.name)} ${decrypt(d.patient.surname)}`,
@@ -1064,5 +1163,107 @@ export class AuthService {
       data: { readAt: new Date() },
     });
     return { message: 'Marked as read' };
+  }
+
+  // ─── Forgot / Reset Password ──────────────────────────────────────────────
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const caregiver = await this.prisma.caregiver.findUnique({ where: { email: dto.email } });
+
+    // Always return success to prevent email enumeration
+    if (!caregiver) {
+      return { message: 'If an account with that email exists, a reset code has been sent.' };
+    }
+
+    // Invalidate any previous unused reset requests for this caregiver
+    await this.prisma.passwordResetRequest.updateMany({
+      where: { caregiverId: caregiver.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    // Generate a 6-digit code
+    const resetCode = String(randomInt(100000, 999999));
+    const resetToken = createHash('sha256').update(resetCode).digest('hex');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await this.prisma.passwordResetRequest.create({
+      data: {
+        caregiverId: caregiver.id,
+        resetToken,
+        expiresAt,
+      },
+    });
+
+    // Send email (or fall back to console)
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+
+    if (smtpHost && smtpUser && smtpPass) {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: Number(smtpPort) || 587,
+        secure: Number(smtpPort) === 465,
+        auth: { user: smtpUser, pass: smtpPass },
+      });
+
+      await transporter.sendMail({
+        from: `"MemoryLane" <${smtpUser}>`,
+        to: caregiver.email,
+        subject: 'Your MemoryLane Password Reset Code',
+        text: `Your password reset code is: ${resetCode}\n\nThis code expires in 15 minutes. If you did not request this, please ignore this email.`,
+        html: `<p>Your password reset code is:</p><h2 style="letter-spacing:4px;font-family:monospace">${resetCode}</h2><p>This code expires in 15 minutes.</p><p>If you did not request this, please ignore this email.</p>`,
+      });
+    } else if (process.env.NODE_ENV !== 'production') {
+      console.log(`[FORGOT-PASSWORD] Reset code for ${caregiver.email}: ${resetCode}`);
+    }
+
+    return { message: 'If an account with that email exists, a reset code has been sent.' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const caregiver = await this.prisma.caregiver.findUnique({ where: { email: dto.email } });
+    if (!caregiver) throw new BadRequestException('Invalid or expired reset code.');
+
+    const tokenHash = createHash('sha256').update(dto.resetCode).digest('hex');
+
+    const resetRequest = await this.prisma.passwordResetRequest.findFirst({
+      where: {
+        caregiverId: caregiver.id,
+        resetToken: tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!resetRequest) throw new BadRequestException('Invalid or expired reset code.');
+
+    await this.assertNotRecentPassword(caregiver.id, caregiver.passwordHash, dto.newPassword);
+
+    const newHash = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.caregiver.update({
+      where: { id: caregiver.id },
+      data: { passwordHash: newHash },
+    });
+
+    await this.prisma.passwordHistory.create({
+      data: { caregiverId: caregiver.id, passwordHash: newHash },
+    });
+
+    // Mark the reset request as used
+    await this.prisma.passwordResetRequest.update({
+      where: { id: resetRequest.id },
+      data: { usedAt: new Date() },
+    });
+
+    // Revoke all existing sessions (force re-login)
+    await this.prisma.authSession.updateMany({
+      where: { caregiverId: caregiver.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    return { message: 'Password has been reset successfully. Please log in with your new password.' };
   }
 }

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  TouchableOpacity, Modal,
+  TouchableOpacity, Modal, Image, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { DatePickerModal } from 'react-native-paper-dates';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
@@ -48,6 +49,7 @@ export default function AddPatientScreen() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
 
+  const [avatarBase64, setAvatarBase64] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>(undefined);
@@ -80,8 +82,74 @@ export default function AddPatientScreen() {
     })();
   }, []);
 
+  const pickAvatar = async (source: 'camera' | 'library') => {
+    let result: ImagePicker.ImagePickerResult;
+
+    if (source === 'camera') {
+      const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          Alert.alert(
+            'Camera Access Required',
+            'Camera permission was denied. Please enable it in your device Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ],
+          );
+        } else {
+          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+        }
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,
+        base64: true,
+      });
+    } else {
+      const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          Alert.alert(
+            'Photo Library Access Required',
+            'Photo library permission was denied. Please enable it in your device Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ],
+          );
+        } else {
+          Alert.alert('Permission needed', 'Photo library access is required.');
+        }
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,
+        base64: true,
+      });
+    }
+
+    if (result.canceled || !result.assets?.[0]?.base64) return;
+    setAvatarBase64(result.assets[0].base64);
+  };
+
+  const showAvatarOptions = () => {
+    Alert.alert('Profile Picture', 'Add a photo for this patient', [
+      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
+      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
+      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
+      { text: 'Skip for Now', style: 'cancel' },
+    ]);
+  };
+
   const handleNameChange = (text: string) => {
-    if (/^[a-zA-Z\s]*$/.test(text)) {
+    if (/^[a-zA-ZëçËÇ\s]*$/.test(text)) {
       setName(text);
       setErrors(prev => ({ ...prev, name: undefined }));
     } else {
@@ -90,7 +158,7 @@ export default function AddPatientScreen() {
   };
 
   const handleSurnameChange = (text: string) => {
-    if (/^[a-zA-Z\s]*$/.test(text)) {
+    if (/^[a-zA-ZëçËÇ\s]*$/.test(text)) {
       setSurname(text);
       setErrors(prev => ({ ...prev, surname: undefined }));
     } else {
@@ -138,6 +206,8 @@ export default function AddPatientScreen() {
     setApiError('');
 
     try {
+      const avatarUrl = avatarBase64 ? `data:image/jpeg;base64,${avatarBase64}` : undefined;
+
       const response = await fetch(`${API_BASE_URL}/patients`, {
         method: 'POST',
         headers: {
@@ -148,6 +218,7 @@ export default function AddPatientScreen() {
           name: name.trim(),
           surname: surname.trim(),
           dateOfBirth: toISODate(dateOfBirth),
+          ...(avatarUrl ? { avatarUrl } : {}),
         }),
       });
 
@@ -183,12 +254,38 @@ export default function AddPatientScreen() {
             Create a profile for your loved one.{'\n'}You will become their primary caregiver.
           </Text>
 
+          <View style={styles.avatarRow}>
+            <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.8} style={styles.avatarWrapper}>
+              {avatarBase64 ? (
+                <Image source={{ uri: `data:image/jpeg;base64,${avatarBase64}` }} style={styles.avatarCircle} />
+              ) : (
+                <View style={styles.avatarCircle}>
+                  {(name || surname) ? (
+                    <Text style={styles.avatarInitials}>
+                      {`${name?.[0] ?? ''}${surname?.[0] ?? ''}`.toUpperCase()}
+                    </Text>
+                  ) : (
+                    <AppIcon iosName="person.crop.circle" androidFallback="P" size={32} color="rgba(255,255,255,0.8)" />
+                  )}
+                </View>
+              )}
+              <View style={styles.avatarEditBadge}>
+                <AppIcon iosName="plus" androidFallback="+" size={11} color="#fff" weight="bold" />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.avatarHint}>
+              <Text style={styles.avatarHintTitle}>Profile Photo</Text>
+              <Text style={styles.avatarHintSub}>Optional — tap to add</Text>
+            </View>
+          </View>
+
           <AdaptiveInput
             label="First Name"
             value={name}
             onChangeText={handleNameChange}
             placeholder="Enter the patient's first name"
             error={errors.name}
+            autoCapitalize="words"
           />
 
           <AdaptiveInput
@@ -197,6 +294,7 @@ export default function AddPatientScreen() {
             onChangeText={handleSurnameChange}
             placeholder="Enter the patient's last name"
             error={errors.surname}
+            autoCapitalize="words"
           />
 
           {/* Date of Birth picker trigger */}
@@ -278,6 +376,7 @@ export default function AddPatientScreen() {
                     onChange={onIOSDateChange}
                     maximumDate={new Date()}
                     minimumDate={new Date(1900, 0, 1)}
+                    themeVariant="light"
                     style={styles.iosInlinePicker}
                   />
                 </View>
@@ -325,6 +424,53 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: 28,
     lineHeight: 22,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 28,
+  },
+  avatarWrapper: { position: 'relative' },
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarInitials: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 24,
+    color: colors.textLight,
+    letterSpacing: 1,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.neutral,
+  },
+  avatarHint: { flex: 1 },
+  avatarHintTitle: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: colors.textDark,
+    marginBottom: 3,
+  },
+  avatarHintSub: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
   },
   formGroup: { marginBottom: 18 },
   label: {

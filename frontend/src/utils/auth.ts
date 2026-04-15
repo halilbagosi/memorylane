@@ -8,9 +8,10 @@ export interface PatientInfo {
   id: string;
   name: string;
   surname: string;
+  avatarUrl?: string | null;
 }
 
-export type CaregiverStatus = 'ACTIVE' | 'PENDING_DELETION' | 'DEACTIVATED';
+type CaregiverStatus = 'ACTIVE' | 'PENDING_DELETION' | 'DEACTIVATED';
 
 export interface CaregiverInfo {
   id: string;
@@ -31,7 +32,7 @@ export async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
-export async function deleteToken(): Promise<void> {
+async function deleteToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
@@ -51,7 +52,7 @@ export async function getCaregiverInfo(): Promise<CaregiverInfo | null> {
   }
 }
 
-export async function deleteCaregiverInfo(): Promise<void> {
+async function deleteCaregiverInfo(): Promise<void> {
   await SecureStore.deleteItemAsync(CAREGIVER_KEY);
 }
 

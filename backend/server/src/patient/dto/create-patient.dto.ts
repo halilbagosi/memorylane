@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsDateString, Matches } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsDateString, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreatePatientDto {
@@ -21,4 +21,8 @@ export class CreatePatientDto {
   @IsNotEmpty({ message: 'Date of birth is required' })
   @IsDateString({}, { message: 'Date of birth must be a valid ISO 8601 date string (e.g. 1950-03-15)' })
   dateOfBirth: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }

@@ -1,9 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity,
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity, Alert
 } from 'react-native';
 import * as Device from 'expo-device';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+let GoogleSignin: any = null;
+let statusCodes: any = {};
+try {
+  const mod = require('@react-native-google-signin/google-signin');
+  GoogleSignin = mod.GoogleSignin;
+  statusCodes = mod.statusCodes;
+} catch {
+  // Native module unavailable (e.g. running in Expo Go)
+}
 import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
@@ -12,6 +24,7 @@ import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
@@ -34,10 +47,140 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSocialLoading, setIsSocialLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [deactivated, setDeactivated] = useState<DeactivatedState | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restored, setRestored] = useState<RestoredState | null>(null);
+
+  useEffect(() => {
+    if (GoogleSignin) {
+      GoogleSignin.configure({
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+        iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      });
+    }
+  }, []);
+
+  const handleSocialLogin = async (provider: 'google' | 'apple', idToken: string, fullName?: string) => {
+    setIsSocialLoading(true);
+    setApiError('');
+    setDeactivated(null);
+
+    try {
+      const url = `${API_BASE_URL}/auth/social-login`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const body: Record<string, string> = { provider, idToken };
+      if (fullName) body.fullName = fullName;
+      if (Device.modelName) body.deviceLabel = Device.modelName;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      const data = await response.json();
+
+      if (response.ok && data.accountStatus === 'DEACTIVATED') {
+        setDeactivated({
+          caregiverId: data.caregiverId,
+          scheduledDeleteAt: data.scheduledDeleteAt,
+          daysLeft: data.daysLeft,
+        });
+        return;
+      }
+
+      if (!response.ok) {
+        const msg = Array.isArray(data.message) ? data.message.join('\n') : data.message;
+        throw new Error(msg || 'Social login failed');
+      }
+
+      await saveToken(data.accessToken);
+      if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+
+      router.replace('/dashboard');
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        setApiError('Connection timed out. Is the backend running?');
+      } else {
+        setApiError(error.message || 'Failed to connect to the backend');
+      }
+    } finally {
+      setIsSocialLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!GoogleSignin) {
+      Alert.alert(
+        'Development Build Required',
+        'Google Sign-In requires a development build. Run "npx expo prebuild" and rebuild the app.',
+      );
+      return;
+    }
+
+    try {
+      await GoogleSignin.hasPlayServices();
+      await GoogleSignin.signIn();
+      const tokenResponse = await GoogleSignin.getTokens();
+      if (tokenResponse.idToken) {
+        await handleSocialLogin('google', tokenResponse.idToken);
+      } else {
+        setApiError('Could not retrieve Google ID token.');
+      }
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        return;
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        return;
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setApiError('Google Play Services are not available on this device.');
+      } else {
+        setApiError('Google sign-in failed. Please try again.');
+      }
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      const nonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        Crypto.getRandomBytes(32).toString(),
+      );
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce,
+      });
+
+      if (!credential.identityToken) {
+        setApiError('Could not retrieve Apple identity token.');
+        return;
+      }
+
+      let fullName: string | undefined;
+      if (credential.fullName?.givenName) {
+        fullName = [credential.fullName.givenName, credential.fullName.familyName]
+          .filter(Boolean)
+          .join(' ');
+      }
+
+      await handleSocialLogin('apple', credential.identityToken, fullName);
+    } catch (error: any) {
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+      setApiError('Apple sign-in failed. Please try again.');
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -51,15 +194,22 @@ export default function LoginScreen() {
 
     try {
       const url = `${API_BASE_URL}/auth/login`;
-      console.log('[LOGIN] Fetching:', url);
-
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
+
+      // Omit deviceLabel by default: older deployed APIs reject it (forbidNonWhitelisted).
+      // After redeploying a backend whose LoginDto includes deviceLabel, set in .env.local:
+      // EXPO_PUBLIC_INCLUDE_LOGIN_DEVICE_LABEL=true
+      const includeDeviceLabel = process.env.EXPO_PUBLIC_INCLUDE_LOGIN_DEVICE_LABEL === 'true';
+      const loginBody: Record<string, string> = { email, password };
+      if (includeDeviceLabel && Device.modelName) {
+        loginBody.deviceLabel = Device.modelName;
+      }
 
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, deviceLabel: Device.modelName ?? undefined }),
+        body: JSON.stringify(loginBody),
         signal: controller.signal,
       });
 
@@ -86,7 +236,6 @@ export default function LoginScreen() {
 
       router.replace('/dashboard');
     } catch (error: any) {
-      console.log('[LOGIN] Error:', error.name, error.message);
       if (error.name === 'AbortError') {
         setApiError('Connection timed out. Is the backend running?');
       } else {
@@ -193,7 +342,7 @@ export default function LoginScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <KeyboardAvoidingView behavior={isIOS ? 'padding' : 'height'} style={styles.container}>
-            <ScrollView contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
+          <ScrollView contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
             <View style={styles.topSpacer} />
@@ -273,6 +422,13 @@ export default function LoginScreen() {
 
           {apiError ? <Text style={styles.apiErrorText}>{apiError}</Text> : null}
 
+          <TouchableOpacity
+            onPress={() => router.push('/forgot-password')}
+            style={{ alignSelf: 'flex-end', marginBottom: 4 }}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
           <AdaptiveButton
             title="Log In"
             onPress={handleLogin}
@@ -280,6 +436,36 @@ export default function LoginScreen() {
             loadingText="Signing In..."
             style={{ marginTop: 8 }}
           />
+
+          <View style={styles.separatorRow}>
+            <View style={styles.separatorLine} />
+            <Text style={styles.separatorText}>or continue with</Text>
+            <View style={styles.separatorLine} />
+          </View>
+
+          <View style={styles.socialButtonsContainer}>
+            {isIOS && (
+              <TouchableOpacity
+                style={styles.appleButton}
+                onPress={handleAppleSignIn}
+                activeOpacity={0.8}
+                disabled={isSocialLoading}
+              >
+                <MaterialCommunityIcons name="apple" size={24} color="#FFF" />
+                <Text style={styles.appleButtonText}>Continue with Apple</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={handleGoogleSignIn}
+              activeOpacity={0.8}
+              disabled={isSocialLoading}
+            >
+              <MaterialCommunityIcons name="google" size={24} color="#333" />
+              <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.linkRow}>
             <Text style={styles.linkText}>Don't have an account? </Text>
@@ -345,6 +531,60 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     textTransform: 'none',
     letterSpacing: 0,
+  },
+  forgotPasswordText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.secondary,
+  },
+  separatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  separatorText: {
+    marginHorizontal: 16,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  socialButtonsContainer: {
+    gap: 12,
+  },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    paddingVertical: 14,
+    borderRadius: isIOS ? 20 : 28,
+  },
+  appleButtonText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 16,
+    color: '#FFFFFF',
+    marginLeft: 8,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    borderRadius: isIOS ? 20 : 28,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  googleButtonText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 16,
+    color: '#333333',
+    marginLeft: 8,
   },
 
   // Restore screen

@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
+  Alert, Linking, Animated,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { CommonActions } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
@@ -25,6 +28,7 @@ interface PatientItem {
   name: string;
   surname: string;
   dateOfBirth: string | null;
+  avatarUrl: string | null;
   isPrimary: boolean;
   patientJoinCode: string;
   paired: boolean;
@@ -309,6 +313,27 @@ export default function PatientsTab() {
     }
   };
 
+  const handlePatientAvatarChange = async (patient: PatientItem, avatarUrl: string | null) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/patients/${patient.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarUrl }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newUrl = data.avatarUrl ?? null;
+        setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, avatarUrl: newUrl } : p));
+        setSelectedPatient(prev => prev?.id === patient.id ? { ...prev, avatarUrl: newUrl } : prev);
+      } else {
+        const data = await res.json();
+        showDialog('Error', data.message || 'Could not update photo', [{ label: 'OK', onPress: dismissDialog }]);
+      }
+    } catch {
+      showDialog('Error', 'Failed to connect to the backend', [{ label: 'OK', onPress: dismissDialog }]);
+    }
+  };
+
   const handleRequestPrimary = async (patient: PatientItem) => {
     try {
       const res = await fetch(`${API_BASE_URL}/auth/role-requests`, {
@@ -392,8 +417,8 @@ export default function PatientsTab() {
           style={[
             styles.statusPill,
             resignProgress.allAccepted ? styles.pillGreen
-            : resignProgress.hasDeclined ? styles.pillRed
-            : styles.pillAmber,
+              : resignProgress.hasDeclined ? styles.pillRed
+                : styles.pillAmber,
           ]}
           onPress={() => router.push('/account?openDeletion=1')}
           activeOpacity={0.85}
@@ -409,8 +434,8 @@ export default function PatientsTab() {
             {resignProgress.allAccepted
               ? 'Roles transferred · Ready to finalize'
               : resignProgress.hasDeclined
-              ? 'Action required · tap to review'
-              : `Transferring primary roles · ${resignProgress.accepted}/${resignProgress.total} accepted`}
+                ? 'Action required · tap to review'
+                : `Transferring primary roles · ${resignProgress.accepted}/${resignProgress.total} accepted`}
           </Text>
           <AppIcon
             iosName="chevron.right"
@@ -480,15 +505,19 @@ export default function PatientsTab() {
                   >
                     <AdaptiveCard
                       style={styles.primaryPatientCard}
-                      backgroundColor={isIOS ? 'rgba(224, 232, 227, 0.75)' : '#E8F0EC'}
+                      backgroundColor={isIOS ? 'rgba(193, 234, 211, 0.88)' : '#C1EAD3'}
                     >
                       {/* Top row: avatar + name + delete */}
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={styles.primaryAvatarCircle}>
-                          <Text style={styles.primaryAvatarText}>
-                            {patient.name?.[0]?.toUpperCase() || '?'}
-                          </Text>
-                        </View>
+                        {patient.avatarUrl ? (
+                          <Image source={{ uri: patient.avatarUrl }} style={styles.primaryAvatarImg} />
+                        ) : (
+                          <View style={styles.primaryAvatarCircle}>
+                            <Text style={styles.primaryAvatarText}>
+                              {patient.name?.[0]?.toUpperCase() || '?'}
+                            </Text>
+                          </View>
+                        )}
                         <View style={{ flex: 1 }}>
                           <Text style={styles.primaryPatientName}>
                             {patient.name} {patient.surname}
@@ -550,11 +579,15 @@ export default function PatientsTab() {
                       backgroundColor={isIOS ? 'rgba(235, 232, 248, 0.7)' : '#EBE8F8'}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={styles.secondaryAvatarCircle}>
-                          <Text style={styles.secondaryAvatarText}>
-                            {patient.name?.[0]?.toUpperCase() || '?'}
-                          </Text>
-                        </View>
+                        {patient.avatarUrl ? (
+                          <Image source={{ uri: patient.avatarUrl }} style={styles.secondaryAvatarImg} />
+                        ) : (
+                          <View style={styles.secondaryAvatarCircle}>
+                            <Text style={styles.secondaryAvatarText}>
+                              {patient.name?.[0]?.toUpperCase() || '?'}
+                            </Text>
+                          </View>
+                        )}
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                             <Text style={styles.secondaryPatientName}>
@@ -603,6 +636,7 @@ export default function PatientsTab() {
           onLeave={handleLeave}
           onDelete={handleDelete}
           onEdit={handleEditPatient}
+          onAvatarChange={handlePatientAvatarChange}
           onRemoveCaregiver={handleRemoveCaregiver}
           onRequestPrimary={handleRequestPrimary}
           myId={caregiver?.id ?? ''}
@@ -623,7 +657,7 @@ export default function PatientsTab() {
 }
 
 function PatientDetailContent({
-  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onRemoveCaregiver, onRequestPrimary, myId,
+  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, myId,
 }: {
   patient: PatientItem | null;
   onClose: () => void;
@@ -631,6 +665,7 @@ function PatientDetailContent({
   onLeave: (patient: PatientItem) => void;
   onDelete: (patient: PatientItem) => void;
   onEdit: (patient: PatientItem, newName: string, newSurname: string) => Promise<void>;
+  onAvatarChange: (patient: PatientItem, avatarUrl: string | null) => Promise<void>;
   onRemoveCaregiver: (patient: PatientItem, caregiverId: string, caregiverName: string) => void;
   onRequestPrimary: (patient: PatientItem) => void;
   myId: string;
@@ -640,6 +675,22 @@ function PatientDetailContent({
   const [editName, setEditName] = React.useState('');
   const [editSurname, setEditSurname] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
+  const [codeCopied, setCodeCopied] = React.useState(false);
+  const codeCopiedOpacity = React.useRef(new Animated.Value(0)).current;
+
+  const copyJoinCode = async () => {
+    if (!patient) return;
+    await Clipboard.setStringAsync(patient.patientJoinCode);
+    setCodeCopied(true);
+    codeCopiedOpacity.setValue(1);
+    Animated.timing(codeCopiedOpacity, {
+      toValue: 0,
+      duration: 1400,
+      delay: 600,
+      useNativeDriver: true,
+    }).start(() => setCodeCopied(false));
+  };
 
   React.useEffect(() => { setView('detail'); }, [patient?.id]);
 
@@ -659,6 +710,62 @@ function PatientDetailContent({
     await onEdit(patient, editName, editSurname);
     setSaving(false);
     setEditModalVisible(false);
+  };
+
+  const pickPatientImage = async (source: 'camera' | 'library') => {
+    let result: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          Alert.alert('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]);
+        } else {
+          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+        }
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
+    } else {
+      const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          Alert.alert('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]);
+        } else {
+          Alert.alert('Permission needed', 'Photo library access is required.');
+        }
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
+    }
+    if (result.canceled || !result.assets?.[0]?.base64) return;
+    const dataUrl = `data:image/jpeg;base64,${result.assets[0].base64}`;
+    setUploadingAvatar(true);
+    await onAvatarChange(patient, dataUrl);
+    setUploadingAvatar(false);
+  };
+
+  const showPatientAvatarOptions = () => {
+    const options: any[] = [
+      { text: 'Take Photo', onPress: () => pickPatientImage('camera') },
+      { text: 'Choose from Library', onPress: () => pickPatientImage('library') },
+    ];
+    if (patient.avatarUrl) {
+      options.push({
+        text: 'Remove Photo', style: 'destructive', onPress: async () => {
+          setUploadingAvatar(true);
+          await onAvatarChange(patient, null);
+          setUploadingAvatar(false);
+        },
+      });
+    }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Patient Photo', undefined, options);
   };
 
   /* ── Care Team view ── */
@@ -790,7 +897,28 @@ function PatientDetailContent({
 
       {/* Header */}
       <View style={styles.sheetHeader}>
-        <Text style={styles.sheetTitle}>{patient.name} {patient.surname}</Text>
+        <TouchableOpacity
+          onPress={patient.isPrimary ? showPatientAvatarOptions : undefined}
+          activeOpacity={patient.isPrimary ? 0.7 : 1}
+          disabled={uploadingAvatar}
+          style={styles.sheetAvatarWrapper}
+        >
+          {patient.avatarUrl ? (
+            <Image source={{ uri: patient.avatarUrl }} style={styles.sheetAvatarImg} />
+          ) : (
+            <View style={styles.sheetAvatarCircle}>
+              <Text style={styles.sheetAvatarText}>{patient.name?.[0]?.toUpperCase() || '?'}</Text>
+            </View>
+          )}
+          {patient.isPrimary && (
+            <View style={styles.sheetAvatarBadge}>
+              <AppIcon iosName="camera.fill" androidFallback="📷" size={10} color="#fff" />
+            </View>
+          )}
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.sheetTitle}>{patient.name} {patient.surname}</Text>
+        </View>
         {patient.isPrimary && (
           <TouchableOpacity onPress={openEdit} style={styles.editIconBtn}>
             <AppIcon iosName="pencil" androidFallback="✎" size={18} color={colors.secondary} />
@@ -813,7 +941,11 @@ function PatientDetailContent({
             <QRCode value={patient.patientJoinCode} size={SCREEN_WIDTH * 0.45} backgroundColor="transparent" color={colors.textDark} />
           </AdaptiveCard>
           <Text style={styles.qrLabel}>Scan this code on the patient's device</Text>
-          <View style={styles.codeContainer}>
+          <TouchableOpacity
+            style={styles.codeContainer}
+            onPress={copyJoinCode}
+            activeOpacity={0.7}
+          >
             <Text style={styles.codePrefix}>Join Code</Text>
             <View style={styles.codeBadge}>
               {patient.patientJoinCode.split('').map((char, i) => (
@@ -822,7 +954,17 @@ function PatientDetailContent({
                 </View>
               ))}
             </View>
-          </View>
+            <View style={styles.codeCopyHint}>
+              <AppIcon iosName="doc.on.doc" androidFallback="⎘" size={12} color={colors.textMuted} />
+              <Text style={styles.codeCopyHintText}>Tap to copy</Text>
+            </View>
+            {codeCopied && (
+              <Animated.View style={[styles.codeCopiedBadge, { opacity: codeCopiedOpacity }]}>
+                <AppIcon iosName="checkmark" androidFallback="✓" size={11} color="#2E5233" />
+                <Text style={styles.codeCopiedText}>Copied!</Text>
+              </Animated.View>
+            )}
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.qrRestrictedBox}>
@@ -1077,12 +1219,44 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    gap: 12,
+  },
+  sheetAvatarWrapper: { position: 'relative' },
+  sheetAvatarImg: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  sheetAvatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sheetAvatarText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: colors.textLight,
+  },
+  sheetAvatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   sheetTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
     color: colors.textDark,
-    flex: 1,
   },
   sheetCloseBtn: {
     padding: 4,
@@ -1302,6 +1476,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 14,
   },
+  primaryAvatarImg: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 14,
+  },
   primaryAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
@@ -1371,6 +1551,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(123,115,192,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
+  },
+  secondaryAvatarImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     marginRight: 12,
   },
   secondaryAvatarText: {
@@ -1736,6 +1922,37 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
     color: colors.textMuted,
+  },
+
+  // Detail sheet – copy hint & feedback
+  codeCopyHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 8,
+  },
+  codeCopyHintText: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  codeCopiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 6,
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(45,79,62,0.12)',
+  },
+  codeCopiedText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: '#2E5233',
   },
 });
 

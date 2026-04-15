@@ -13,4 +13,8 @@ export class UpdatePatientDto {
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @Matches(/^[a-zA-ZëçËÇ\s]+$/, { message: 'Surname must only contain letters and spaces' })
   surname?: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string | null;
 }
