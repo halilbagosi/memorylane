@@ -19,6 +19,7 @@ import { AdaptiveBadge } from '../../src/components/AdaptiveBadge';
 import { AppIcon } from '../../src/components/AppIcon';
 import { M3BottomSheet } from '../../src/components/M3BottomSheet';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
+import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 
 const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -399,17 +400,7 @@ export default function PatientsTab() {
             {caregiver ? `Welcome, ${caregiver.name}` : 'Caregiver Dashboard'}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/account')} activeOpacity={0.8} style={styles.avatarBtn}>
-          {caregiver?.avatarUrl ? (
-            <Image source={{ uri: caregiver.avatarUrl }} style={styles.avatarBtnImg} />
-          ) : (
-            <View style={styles.avatarBtnCircle}>
-              <Text style={styles.avatarBtnText}>
-                {`${caregiver?.name?.[0] ?? ''}${caregiver?.surname?.[0] ?? ''}`.toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <CaregiverAvatarButton />
       </View>
 
       {caregiver?.status === 'PENDING_DELETION' && resignProgress && (
@@ -640,6 +631,8 @@ export default function PatientsTab() {
           onRemoveCaregiver={handleRemoveCaregiver}
           onRequestPrimary={handleRequestPrimary}
           myId={caregiver?.id ?? ''}
+          showDialog={showDialog}
+          dismissDialog={dismissDialog}
         />
       </M3BottomSheet>
 
@@ -657,7 +650,7 @@ export default function PatientsTab() {
 }
 
 function PatientDetailContent({
-  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, myId,
+  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, myId, showDialog, dismissDialog,
 }: {
   patient: PatientItem | null;
   onClose: () => void;
@@ -669,6 +662,8 @@ function PatientDetailContent({
   onRemoveCaregiver: (patient: PatientItem, caregiverId: string, caregiverName: string) => void;
   onRequestPrimary: (patient: PatientItem) => void;
   myId: string;
+  showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
+  dismissDialog: () => void;
 }) {
   const [view, setView] = React.useState<'detail' | 'careTeam'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
@@ -718,12 +713,14 @@ function PatientDetailContent({
       const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          showDialog('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
           ]);
         } else {
-          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+          showDialog('Permission needed', 'Camera access is required to take a photo.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -732,12 +729,14 @@ function PatientDetailContent({
       const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          showDialog('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
           ]);
         } else {
-          Alert.alert('Permission needed', 'Photo library access is required.');
+          showDialog('Permission needed', 'Photo library access is required.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -1065,28 +1064,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
     marginTop: 2,
-  },
-  avatarBtn: {
-    padding: 2,
-  },
-  avatarBtnCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarBtnImg: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  avatarBtnText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 15,
-    color: colors.textLight,
-    letterSpacing: 0.5,
   },
 
   actionsRow: {

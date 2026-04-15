@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity, Alert
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -25,6 +25,7 @@ import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
@@ -52,6 +53,21 @@ export default function LoginScreen() {
   const [deactivated, setDeactivated] = useState<DeactivatedState | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restored, setRestored] = useState<RestoredState | null>(null);
+
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
+  };
+
+  const dismissDialog = () => {
+    setDialog((prev) => ({ ...prev, visible: false }));
+  };
 
   useEffect(() => {
     if (GoogleSignin) {
@@ -117,9 +133,10 @@ export default function LoginScreen() {
 
   const handleGoogleSignIn = async () => {
     if (!GoogleSignin) {
-      Alert.alert(
+      showDialog(
         'Development Build Required',
         'Google Sign-In requires a development build. Run "npx expo prebuild" and rebuild the app.',
+        [{ label: 'OK', onPress: dismissDialog }],
       );
       return;
     }
@@ -481,6 +498,14 @@ export default function LoginScreen() {
           <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
     </SafeAreaView>
   );
 }

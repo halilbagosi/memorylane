@@ -14,6 +14,7 @@ import {
   getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo,
 } from '../src/utils/auth';
 import { AppIcon } from '../src/components/AppIcon';
+import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -123,6 +124,21 @@ export default function AccountScreen() {
   });
   const [deletionModalVisible, setDeletionModalVisible] = useState(false);
 
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
+  };
+
+  const dismissDialog = () => {
+    setDialog((prev) => ({ ...prev, visible: false }));
+  };
+
   useEffect(() => {
     (async () => {
       const tok = await getToken();
@@ -224,16 +240,14 @@ export default function AccountScreen() {
       const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert(
-            'Camera Access Required',
-            'Camera permission was denied. Please enable it in your device Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
-            ],
-          );
+          showDialog('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
         } else {
-          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+          showDialog('Permission needed', 'Camera access is required to take a photo.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -248,16 +262,14 @@ export default function AccountScreen() {
       const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert(
-            'Photo Library Access Required',
-            'Photo library permission was denied. Please enable it in your device Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
-            ],
-          );
+          showDialog('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
         } else {
-          Alert.alert('Permission needed', 'Photo library access is required.');
+          showDialog('Permission needed', 'Photo library access is required.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -412,7 +424,9 @@ export default function AccountScreen() {
       const data = await res.json();
       if (res.ok) {
         setPasswordModalVisible(false);
-        Alert.alert('Success', 'Your password has been changed.');
+        showDialog('Success', 'Your password has been changed.', [
+          { label: 'OK', onPress: dismissDialog },
+        ]);
       } else {
         setPasswordError(Array.isArray(data.message) ? data.message.join('\n') : (data.message ?? 'Failed to change password'));
       }
@@ -427,15 +441,16 @@ export default function AccountScreen() {
 
   const revokeSession = (sessionId: string) => {
     const isCurrent = sessionId === currentSessionId;
-    Alert.alert(
+    showDialog(
       isCurrent ? 'Sign Out' : 'Log Out Device',
       isCurrent ? 'You will be signed out of this device.' : 'This device will be logged out immediately.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { label: 'Cancel', onPress: dismissDialog },
         {
-          text: isCurrent ? 'Sign Out' : 'Log Out',
-          style: 'destructive',
+          label: isCurrent ? 'Sign Out' : 'Log Out',
+          destructive: true,
           onPress: async () => {
+            dismissDialog();
             try {
               await fetch(`${API_BASE_URL}/auth/sessions/${sessionId}`, {
                 method: 'DELETE',
@@ -455,12 +470,13 @@ export default function AccountScreen() {
   };
 
   const logoutOtherSessions = () => {
-    Alert.alert('Log Out Other Sessions', 'All other devices will be signed out immediately.', [
-      { text: 'Cancel', style: 'cancel' },
+    showDialog('Log Out Other Sessions', 'All other devices will be signed out immediately.', [
+      { label: 'Cancel', onPress: dismissDialog },
       {
-        text: 'Log Out Others',
-        style: 'destructive',
+        label: 'Log Out Others',
+        destructive: true,
         onPress: async () => {
+          dismissDialog();
           try {
             await fetch(`${API_BASE_URL}/auth/sessions/others`, {
               method: 'DELETE',
@@ -476,12 +492,13 @@ export default function AccountScreen() {
   // ─── Logout current device ─────────────────────────────────────────────────
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'You will be signed out of this device.', [
-      { text: 'Cancel', style: 'cancel' },
+    showDialog('Sign Out', 'You will be signed out of this device.', [
+      { label: 'Cancel', onPress: dismissDialog },
       {
-        text: 'Sign Out',
-        style: 'destructive',
+        label: 'Sign Out',
+        destructive: true,
         onPress: async () => {
+          dismissDialog();
           try {
             if (token) {
               await fetch(`${API_BASE_URL}/auth/logout`, {
@@ -506,24 +523,23 @@ export default function AccountScreen() {
     }
 
     if (!deletion.isPrimaryForAnyPatient) {
-      // No primary patients — skip transfer flow, go straight to confirm
-      Alert.alert(
+      showDialog(
         'Delete Account',
         'Your account will be permanently deleted after a 10-day grace period. You can restore it by logging in during that time.\n\nThis cannot be undone after the grace period.',
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete Account', style: 'destructive', onPress: () => sendDeletionRequest() },
+          { label: 'Cancel', onPress: dismissDialog },
+          { label: 'Delete Account', destructive: true, onPress: () => { dismissDialog(); sendDeletionRequest(); } },
         ],
       );
       return;
     }
 
-    Alert.alert(
+    showDialog(
       'Delete Account',
       'You are about to start the role transfer process.\n\nYou will remain primary caregiver and keep full access while your secondaries confirm the transfer. Your account is only deactivated when you click "Finalize" after everyone has accepted.',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Start Transferring', onPress: () => sendDeletionRequest() },
+        { label: 'Cancel', onPress: dismissDialog },
+        { label: 'Start Transferring', onPress: () => { dismissDialog(); sendDeletionRequest(); } },
       ],
     );
   };
@@ -537,34 +553,33 @@ export default function AccountScreen() {
       });
       const data = await res.json();
       if (!res.ok) {
-        Alert.alert('Error', data.message ?? 'Could not initiate deletion');
+        showDialog('Error', data.message ?? 'Could not initiate deletion', [
+          { label: 'OK', onPress: dismissDialog },
+        ]);
         return;
       }
 
-      // ── BLOCKED: some patients have no other caregivers ──
       if (data.status === 'BLOCKED') {
         const patientNames = (data.blockedPatients ?? [])
           .map((p: { name: string; surname: string }) => `• ${p.name} ${p.surname}`)
           .join('\n');
-        Alert.alert(
+        showDialog(
           'Cannot Delete Account',
           `You cannot delete your account yet. The following patient(s) have no other caregivers:\n\n${patientNames}\n\nPlease invite someone to take over or delete the patient profile first.`,
-          [{ text: 'Got it' }],
+          [{ label: 'Got it', onPress: dismissDialog }],
         );
         return;
       }
 
-      // Refresh profile so SecureStore has updated status (for dashboard banner)
       await loadProfile(token);
 
       if (data.status === 'NO_DELEGATION_NEEDED') {
-        // No secondaries — go straight to final confirm
-        Alert.alert(
+        showDialog(
           'Confirm Deletion',
           'Your account and all patient data you manage will be permanently deleted after a 10-day grace period. This cannot be undone.',
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete Account', style: 'destructive', onPress: () => confirmFinalDeletion() },
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Delete Account', destructive: true, onPress: () => { dismissDialog(); confirmFinalDeletion(); } },
           ],
         );
       } else {
@@ -572,7 +587,9 @@ export default function AccountScreen() {
         openDeletionModal();
       }
     } catch {
-      Alert.alert('Error', 'Failed to connect to the server');
+      showDialog('Error', 'Failed to connect to the server', [
+        { label: 'OK', onPress: dismissDialog },
+      ]);
     }
   };
 
@@ -589,10 +606,14 @@ export default function AccountScreen() {
         await clearAuth();
         navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
       } else {
-        Alert.alert('Error', data.message ?? 'Could not confirm deletion');
+        showDialog('Error', data.message ?? 'Could not confirm deletion', [
+          { label: 'OK', onPress: dismissDialog },
+        ]);
       }
     } catch {
-      Alert.alert('Error', 'Failed to connect to the server');
+      showDialog('Error', 'Failed to connect to the server', [
+        { label: 'OK', onPress: dismissDialog },
+      ]);
     }
   };
 
@@ -955,6 +976,14 @@ export default function AccountScreen() {
           </View>
         </View>
       </Modal>
+
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
 
       {/* ── Deletion Status Modal ── */}
       <Modal visible={deletionModalVisible} transparent animationType="none" onRequestClose={closeDeletionModal}>

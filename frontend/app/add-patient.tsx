@@ -89,16 +89,14 @@ export default function AddPatientScreen() {
       const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert(
-            'Camera Access Required',
-            'Camera permission was denied. Please enable it in your device Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
-            ],
-          );
+          showDialog('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
         } else {
-          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+          showDialog('Permission needed', 'Camera access is required to take a photo.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -113,16 +111,14 @@ export default function AddPatientScreen() {
       const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert(
-            'Photo Library Access Required',
-            'Photo library permission was denied. Please enable it in your device Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
-            ],
-          );
+          showDialog('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
         } else {
-          Alert.alert('Permission needed', 'Photo library access is required.');
+          showDialog('Permission needed', 'Photo library access is required.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }

@@ -11,6 +11,7 @@ import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
 import { getToken, getCaregiverInfo, saveCaregiverInfo, CaregiverInfo } from '../../src/utils/auth';
 import { AppIcon } from '../../src/components/AppIcon';
+import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -327,12 +328,18 @@ export default function InboxTab() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Inbox</Text>
-        {totalCount > 0 && (
-          <View style={styles.headerBadge}>
-            <Text style={styles.headerBadgeText}>{totalCount}</Text>
+        <View style={styles.headerLeft}>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerTitle}>Inbox</Text>
+            {totalCount > 0 && (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{totalCount}</Text>
+              </View>
+            )}
           </View>
-        )}
+          <Text style={styles.headerSubtitle}>Requests & notifications</Text>
+        </View>
+        <CaregiverAvatarButton />
       </View>
 
       {isLoading ? (
@@ -503,10 +510,24 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
+  },
+  headerSubtitle: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   headerTitle: {
     fontFamily: typography.fontFamily.bold,

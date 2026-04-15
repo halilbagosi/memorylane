@@ -4,13 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
+import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 
 export default function AnalyticsTab() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Analytics</Text>
-        <Text style={styles.headerSubtitle}>Monitor patient progress</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>Analytics</Text>
+          <Text style={styles.headerSubtitle}>Monitor patient progress</Text>
+        </View>
+        <CaregiverAvatarButton />
       </View>
 
       <View style={styles.center}>
@@ -35,9 +39,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 12,
+  },
+  headerLeft: {
+    flex: 1,
   },
   headerTitle: {
     fontFamily: typography.fontFamily.bold,

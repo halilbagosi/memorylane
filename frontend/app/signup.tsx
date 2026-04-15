@@ -14,6 +14,7 @@ import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
+import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -59,6 +60,21 @@ export default function SignupScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
+  };
+
+  const dismissDialog = () => {
+    setDialog((prev) => ({ ...prev, visible: false }));
+  };
+
   const strength = useMemo(() => evaluatePassword(password), [password]);
 
   const pickAvatar = async (source: 'camera' | 'library') => {
@@ -68,16 +84,14 @@ export default function SignupScreen() {
       const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert(
-            'Camera Access Required',
-            'Camera permission was denied. Please enable it in your device Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
-            ],
-          );
+          showDialog('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
         } else {
-          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+          showDialog('Permission needed', 'Camera access is required to take a photo.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -92,16 +106,14 @@ export default function SignupScreen() {
       const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         if (!canAskAgain) {
-          Alert.alert(
-            'Photo Library Access Required',
-            'Photo library permission was denied. Please enable it in your device Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
-            ],
-          );
+          showDialog('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
         } else {
-          Alert.alert('Permission needed', 'Photo library access is required.');
+          showDialog('Permission needed', 'Photo library access is required.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
         }
         return;
       }
@@ -294,6 +306,14 @@ export default function SignupScreen() {
             />
           </View>
         </ScrollView>
+
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
     </SafeAreaView>
   );
 }
