@@ -55,6 +55,7 @@ export function M3TabBar({
               onLongPress={onLongPress}
               accentColor={accentColor}
               icon={options.tabBarIcon}
+              badge={typeof options.tabBarBadge === 'number' ? options.tabBarBadge : undefined}
             />
           );
         })}
@@ -70,9 +71,10 @@ interface M3TabProps {
   onLongPress: () => void;
   accentColor: string;
   icon?: (props: { focused: boolean; color: string; size: number }) => React.ReactNode;
+  badge?: number;
 }
 
-function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon }: M3TabProps) {
+function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon, badge }: M3TabProps) {
   const pillScale = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
   const iconShift = useRef(new Animated.Value(isFocused ? -2 : 0)).current;
 
@@ -121,6 +123,11 @@ function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon }: M3
         <Animated.View style={{ transform: [{ translateY: iconShift }] }}>
           {icon?.({ focused: isFocused, color: iconColor, size: 24 })}
         </Animated.View>
+        {badge != null && badge > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+          </View>
+        )}
       </View>
       <Text
         style={[
@@ -159,12 +166,33 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   activePill: {
     position: 'absolute',
     width: 64,
     height: 32,
     borderRadius: 16,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#C0392B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: colors.neutralLight,
+  },
+  badgeText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 10,
+    color: '#fff',
+    includeFontPadding: false,
   },
   label: {
     fontSize: 12,

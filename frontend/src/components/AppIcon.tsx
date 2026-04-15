@@ -14,7 +14,6 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'questionmark.circle': 'help-circle-outline',
   'questionmark.circle.fill': 'help-circle',
   'photo.on.rectangle.angled': 'image-multiple-outline',
-  'brain.head.profile': 'brain',
   'person.fill': 'account',
   'heart.text.clipboard': 'clipboard-pulse-outline',
   'plus': 'plus',
@@ -39,6 +38,10 @@ interface AppIconProps {
   weight?: 'ultraLight' | 'thin' | 'light' | 'regular' | 'medium' | 'semibold' | 'bold' | 'heavy' | 'black';
 }
 
+// SF Symbols via expo-symbols require iOS 16+
+const supportsSymbols =
+  Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) >= 16;
+
 export function AppIcon({
   iosName,
   androidFallback,
@@ -46,7 +49,7 @@ export function AppIcon({
   color = colors.textDark,
   weight = 'medium',
 }: AppIconProps) {
-  if (Platform.OS === 'ios') {
+  if (supportsSymbols) {
     return (
       <SymbolView
         name={iosName}

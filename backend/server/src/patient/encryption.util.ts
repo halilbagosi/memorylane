@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypt
 const algorithm = 'aes-256-cbc';
 
 //hash the secret key to exactly 32 bytes using SHA-256.
-//guarantees that the key length is ALWAYS correct for AES-256.
+//guarantees that the key length is always correct for AES-256.
 const secretKey = createHash('sha256')
   .update(process.env.ENCRYPTION_KEY || 'default-secret-key-fallback-2026')
   .digest();

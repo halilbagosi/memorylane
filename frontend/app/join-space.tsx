@@ -72,6 +72,7 @@ export default function JoinSpaceScreen() {
         id: data.id,
         name: data.name,
         surname: data.surname,
+        avatarUrl: data.avatarUrl ?? null,
       });
 
       setSuccessInfo({
@@ -116,11 +117,9 @@ export default function JoinSpaceScreen() {
           <View style={styles.successCheckCircle}>
             <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color="#4CAF50" />
           </View>
-          <Text style={styles.successTitle}>Successfully Linked!</Text>
+          <Text style={styles.successTitle}>You're all set!</Text>
           <Text style={styles.successSubtitle}>
-            Connected to{' '}
-            <Text style={styles.successCaregiverName}>{successInfo.caregiverName}</Text>
-            's account
+            Your family is waiting for you inside.{'\n'}Let's look at some memories.
           </Text>
         </Animated.View>
       </View>
@@ -480,13 +479,13 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#e74c3c',
+    color: '#C0392B',
     flex: 1,
   },
   errorRetry: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: '#e74c3c',
+    color: '#C0392B',
     marginLeft: 12,
   },
 

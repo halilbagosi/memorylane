@@ -10,6 +10,7 @@ import {
   Animated,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,9 +19,10 @@ import { typography } from '../src/theme/typography';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../src/components/AdaptiveBadge';
 import { AppIcon } from '../src/components/AppIcon';
-import { getPatientInfo } from '../src/utils/auth';
+import { getPatientInfo, deletePatientInfo } from '../src/utils/auth';
+import { API_BASE_URL } from '../src/config/api';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
 
 export default function WelcomeScreen() {
@@ -42,13 +44,32 @@ export default function WelcomeScreen() {
   const orb3Y = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    getPatientInfo().then((patient) => {
+    (async () => {
+      const patient = await getPatientInfo();
       if (patient) {
-        router.replace('/(patient-tabs)/quiz');
-      } else {
-        setCheckingSession(false);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12_000);
+        try {
+          const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/paired-status`, {
+            signal: controller.signal,
+          });
+          const data = await res.json();
+          if (res.ok && data.paired) {
+            router.replace('/(patient-tabs)/quiz');
+            return;
+          }
+        } catch {
+          // Network error / timeout — still route to patient tabs so offline use isn't broken
+          router.replace('/(patient-tabs)/quiz');
+          return;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        // Server says unpaired — clear local data and show role selection
+        await deletePatientInfo();
       }
-    });
+      setCheckingSession(false);
+    })();
   }, []);
 
   useEffect(() => {
@@ -108,13 +129,7 @@ export default function WelcomeScreen() {
       >
         {/* Logo */}
         <Animated.View style={[styles.logoSection, { opacity: logoOpacity, transform: [{ translateY: logoSlide }] }]}>
-          <View style={styles.logoRings}>
-            <View style={[styles.ringOuter, isIOS ? styles.iosRing : styles.androidRing]}>
-              <View style={styles.ringInner}>
-                <AppIcon iosName="brain.head.profile" androidFallback="M" size={30} color={colors.secondary} weight="medium" />
-              </View>
-            </View>
-          </View>
+          <Image source={require('../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
           <View style={styles.logoTextRow}>
             <Text style={styles.logoTextBold}>Memory</Text>
             <Text style={styles.logoTextLight}>Lane</Text>
@@ -139,7 +154,7 @@ export default function WelcomeScreen() {
             >
               <AdaptiveCard
                 style={styles.cardPadding}
-                backgroundColor={isIOS ? 'rgba(234, 224, 206, 0.7)' : '#EAE0CE'}
+                backgroundColor={colors.patientCardBg}
               >
                 <View style={styles.cardTopRow}>
                   <View style={[styles.iconBubble, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>
@@ -174,7 +189,7 @@ export default function WelcomeScreen() {
             >
               <AdaptiveCard
                 style={styles.cardPadding}
-                backgroundColor={isIOS ? 'rgba(224, 232, 227, 0.7)' : '#E0E8E3'}
+                backgroundColor={colors.caregiverCardBg}
               >
                 <View style={styles.cardTopRow}>
                   <View style={[styles.iconBubble, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
@@ -247,38 +262,13 @@ const styles = StyleSheet.create({
 
   logoSection: {
     alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 28,
-  },
-  logoRings: {
+    marginTop: 10,
     marginBottom: 10,
   },
-  ringOuter: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iosRing: {
-    backgroundColor: 'rgba(180, 174, 232, 0.12)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(180, 174, 232, 0.3)',
-  },
-  androidRing: {
-    backgroundColor: 'rgba(180, 174, 232, 0.10)',
-  },
-  ringInner: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(180, 174, 232, 0.18)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoIconWrap: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  logoImage: {
+    width: 90,
+    height: 90,
+    marginBottom:10,
   },
   logoTextRow: {
     flexDirection: 'row',
@@ -339,10 +329,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconWrap: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   cardTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
@@ -370,10 +356,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ctaArrowIcon: {
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MinLength,
   Matches,
@@ -13,7 +14,7 @@ export class SignupDto {
   //removes spaces written in name
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   //only allow letters (a-z) and spaces, not numbers nor symbols
-   @Matches(/^[a-zA-Z\s]+$/, {
+   @Matches(/^[a-zA-ZëçËÇ\s]+$/, {
     message: 'Name must only contain letters and spaces (no numbers or symbols)',
   })
   name: string;
@@ -23,7 +24,7 @@ export class SignupDto {
   //removes spaces written in surname
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   //only allow laters and spaces
-   @Matches(/^[a-zA-Z\s]+$/, {
+   @Matches(/^[a-zA-ZëçËÇ\s]+$/, {
     message: 'Surname must only contain letters and spaces (no numbers or symbols)',
   })
   surname: string;
@@ -38,4 +39,12 @@ export class SignupDto {
     message: 'Password must contain uppercase, lowercase, and a number or symbol',
   })
   password: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  deviceLabel?: string;
 }

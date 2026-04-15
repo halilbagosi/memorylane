@@ -60,3 +60,6 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# Expo Go local state (not related to the NestJS server)
+.expo/

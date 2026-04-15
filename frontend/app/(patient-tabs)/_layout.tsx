@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, useNavigation } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
 import { AppIcon } from '../../src/components/AppIcon';
 import { M3TabBar } from '../../src/components/M3TabBar';
+import { getPatientInfo, deletePatientInfo } from '../../src/utils/auth';
+import { API_BASE_URL } from '../../src/config/api';
+
+const POLL_INTERVAL_MS = 15000;
 
 function IOSTabLayout() {
   return (
@@ -63,5 +68,36 @@ function AndroidTabLayout() {
 }
 
 export default function PatientTabsLayout() {
+  const navigation = useNavigation();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const checkPairing = async () => {
+      const patient = await getPatientInfo();
+      if (!patient) return;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/paired-status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.paired) {
+          await deletePatientInfo();
+          navigation.dispatch(
+            CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
+          );
+        }
+      } catch {
+        // Network error — keep the patient in the app
+      }
+    };
+
+    checkPairing();
+    intervalRef.current = setInterval(checkPairing, POLL_INTERVAL_MS);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
   return Platform.OS === 'ios' ? <IOSTabLayout /> : <AndroidTabLayout />;
 }

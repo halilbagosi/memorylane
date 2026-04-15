@@ -177,6 +177,6 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   actionLabelDestructive: {
-    color: '#e74c3c',
+    color: '#C0392B',
   },
 });

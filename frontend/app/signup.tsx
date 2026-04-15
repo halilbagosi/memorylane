@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Animated } from 'react-native';
+import {
+  View, Text, StyleSheet, Platform,
+  ScrollView, TouchableOpacity, Image, Alert, Linking,
+} from 'react-native';
+import * as Device from 'expo-device';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
@@ -9,6 +14,7 @@ import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
+import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -28,12 +34,11 @@ function evaluatePassword(pw: string): PasswordStrength {
   if (/\d/.test(pw)) score++;
   if (/[^a-zA-Z0-9]/.test(pw)) score++;
 
-  // Clamp to 4
   score = Math.min(score, 4);
 
   const levels: Record<number, { label: string; color: string }> = {
     0: { label: '', color: 'transparent' },
-    1: { label: 'Weak', color: '#e74c3c' },
+    1: { label: 'Weak', color: '#C0392B' },
     2: { label: 'Fair', color: '#e67e22' },
     3: { label: 'Good', color: '#f1c40f' },
     4: { label: 'Strong', color: '#27ae60' },
@@ -45,34 +50,93 @@ function evaluatePassword(pw: string): PasswordStrength {
 export default function SignupScreen() {
   const router = useRouter();
 
+  const [avatarBase64, setAvatarBase64] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const [errors, setErrors] = useState<{ name?: string; surname?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
-  const strength = useMemo(() => evaluatePassword(password), [password]);
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
 
-  const handleNameChange = (text: string) => {
-    if (/^[a-zA-Z\s]*$/.test(text)) {
-      setName(text);
-      setErrors(prev => ({ ...prev, name: undefined }));
-    } else {
-      setErrors(prev => ({ ...prev, name: 'Only letters and spaces are allowed.' }));
-    }
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
   };
 
-  const handleSurnameChange = (text: string) => {
-    if (/^[a-zA-Z\s]*$/.test(text)) {
-      setSurname(text);
-      setErrors(prev => ({ ...prev, surname: undefined }));
+  const dismissDialog = () => {
+    setDialog((prev) => ({ ...prev, visible: false }));
+  };
+
+  const strength = useMemo(() => evaluatePassword(password), [password]);
+
+  const pickAvatar = async (source: 'camera' | 'library') => {
+    let result: ImagePicker.ImagePickerResult;
+
+    if (source === 'camera') {
+      const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          showDialog('Camera Access Required', 'Camera permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
+        } else {
+          showDialog('Permission needed', 'Camera access is required to take a photo.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
+        }
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
     } else {
-      setErrors(prev => ({ ...prev, surname: 'Only letters and spaces are allowed.' }));
+      const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          showDialog('Photo Library Access Required', 'Photo library permission was denied. Please enable it in your device Settings.', [
+            { label: 'Cancel', onPress: dismissDialog },
+            { label: 'Open Settings', onPress: () => { dismissDialog(); Linking.openSettings(); } },
+          ]);
+        } else {
+          showDialog('Permission needed', 'Photo library access is required.', [
+            { label: 'OK', onPress: dismissDialog },
+          ]);
+        }
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
     }
+
+    if (result.canceled || !result.assets?.[0]?.base64) return;
+    setAvatarBase64(result.assets[0].base64);
+  };
+
+  const showAvatarOptions = () => {
+    Alert.alert('Profile Picture', 'Add a photo so your care team can recognise you', [
+      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
+      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
+      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
+      { text: 'Skip for Now', style: 'cancel' },
+    ]);
   };
 
   const handleSignup = async () => {
@@ -85,6 +149,8 @@ export default function SignupScreen() {
     setApiError('');
 
     try {
+      const avatarUrl = avatarBase64 ? `data:image/jpeg;base64,${avatarBase64}` : undefined;
+
       const response = await fetch(`${API_BASE_URL}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,6 +159,8 @@ export default function SignupScreen() {
           surname: surname.trim(),
           email,
           password,
+          ...(avatarUrl ? { avatarUrl } : {}),
+          deviceLabel: Device.modelName ?? undefined,
         }),
       });
 
@@ -103,13 +171,8 @@ export default function SignupScreen() {
         throw new Error(msg || 'Something went wrong during signup');
       }
 
-      // Auto-login: store token + caregiver info and go straight to dashboard
-      if (data.accessToken) {
-        await saveToken(data.accessToken);
-      }
-      if (data.caregiver) {
-        await saveCaregiverInfo(data.caregiver);
-      }
+      if (data.accessToken) await saveToken(data.accessToken);
+      if (data.caregiver) await saveCaregiverInfo(data.caregiver);
 
       router.replace('/dashboard');
     } catch (error: any) {
@@ -119,35 +182,58 @@ export default function SignupScreen() {
     }
   };
 
+  const avatarUri = avatarBase64 ? `data:image/jpeg;base64,${avatarBase64}` : null;
+  const initials = `${name?.[0] ?? ''}${surname?.[0] ?? ''}`.toUpperCase();
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <KeyboardAvoidingView
-        behavior={isIOS ? 'padding' : 'height'}
-        style={styles.container}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+        >
           <Text style={styles.headline}>Create Your Account</Text>
           <Text style={styles.subheadline}>Join MemoryLane as a caregiver.</Text>
 
+          {/* Profile photo picker */}
+          <View style={styles.avatarRow}>
+            <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.8} style={styles.avatarWrapper}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarCircle} />
+              ) : (
+                <View style={styles.avatarCircle}>
+                  {initials ? (
+                    <Text style={styles.avatarInitials}>{initials}</Text>
+                  ) : (
+                    <AppIcon iosName="person.crop.circle" androidFallback="👤" size={32} color="rgba(255,255,255,0.8)" />
+                  )}
+                </View>
+              )}
+              <View style={styles.avatarEditBadge}>
+                <AppIcon iosName="plus" androidFallback="+" size={11} color="#fff" weight="bold" />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.avatarHint}>
+              <Text style={styles.avatarHintTitle}>Profile Photo</Text>
+              <Text style={styles.avatarHintSub}>Optional — tap to add</Text>
+            </View>
+          </View>
+
           <AdaptiveInput
             label="First Name"
-            value={name}
-            onChangeText={handleNameChange}
+            onChangeText={setName}
             placeholder="Enter your first name"
-            error={errors.name}
           />
 
           <AdaptiveInput
             label="Last Name"
-            value={surname}
-            onChangeText={handleSurnameChange}
+            onChangeText={setSurname}
             placeholder="Enter your last name"
-            error={errors.surname}
           />
 
           <AdaptiveInput
             label="Email Address"
-            value={email}
             onChangeText={setEmail}
             placeholder="example@email.com"
             keyboardType="email-address"
@@ -156,7 +242,6 @@ export default function SignupScreen() {
 
           <AdaptiveInput
             label="Password"
-            value={password}
             onChangeText={setPassword}
             placeholder="Min 8 chars, upper + lower + number"
             secureTextEntry={!showPassword}
@@ -221,21 +306,23 @@ export default function SignupScreen() {
             />
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.neutral,
-  },
+  safeArea: { flex: 1, backgroundColor: colors.neutral },
   container: { flex: 1 },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: 40,
-  },
+  scrollContent: { padding: 24, paddingBottom: 40 },
+
   headline: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
@@ -250,6 +337,54 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
 
+  // Avatar picker
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 28,
+  },
+  avatarWrapper: { position: 'relative' },
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitials: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 24,
+    color: colors.textLight,
+    letterSpacing: 1,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.neutral,
+  },
+  avatarHint: { flex: 1 },
+  avatarHintTitle: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: colors.textDark,
+    marginBottom: 3,
+  },
+  avatarHintSub: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+
   strengthContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -257,22 +392,10 @@ const styles = StyleSheet.create({
     marginTop: -10,
     marginBottom: 18,
   },
-  strengthBarTrack: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 4,
-    height: 5,
-  },
-  strengthBarSegment: {
-    flex: 1,
-    height: 5,
-  },
-  iosSegment: {
-    borderRadius: 3,
-  },
-  androidSegment: {
-    borderRadius: 2,
-  },
+  strengthBarTrack: { flex: 1, flexDirection: 'row', gap: 4, height: 5 },
+  strengthBarSegment: { flex: 1, height: 5 },
+  iosSegment: { borderRadius: 3 },
+  androidSegment: { borderRadius: 2 },
   strengthLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
@@ -280,7 +403,7 @@ const styles = StyleSheet.create({
   },
 
   apiErrorText: {
-    color: '#e74c3c',
+    color: '#C0392B',
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -292,15 +415,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  linkText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  linkButton: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
+  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textMuted },
+  linkButton: { paddingHorizontal: 0, paddingVertical: 0 },
   linkBoldText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,

@@ -1,41 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
-import { AdaptiveButton } from '../../src/components/AdaptiveButton';
-import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
+import { getPatientInfo, PatientInfo } from '../../src/utils/auth';
 
 export default function QuizTab() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const [patient, setPatient] = useState<PatientInfo | null>(null);
 
   useEffect(() => {
     getPatientInfo().then(setPatient);
   }, []);
 
-  const handleLogout = async () => {
-    await deletePatientInfo();
-    router.replace('/');
-  };
-
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
-      <View style={styles.topRow}>
-        {patient && (
+      {patient && (
+        <View style={styles.topRow}>
           <Text style={styles.greeting}>Hi, {patient.name}</Text>
-        )}
-        <AdaptiveButton
-          title="Logout"
-          variant="danger"
-          onPress={handleLogout}
-          style={styles.logoutBtn}
-          textStyle={styles.logoutText}
-        />
-      </View>
+          {patient.avatarUrl ? (
+            <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.headerAvatarFallback}>
+              <Text style={styles.headerAvatarText}>{patient.name?.[0]?.toUpperCase() || '?'}</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       <View style={styles.center}>
         <View style={styles.iconCircle}>
@@ -70,14 +62,23 @@ const styles = StyleSheet.create({
     color: colors.textDark,
     flex: 1,
   },
-  logoutBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
-  logoutText: {
-    fontSize: 13,
-    textTransform: 'none',
-    letterSpacing: 0,
+  headerAvatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerAvatarText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: colors.textLight,
   },
   center: {
     flex: 1,

@@ -7,22 +7,118 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum CaregiverStatus {
+  ACTIVE
+  PENDING_DELETION
+  DEACTIVATED
+}
+
 model Caregiver {
-  id            String    @id @default(uuid())
-  name          String
-  surname       String
-  email         String    @unique
-  passwordHash  String    @map("password_hash")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  
+  id                String          @id @default(uuid())
+  name              String
+  surname           String
+  email             String          @unique
+  passwordHash      String          @map("password_hash")
+  avatarUrl         String?         @map("avatar_url") @db.Text
+  status            CaregiverStatus @default(ACTIVE)
+  scheduledDeleteAt DateTime?       @map("scheduled_delete_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
 
   patientCaregivers     PatientCaregiver[]
   uploadedMedia         Media[]
   authSessions          AuthSession[]
   passwordResetRequests PasswordResetRequest[]
   createdPatients       Patient[]
+  passwordHistory       PasswordHistory[]
+  sentDelegations       DelegationRequest[]    @relation("SentDelegations")
+  receivedDelegations   DelegationRequest[]    @relation("ReceivedDelegations")
+  sentRoleRequests      RoleRequest[]          @relation("SentRoleRequests")
+  receivedRoleRequests  RoleRequest[]          @relation("ReceivedRoleRequests")
+  notifications         Notification[]
 
   @@map("caregivers")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  caregiverId String           @map("caregiver_id")
+  type        NotificationType
+  title       String
+  body        String
+  createdAt   DateTime         @default(now()) @map("created_at")
+  readAt      DateTime?        @map("read_at")
+
+  caregiver   Caregiver        @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+enum DelegationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum NotificationType {
+  SECONDARY_ADDED
+  DEVICE_PAIRED
+  PATIENT_DELETED
+  DELEGATION_ACCEPTED
+  DELEGATION_DECLINED
+  DELEGATION_CANCELLED
+  DELEGATION_COMPLETED
+  ROLE_REQUEST_RECEIVED
+  ROLE_REQUEST_APPROVED
+  ROLE_REQUEST_DECLINED
+}
+
+enum RoleRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+model DelegationRequest {
+  id              String           @id @default(uuid())
+  patientId       String           @map("patient_id")
+  fromCaregiverId String           @map("from_caregiver_id")
+  toCaregiverId   String           @map("to_caregiver_id")
+  status          DelegationStatus @default(PENDING)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  respondedAt     DateTime?        @map("responded_at")
+
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fromCaregiver Caregiver @relation("SentDelegations",     fields: [fromCaregiverId], references: [id], onDelete: Cascade)
+  toCaregiver   Caregiver @relation("ReceivedDelegations", fields: [toCaregiverId],   references: [id], onDelete: Cascade)
+
+  @@map("delegation_requests")
+}
+
+model RoleRequest {
+  id               String            @id @default(uuid())
+  patientId        String            @map("patient_id")
+  requesterId      String            @map("requester_id")
+  currentPrimaryId String            @map("current_primary_id")
+  status           RoleRequestStatus @default(PENDING)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  respondedAt      DateTime?         @map("responded_at")
+
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  requester      Caregiver @relation("SentRoleRequests",     fields: [requesterId],      references: [id], onDelete: Cascade)
+  currentPrimary Caregiver @relation("ReceivedRoleRequests", fields: [currentPrimaryId], references: [id], onDelete: Cascade)
+
+  @@map("role_requests")
+}
+
+model PasswordHistory {
+  id           String    @id @default(uuid())
+  caregiverId  String    @map("caregiver_id")
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  caregiver    Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+
+  @@map("password_history")
 }
 
 model Patient {
@@ -31,6 +127,7 @@ model Patient {
   name               String
   surname            String
   dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
+  avatarUrl          String?             @map("avatar_url") @db.Text
   
   // code scanned by tablet/phone of patient to identify this specific patient
   patientJoinCode    String              @unique @map("patient_join_code")    
@@ -39,11 +136,13 @@ model Patient {
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
 
-  creator            Caregiver           @relation(fields: [createdBy], references: [id])
-  patientCaregivers  PatientCaregiver[]
-  media              Media[]
-  quizSessions       QuizSession[]
-  analyticsSnapshots AnalyticsSnapshot[]
+  creator             Caregiver           @relation(fields: [createdBy], references: [id])
+  patientCaregivers   PatientCaregiver[]
+  media               Media[]
+  quizSessions        QuizSession[]
+  analyticsSnapshots  AnalyticsSnapshot[]
+  delegationRequests  DelegationRequest[]
+  roleRequests        RoleRequest[]
 
   @@map("patients")
 }
@@ -114,6 +213,7 @@ model AuthSession {
   id          String    @id @default(uuid())
   caregiverId String    @map("caregiver_id")
   tokenHash   String    @map("token_hash")
+  deviceLabel String?   @map("device_label")
   createdAt   DateTime  @default(now()) @map("created_at")
   expiresAt   DateTime  @map("expires_at")
   revokedAt   DateTime? @map("revoked_at")

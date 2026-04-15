@@ -13,6 +13,10 @@ function IOSTabLayout() {
         <Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
         <Label>Patients</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="inbox">
+        <Icon sf={{ default: 'tray', selected: 'tray.fill' }} />
+        <Label>Inbox</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="analytics">
         <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
         <Label>Analytics</Label>
@@ -35,12 +39,16 @@ function AndroidTabLayout() {
         options={{
           title: 'Patients',
           tabBarIcon: ({ color, size }) => (
-            <AppIcon
-              iosName="person.2.fill"
-              androidFallback="P"
-              size={size}
-              color={color}
-            />
+            <AppIcon iosName="person.2.fill" androidFallback="P" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="inbox"
+        options={{
+          title: 'Inbox',
+          tabBarIcon: ({ color, size }) => (
+            <AppIcon iosName="tray.fill" androidFallback="I" size={size} color={color} />
           ),
         }}
       />
@@ -49,12 +57,7 @@ function AndroidTabLayout() {
         options={{
           title: 'Analytics',
           tabBarIcon: ({ color, size }) => (
-            <AppIcon
-              iosName="chart.bar.fill"
-              androidFallback="A"
-              size={size}
-              color={color}
-            />
+            <AppIcon iosName="chart.bar.fill" androidFallback="A" size={size} color={color} />
           ),
         }}
       />

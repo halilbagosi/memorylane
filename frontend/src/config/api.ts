@@ -1,20 +1,12 @@
 import { Platform } from 'react-native';
 
-// Dev default: iOS simulator and web can use localhost. Android emulator must use
-// 10.0.2.2 to reach the host machine (localhost inside the emulator is the emulator itself).
-const RAW_BASE = 'http://localhost:3000';
+// EXPO_PUBLIC_API_BASE_URL can be set in .env.local to override defaults.
+// Physical devices on Wi-Fi need the host machine's LAN IP.
+// Simulators/emulators work out of the box with the platform-aware fallback.
+const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
 
-function resolveApiBaseUrl(): string {
-  if (Platform.OS !== 'android') {
-    return RAW_BASE;
-  }
-  if (RAW_BASE.includes('localhost')) {
-    return RAW_BASE.replace('localhost', '10.0.2.2');
-  }
-  if (RAW_BASE.includes('127.0.0.1')) {
-    return RAW_BASE.replace('127.0.0.1', '10.0.2.2');
-  }
-  return RAW_BASE;
-}
+const FALLBACK = Platform.OS === 'android'
+  ? 'http://10.0.2.2:3000'
+  : 'http://localhost:3000';
 
-export const API_BASE_URL = resolveApiBaseUrl();
+export const API_BASE_URL: string = envUrl || FALLBACK;
