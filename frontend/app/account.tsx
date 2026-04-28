@@ -81,6 +81,7 @@ export default function AccountScreen() {
     }),
   ).current;
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [profile, setProfile] = useState<CaregiverInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -169,6 +170,11 @@ export default function AccountScreen() {
         openDeletionModal();
       }
     })();
+    return () => {
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+      }
+    };
   }, []);
 
   const loadProfile = async (tok: string) => {
@@ -514,6 +520,18 @@ export default function AccountScreen() {
     ]);
   };
 
+  const scheduleLogoutAfterDeletion = () => {
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+    }
+
+    logoutTimerRef.current = setTimeout(async () => {
+      dismissDialog();
+      await clearAuth();
+      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+    }, 2500);
+  };
+
   // ─── Delete Account (request-based flow) ──────────────────────────────────
 
   const handleDeleteAccount = () => {
@@ -603,8 +621,12 @@ export default function AccountScreen() {
       const data = await res.json();
       if (res.ok) {
         setDeletionModalVisible(false);
-        await clearAuth();
-        navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+        showDialog(
+          'Account Deleted',
+          'Your account has been deleted. You will be logged out shortly.',
+          [{ label: 'OK', onPress: dismissDialog }],
+        );
+        scheduleLogoutAfterDeletion();
       } else {
         showDialog('Error', data.message ?? 'Could not confirm deletion', [
           { label: 'OK', onPress: dismissDialog },
