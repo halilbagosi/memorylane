@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException, ForbiddenException } 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
-import { encrypt, decrypt } from './encryption.util';
+import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
 
 @Injectable()
 export class PatientService {
@@ -76,20 +76,22 @@ export class PatientService {
       select: { name: true, surname: true },
     });
     if (primaryLink && joiner && primaryLink.caregiverId !== caregiverId) {
+      const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
       await this.prisma.notification.create({
         data: {
           caregiverId: primaryLink.caregiverId,
           type: 'SECONDARY_ADDED' as any,
           title: 'New team member',
-          body: `${joiner.name} ${joiner.surname} joined the care team for ${decrypt(patient.name)} ${decrypt(patient.surname)}.`,
+          body: `${joiner.name} ${joiner.surname} joined the care team for ${pn} ${ps}.`,
         },
       });
     }
 
+    const shown = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
     return {
       id: patient.id,
-      name: decrypt(patient.name),
-      surname: decrypt(patient.surname),
+      name: shown.name,
+      surname: shown.surname,
     };
   }
 
@@ -104,7 +106,7 @@ export class PatientService {
     // ── C7: Void any pending delegation requests targeting this caregiver ──
     const pendingDelegations = await this.prisma.delegationRequest.findMany({
       where: { toCaregiverId: caregiverId, patientId, status: 'PENDING' },
-      include: { patient: { select: { name: true, surname: true } } },
+      include: { patient: { select: { id: true, name: true, surname: true } } },
     });
 
     if (pendingDelegations.length > 0) {
@@ -125,7 +127,8 @@ export class PatientService {
 
       // Notify each primary caregiver that this secondary is no longer available
       for (const del of pendingDelegations) {
-        const patientName = `${decrypt(del.patient.name)} ${decrypt(del.patient.surname)}`;
+        const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, del.patient);
+        const patientName = `${pn} ${ps}`;
         await this.prisma.notification.create({
           data: {
             caregiverId: del.fromCaregiverId,
@@ -244,7 +247,8 @@ export class PatientService {
       where: { patientId: patient.id },
       select: { caregiverId: true },
     });
-    const patientName = `${decrypt(patient.name)} ${decrypt(patient.surname)}`;
+    const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+    const patientName = `${pn} ${ps}`;
     if (caregiverLinks.length > 0) {
       await this.prisma.notification.createMany({
         data: caregiverLinks.map(link => ({
@@ -256,10 +260,11 @@ export class PatientService {
       });
     }
 
+    const joined = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
     return {
       id: patient.id,
-      name: decrypt(patient.name),
-      surname: decrypt(patient.surname),
+      name: joined.name,
+      surname: joined.surname,
       dateOfBirth: patient.dateOfBirth,
       avatarUrl: patient.avatarUrl ?? null,
       caregiver: {

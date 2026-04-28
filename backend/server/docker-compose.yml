@@ -1,0 +1,49 @@
+# Local / Droplet-style stack: PostgreSQL + Nest API + persistent media volume.
+# Usage (from this directory):
+#   cp .env.example .env   # fill secrets (DATABASE_URL will be overridden below if using compose DB)
+#   docker compose up --build -d
+#
+# For production on a Droplet, point DATABASE_URL at Managed Postgres or the `db` service,
+# set secrets from .env, and bind port 8080 behind HTTPS (Caddy or nginx).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: memorylane
+      POSTGRES_PASSWORD: memorylane
+      POSTGRES_DB: memorylane
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U memorylane -d memorylane']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      HOST: 0.0.0.0
+      PORT: '8080'
+      NODE_ENV: production
+      DATABASE_URL: postgresql://memorylane:memorylane@db:5432/memorylane
+      MEDIA_STORAGE_DRIVER: local
+      MEDIA_STORAGE_LOCAL_PATH: /app/uploads/media
+    env_file:
+      - .env
+    volumes:
+      - media_uploads:/app/uploads/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  media_uploads:

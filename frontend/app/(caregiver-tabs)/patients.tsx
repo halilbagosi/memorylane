@@ -630,6 +630,13 @@ export default function PatientsTab() {
           onAvatarChange={handlePatientAvatarChange}
           onRemoveCaregiver={handleRemoveCaregiver}
           onRequestPrimary={handleRequestPrimary}
+          onOpenMemories={(p) => {
+            setSelectedPatient(null);
+            router.push({
+              pathname: '/patient-media',
+              params: { patientId: p.id, patientName: `${p.name} ${p.surname}`.trim() },
+            });
+          }}
           myId={caregiver?.id ?? ''}
           showDialog={showDialog}
           dismissDialog={dismissDialog}
@@ -650,7 +657,7 @@ export default function PatientsTab() {
 }
 
 function PatientDetailContent({
-  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, myId, showDialog, dismissDialog,
+  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, onOpenMemories, myId, showDialog, dismissDialog,
 }: {
   patient: PatientItem | null;
   onClose: () => void;
@@ -661,6 +668,7 @@ function PatientDetailContent({
   onAvatarChange: (patient: PatientItem, avatarUrl: string | null) => Promise<void>;
   onRemoveCaregiver: (patient: PatientItem, caregiverId: string, caregiverName: string) => void;
   onRequestPrimary: (patient: PatientItem) => void;
+  onOpenMemories: (patient: PatientItem) => void;
   myId: string;
   showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
   dismissDialog: () => void;
@@ -772,9 +780,15 @@ function PatientDetailContent({
     return (
       <View style={styles.sheetContainer}>
         <View style={styles.sheetNavHeader}>
-          <TouchableOpacity onPress={() => setView('detail')} style={styles.backBtn}>
-            <AppIcon iosName="chevron.left" androidFallback="‹" size={20} color={colors.secondary} />
-            <Text style={styles.backBtnText}>Back</Text>
+          <TouchableOpacity onPress={() => setView('detail')} style={styles.backBtn} activeOpacity={0.6}>
+            <AppIcon
+              iosName="chevron.left"
+              androidFallback="‹"
+              size={isIOS ? 22 : 24}
+              color={isIOS ? colors.secondary : colors.textDark}
+              weight={isIOS ? 'semibold' : 'medium'}
+            />
+            {isIOS && <Text style={styles.backBtnText}>Back</Text>}
           </TouchableOpacity>
           <Text style={styles.sheetNavTitle}>Care Team</Text>
           <View style={{ width: 60 }} />
@@ -977,6 +991,14 @@ function PatientDetailContent({
 
       {/* Action rows */}
       <View style={styles.actionsList}>
+        <TouchableOpacity style={styles.actionRow} onPress={() => onOpenMemories(patient)}>
+          <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
+            <AppIcon iosName="photo.on.rectangle" androidFallback="🖼" size={18} color={colors.secondary} />
+          </View>
+          <Text style={styles.actionRowLabel}>Memory Library</Text>
+          <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
         {patient.isPrimary && patient.paired && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onUnpair(patient)}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
@@ -1188,8 +1210,9 @@ const styles = StyleSheet.create({
 
   // Sheet content
   sheetContainer: {
-    padding: 24,
-    paddingTop: 16,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -1244,9 +1267,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 24,
+    marginTop: 8,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 16,
+    borderRadius: isIOS ? 16 : 20,
     backgroundColor: isIOS ? 'rgba(255,255,255,0.45)' : 'rgba(0, 0, 0, 0.04)',
   },
   statusDot: {
@@ -1663,16 +1687,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
+    paddingTop: 4,
   },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    width: 60,
+    gap: isIOS ? 2 : 0,
+    minWidth: 60,
+    paddingVertical: 6,
+    paddingRight: 8,
+    ...(isIOS ? {} : {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.05)',
+    }),
   },
   backBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 15,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 17,
     color: colors.secondary,
   },
   sheetNavTitle: {
@@ -1713,25 +1747,26 @@ const styles = StyleSheet.create({
   // Action list rows
   actionsList: {
     marginTop: 20,
-    borderRadius: 16,
+    borderRadius: isIOS ? 16 : 20,
     overflow: 'hidden',
     backgroundColor: isIOS ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.03)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0,0,0,0.07)',
+    ...(isIOS ? {} : { elevation: 1 }),
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: isIOS ? 14 : 16,
     paddingHorizontal: 16,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(0,0,0,0.07)',
   },
   actionRowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: isIOS ? 34 : 40,
+    height: isIOS ? 34 : 40,
+    borderRadius: isIOS ? 10 : 12,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -484,7 +484,9 @@ export default function InboxTab() {
                   <Text style={styles.rowSub}>{new Date(notif.createdAt).toLocaleDateString()}</Text>
                 </View>
                 {isTappable && (
-                  <AppIcon iosName="chevron.right" androidFallback="›" size={14} color={colors.textMuted} style={{ paddingTop: 3, opacity: 0.5 }} />
+                  <View style={{ paddingTop: 3, opacity: 0.5 }}>
+                    <AppIcon iosName="chevron.right" androidFallback="›" size={14} color={colors.textMuted} />
+                  </View>
                 )}
               </View>
             );

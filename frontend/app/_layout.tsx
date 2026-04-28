@@ -16,6 +16,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 const isAndroid = Platform.OS === 'android';
+const isIOS = Platform.OS === 'ios';
 
 const paperTheme = {
   ...MD3LightTheme,
@@ -65,7 +66,9 @@ export default function RootLayout() {
             headerTitleStyle: { fontFamily: 'GothicA1_700Bold' },
             headerShadowVisible: false,
             headerBackTitle: '',
+            headerBackButtonDisplayMode: 'minimal',
             gestureEnabled: true,
+            ...(isIOS ? { fullScreenGestureEnabled: true } : {}),
             animation: isAndroid ? 'slide_from_right' : undefined,
           }}
         >
@@ -161,6 +164,16 @@ export default function RootLayout() {
             options={{
               title: 'Account',
               gestureEnabled: true,
+            }}
+          />
+
+          <Stack.Screen
+            name="patient-media"
+            options={{
+              title: 'Memories',
+              headerShown: true,
+              gestureEnabled: true,
+              ...(isIOS ? { fullScreenGestureEnabled: true } : {}),
             }}
           />
         </Stack>

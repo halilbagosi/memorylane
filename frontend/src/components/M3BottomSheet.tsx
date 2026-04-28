@@ -64,6 +64,7 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
         onRequestClose={onClose}
       >
         <View style={[styles.iosSheet, { backgroundColor: colors.neutral }]}>
+          <View style={styles.handle} />
           {children}
         </View>
       </Modal>

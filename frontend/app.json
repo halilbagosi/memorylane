@@ -18,7 +18,10 @@
       "bundleIdentifier": "com.memorylane.app",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account."
+        "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
@@ -28,7 +31,14 @@
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.memorylane.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,98 +1,164 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# MemoryLane Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS backend for caregiver/patient management, authentication, and secure media handling.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Why This Security Design
 
-## Description
+For the bachelor project scope, we selected **Option 2 (Balanced Academic-Grade)** for caregiver media uploads:
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- private object storage with signed URLs
+- server-side envelope encryption (per-file data key)
+- pseudonymous media records to reduce direct caregiver/patient linkage risk
 
-## Project setup
+This option gives a strong, defendable security model without the delivery risk of full end-to-end cryptography.
 
-```bash
-$ npm install
+## Decision Record: Options and Tradeoffs
+
+### Option 1: Single key encryption (not chosen)
+
+**Pros**
+- fastest implementation
+- low infrastructure overhead
+
+**Cons**
+- single-key compromise can expose all files
+- weaker argument against large-scale breach impact
+- less realistic architecture for future scaling
+
+### Option 2: Envelope encryption + private object storage (chosen)
+
+**Pros**
+- per-file data keys reduce blast radius
+- protects confidentiality even under DB leaks
+- aligns with production patterns (signed URLs, private bucket, short-lived access)
+- feasible in course timeline
+
+**Cons**
+- more components to build and test
+- key wrapping/unwrapping logic must be carefully implemented
+
+### Option 3: Client-side end-to-end encryption (not chosen)
+
+**Pros**
+- strongest privacy guarantees in theory
+
+**Cons**
+- requires complex key lifecycle (sharing, recovery, rotation, device transfer)
+- high implementation and debugging cost for bachelor timeline
+
+## Threat Model
+
+Primary threats considered:
+
+- database exfiltration
+- object storage misconfiguration or leak
+- guessed/reused direct media links
+- insecure query paths (SQL injection)
+
+Security objective:
+
+- a database leak should not let an attacker directly map clear media to caregiver/patient identities
+
+## Architecture (Chosen)
+
+```mermaid
+flowchart LR
+  caregiverApp[CaregiverApp] --> apiBackend[APIBackend]
+  apiBackend --> authzCheck[AuthzCheck]
+  authzCheck --> keyService[EnvelopeKeyService]
+  keyService --> mediaTable[MediaTablePseudonymous]
+  keyService --> objectStore[PrivateObjectStorage]
+  apiBackend --> signedUrlService[SignedUrlService]
+  signedUrlService --> caregiverApp
+  caregiverApp --> objectStore
+  patientApp[PatientApp] --> apiBackend
+  apiBackend --> signedUrlService
+  signedUrlService --> patientApp
 ```
 
-## Compile and run the project
+### Upload flow
 
-```bash
-# development
-$ npm run start
+1. Caregiver requests upload intent for a specific patient.
+2. Backend verifies caregiver-to-patient authorization.
+3. Backend creates:
+   - pseudonymous `mediaId`
+   - random object key (non-guessable)
+   - random file data key (DEK)
+   - wrapped DEK (encrypted by master key)
+4. Backend stores only metadata + wrapped DEK in DB.
+5. Backend returns short-lived signed PUT URL.
+6. App uploads encrypted media payload to private storage.
 
-# watch mode
-$ npm run start:dev
+### Read flow
 
-# production mode
-$ npm run start:prod
-```
+1. Patient/caregiver requests media access.
+2. Backend verifies access rights.
+3. Backend resolves media by pseudonymous ID.
+4. Backend issues short-lived signed GET URL (or streams decrypted content if needed by product design).
 
-## Run tests
+## Data Minimization and Unlinkability
 
-```bash
-# unit tests
-$ npm run test
+To reduce direct linkability in case of DB leak:
 
-# e2e tests
-$ npm run test:e2e
+- avoid exposing direct caregiver/patient identifiers in media retrieval APIs
+- store external-facing opaque IDs (`mediaId`) instead of predictable storage names
+- keep relation lookup gated server-side (authorization required)
+- never expose permanent public object URLs
 
-# test coverage
-$ npm run test:cov
-```
+Note: complete unlinkability is impossible in relational systems that need access control, but pseudonymization + strict API mediation significantly increases attacker effort.
 
-## Deployment
+## Encryption Model
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+- Use `AES-256-GCM` for media payload encryption (integrity + confidentiality).
+- Generate a random DEK per media object.
+- Wrap each DEK using a backend master key (or KMS-managed key).
+- Store `{ wrappedDek, keyVersion, iv/nonce, authTag, algorithm }` in metadata.
+- Keep master key outside source code and outside the database.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## SQL Injection Posture
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+Current backend stack uses Prisma ORM and typed query builders. This is our baseline defense:
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- no dynamic string-concatenated SQL in normal paths
+- keep using Prisma typed methods for CRUD and relations
+- if raw SQL is required later, use parameterized Prisma raw APIs only
+- validate all DTO input and enforce authorization checks for every media route
 
-## Resources
+## Operational Security Requirements
 
-Check out a few resources that may come in handy when working with NestJS:
+- `JWT_SECRET` and encryption master key must be strong and environment-managed.
+- no default fallback key in production.
+- signed URLs must be short-lived and scoped to exact object + operation.
+- log only pseudonymous IDs (never keys, plaintext names, or raw media payload).
+- apply upload limits (size, MIME allow-list) and rate limits.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Project-Scope Implementation Targets
 
-## Support
+Within bachelor timeline, implementation should include:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- secure upload intent endpoint
+- encrypted media metadata persistence
+- private storage integration with signed URLs
+- authorization checks for caregiver/patient access
+- minimal audit logging around upload/read operations
+- focused tests for authz, link expiration, and key metadata correctness
 
-## Stay in touch
+## Local Development Notes
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Use environment variables for all secrets and storage configuration. Do not commit real keys or credentials.
 
-## License
+Typical categories:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- database connection
+- JWT signing secret
+- encryption master key (or KMS config)
+- object storage endpoint, bucket, access key, secret key
+- signed URL expiration durations
+
+## Summary
+
+Option 2 is the best fit for this project:
+
+- meaningful security improvements over single-key baseline
+- practical complexity for bachelor course constraints
+- clear, report-friendly rationale for design decisions and threat mitigation

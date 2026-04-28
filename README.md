@@ -200,6 +200,77 @@ memorylane/
 | DELETE | `/patients/:id/leave` | Leave a patient's care team |
 | DELETE | `/patients/:id` | Delete a patient |
 
+## Media Upload Security Decision (Bachelor Scope)
+
+For caregiver-uploaded media used by quiz generation and the patient "Relive" tab, we chose the **Balanced Academic-Grade** approach:
+
+- **Private object storage + signed URLs** for file transport/access
+- **Server-side envelope encryption** (unique data key per file, wrapped by a master key)
+- **Pseudonymous media references** in the database to avoid direct caregiver/patient linkage from media rows alone
+
+### Why we chose this option
+
+This project needs stronger protection than a "single key for all files", but must still be deliverable within a bachelor course timeline. Option 2 gives a credible security architecture that is realistic, explainable in an academic report, and feasible to implement without building full end-to-end key exchange/recovery.
+
+### Alternatives considered
+
+#### Option 1: Single server key + encrypted blob storage
+
+**Pros**
+- Very fast to build and demo
+- Minimal infrastructure and code complexity
+
+**Cons**
+- If that one key leaks, all media can be decrypted
+- Weak tenant isolation and weaker "DB leak" story
+- Less aligned with modern production patterns
+
+#### Option 2: Envelope encryption with private object storage (chosen)
+
+**Pros**
+- Stronger blast-radius control (per-file keying)
+- Better fit for "DB leaked but media still protected" threat model
+- Closer to industry architecture while still course-feasible
+- Good balance of implementation effort and security value
+
+**Cons**
+- More moving parts than Option 1 (key wrapping, signed upload/download workflow)
+- Requires careful metadata and access-control design
+
+#### Option 3: Client-side end-to-end encryption
+
+**Pros**
+- Highest confidentiality (server never sees plaintext)
+
+**Cons**
+- Significant complexity for key distribution, key recovery, and multi-device support
+- High delivery risk for a course project timeline
+
+### Threat model and privacy objective
+
+Our objective is to reduce impact from:
+
+- **Database exfiltration**
+- **Object storage bucket exposure**
+- **Unauthorized direct media URL access**
+
+Design principles:
+
+- Store media files encrypted at rest with per-file data keys
+- Keep media identifiers pseudonymous and non-guessable
+- Minimize direct caregiver/patient identifiers in media tables
+- Issue only short-lived signed URLs for reads/writes
+- Enforce caregiver authorization before any URL issuance
+
+### SQL injection stance
+
+The backend uses Prisma ORM and currently avoids raw SQL query construction. To keep SQL injection risk low:
+
+- Continue using Prisma typed query APIs by default
+- Avoid raw SQL unless absolutely required
+- If raw SQL is ever needed, use parameterized Prisma raw APIs only
+- Keep DTO validation (`class-validator`) and authorization checks strict for all upload-related endpoints
+
 ## Prerequisites
 
 - Node.js v20+

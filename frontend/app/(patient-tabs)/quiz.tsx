@@ -1,24 +1,46 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
-import { getPatientInfo, PatientInfo } from '../../src/utils/auth';
+import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
 
 export default function QuizTab() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [patient, setPatient] = useState<PatientInfo | null>(null);
 
   useEffect(() => {
     getPatientInfo().then(setPatient);
   }, []);
 
+  const handleLogout = () => {
+    Alert.alert('Log Out (Debug)', 'Return to the welcome screen?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          await deletePatientInfo();
+          navigation.dispatch(
+            CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }),
+          );
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
       {patient && (
         <View style={styles.topRow}>
           <Text style={styles.greeting}>Hi, {patient.name}</Text>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7}>
+            <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#C0392B" />
+          </TouchableOpacity>
           {patient.avatarUrl ? (
             <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
           ) : (
@@ -61,6 +83,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: colors.textDark,
     flex: 1,
+  },
+  logoutBtn: {
+    padding: 8,
+    marginRight: 8,
   },
   headerAvatar: {
     width: 36,

@@ -442,12 +442,12 @@ export default function AccountScreen() {
   const revokeSession = (sessionId: string) => {
     const isCurrent = sessionId === currentSessionId;
     showDialog(
-      isCurrent ? 'Sign Out' : 'Log Out Device',
-      isCurrent ? 'You will be signed out of this device.' : 'This device will be logged out immediately.',
+      isCurrent ? 'Log Out' : 'Log Out Device',
+      isCurrent ? 'You will be logged out of this device.' : 'This device will be logged out immediately.',
       [
         { label: 'Cancel', onPress: dismissDialog },
         {
-          label: isCurrent ? 'Sign Out' : 'Log Out',
+          label: 'Log Out',
           destructive: true,
           onPress: async () => {
             dismissDialog();
@@ -470,7 +470,7 @@ export default function AccountScreen() {
   };
 
   const logoutOtherSessions = () => {
-    showDialog('Log Out Other Sessions', 'All other devices will be signed out immediately.', [
+    showDialog('Log Out Other Sessions', 'All other devices will be logged out immediately.', [
       { label: 'Cancel', onPress: dismissDialog },
       {
         label: 'Log Out Others',
@@ -492,10 +492,10 @@ export default function AccountScreen() {
   // ─── Logout current device ─────────────────────────────────────────────────
 
   const handleLogout = () => {
-    showDialog('Sign Out', 'You will be signed out of this device.', [
+    showDialog('Log Out', 'You will be logged out of this device.', [
       { label: 'Cancel', onPress: dismissDialog },
       {
-        label: 'Sign Out',
+        label: 'Log Out',
         destructive: true,
         onPress: async () => {
           dismissDialog();
@@ -765,11 +765,11 @@ export default function AccountScreen() {
                           {isCurrent && <Text style={styles.currentBadge}> · This device</Text>}
                         </Text>
                         <Text style={styles.rowValue}>
-                          {isCurrent ? 'Last active: Now' : `Signed in ${date}`}
+                          {isCurrent ? 'Last active: Now' : `Logged in ${date}`}
                         </Text>
                       </View>
                       <TouchableOpacity onPress={() => revokeSession(session.id)} style={styles.revokeBtn} activeOpacity={0.7}>
-                        <Text style={styles.revokeBtnText}>{isCurrent ? 'Sign Out' : 'Log Out'}</Text>
+                        <Text style={styles.revokeBtnText}>Log Out</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -792,8 +792,8 @@ export default function AccountScreen() {
                 <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#C0392B" />
               </View>
               <View style={styles.rowContent}>
-                <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Sign Out</Text>
-                <Text style={styles.rowValue}>Sign out of this device</Text>
+                <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Log Out</Text>
+                <Text style={styles.rowValue}>Log out of this device</Text>
               </View>
               <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
             </TouchableOpacity>

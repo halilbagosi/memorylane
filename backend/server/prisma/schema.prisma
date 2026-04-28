@@ -160,24 +160,63 @@ model PatientCaregiver {
   @@map("patient_caregivers")
 }
 
+enum MediaKind {
+  PHOTO
+  AUDIO
+  VIDEO
+  DOCUMENT
+}
+
+enum MediaStatus {
+  PENDING_UPLOAD
+  READY
+  FAILED
+}
+
 model Media {
-  id           String        @id @default(uuid())
-  patientId    String        @map("patient_id")
-  caregiverId  String?       @map("caregiver_id")
-  correctName  String        @map("correct_name")
-  relationship String
-  imageUrl     String        @map("image_url")
-  audioUrl     String        @map("audio_url")
-  decoy1       String        @map("decoy_1")
-  decoy2       String        @map("decoy_2")
-  isActive     Boolean       @default(true) @map("is_active")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id           String      @id @default(uuid())
+  publicId     String      @unique @default(uuid()) @map("public_id")
+  patientId    String      @map("patient_id")
+  caregiverId  String?     @map("caregiver_id")
+
+  kind         MediaKind
+  status       MediaStatus @default(PENDING_UPLOAD)
+
+  // Quiz-related fields kept nullable for future quiz/relive integration.
+  // They are NOT used by the upload pipeline itself.
+  correctName  String?     @map("correct_name")
+  relationship String?
+  decoy1       String?     @map("decoy_1")
+  decoy2       String?     @map("decoy_2")
+  isActive     Boolean     @default(true) @map("is_active")
+
+  // Object storage reference (random, non-guessable).
+  // Never returned to clients.
+  storageKey   String      @unique @map("storage_key")
+
+  contentType  String      @map("content_type")
+  byteSize     Int         @map("byte_size")
+
+  // Envelope encryption metadata.
+  // wrappedDek = AES-256-GCM(masterKey, dek) with dekIv + dekTag.
+  // payloadIv/payloadTag describe the AES-256-GCM encryption of the
+  // file payload at rest using the per-file DEK.
+  wrappedDek   String      @map("wrapped_dek")
+  dekIv        String      @map("dek_iv")
+  dekTag       String      @map("dek_tag")
+  payloadIv    String      @map("payload_iv")
+  payloadTag   String?     @map("payload_tag")
+  algorithm    String      @default("AES-256-GCM")
+  keyVersion   String      @default("v1") @map("key_version")
+
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   patient      Patient       @relation(fields: [patientId], references: [id])
   caregiver    Caregiver?    @relation(fields: [caregiverId], references: [id])
   quizAttempts QuizAttempt[]
 
+  @@index([patientId, createdAt])
   @@map("media")
 }
 

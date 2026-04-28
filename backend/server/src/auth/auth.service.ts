@@ -6,7 +6,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { decrypt } from '../patient/encryption.util';
+import { decryptPatientNamesWithOptionalReencrypt } from '../patient/encryption.util';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomInt, randomBytes } from 'crypto';
@@ -42,6 +42,16 @@ export class AuthService {
   }
 
   // ─── Shared Helpers ──────────────────────────────────────────────────────
+
+  /** Patient name columns: decrypt with legacy key fallback; re-encrypt with primary key if a legacy key matched. */
+  private decryptPatientRow(row: { id: string; name: string; surname: string }) {
+    return decryptPatientNamesWithOptionalReencrypt(this.prisma, row);
+  }
+
+  private async patientFullDisplayName(row: { id: string; name: string; surname: string }) {
+    const o = await this.decryptPatientRow(row);
+    return `${o.name} ${o.surname}`;
+  }
 
   private async createSessionToken(caregiverId: string, email: string, deviceLabel?: string | null) {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
@@ -436,14 +446,20 @@ export class AuthService {
     );
 
     if (patientsWithoutSecondaries.length > 0) {
+      const blockedPatients = await Promise.all(
+        patientsWithoutSecondaries.map(async (r) => {
+          const o = await this.decryptPatientRow({
+            id: r.patient.id,
+            name: r.patient.name,
+            surname: r.patient.surname,
+          });
+          return { id: r.patient.id, name: o.name, surname: o.surname };
+        }),
+      );
       return {
         status: 'BLOCKED',
         message: 'Some patients have no other caregivers. You must invite someone to take over or delete the patient profile first.',
-        blockedPatients: patientsWithoutSecondaries.map(r => ({
-          id: r.patient.id,
-          name: decrypt(r.patient.name),
-          surname: decrypt(r.patient.surname),
-        })),
+        blockedPatients,
       };
     }
 
@@ -493,7 +509,7 @@ export class AuthService {
 
       patients.push({
         patientId: rel.patientId,
-        patientName: `${decrypt(rel.patient.name)} ${decrypt(rel.patient.surname)}`,
+        patientName: await this.patientFullDisplayName(rel.patient),
         sentTo: {
           id: chosenSecondary.caregiver.id,
           name: chosenSecondary.caregiver.name,
@@ -606,7 +622,7 @@ export class AuthService {
     for (const rel of primaryRelations) {
       patientMap.set(rel.patientId, {
         patientId: rel.patientId,
-        patientName: `${decrypt(rel.patient.name)} ${decrypt(rel.patient.surname)}`,
+        patientName: await this.patientFullDisplayName(rel.patient),
         status: 'NEEDS_SELECTION',
         currentRequest: null,
         availableSecondaries: rel.patient.patientCaregivers.map(pc => ({
@@ -694,13 +710,13 @@ export class AuthService {
         where: { id: { in: patientIds } },
         select: { id: true, name: true, surname: true },
       });
-      await this.prisma.notification.createMany({
-        data: accepted
+      const delegationNotes = await Promise.all(
+        accepted
           .filter(req => patientsDelegated.has(req.patientId))
-          .map(req => {
+          .map(async req => {
             const patient = patients.find(p => p.id === req.patientId);
             const patientName = patient
-              ? `${decrypt(patient.name)} ${decrypt(patient.surname)}`
+              ? await this.patientFullDisplayName(patient)
               : 'a patient';
             return {
               caregiverId: req.toCaregiverId,
@@ -709,7 +725,8 @@ export class AuthService {
               body: `${finalizerName} has deleted their account and delegated the primary role for ${patientName} to you.`,
             };
           }),
-      });
+      );
+      await this.prisma.notification.createMany({ data: delegationNotes });
     }
 
     // Set status to DEACTIVATED and schedule permanent deletion in 10 days
@@ -737,7 +754,7 @@ export class AuthService {
     // Cancel all pending/accepted delegation requests
     const allActiveRequests = await this.prisma.delegationRequest.findMany({
       where: { fromCaregiverId: caregiverId, status: { in: ['PENDING', 'ACCEPTED'] } },
-      include: { patient: { select: { name: true, surname: true } } },
+      include: { patient: { select: { id: true, name: true, surname: true } } },
     });
 
     await this.prisma.delegationRequest.updateMany({
@@ -749,17 +766,24 @@ export class AuthService {
     if (allActiveRequests.length > 0 && canceller) {
       // Get unique caregiver IDs to avoid duplicate notifications
       const uniqueRecipients = [...new Set(allActiveRequests.map(r => r.toCaregiverId))];
-      await this.prisma.notification.createMany({
-        data: uniqueRecipients.map(recipientId => {
+      const cancelNotes = await Promise.all(
+        uniqueRecipients.map(async recipientId => {
           const req = allActiveRequests.find(r => r.toCaregiverId === recipientId)!;
+          const { name: rn, surname: rs } = await this.decryptPatientRow({
+            id: req.patient.id,
+            name: req.patient.name,
+            surname: req.patient.surname,
+          });
+          const bodyPatient = `${rn} ${rs}`;
           return {
             caregiverId: recipientId,
             type: 'DELEGATION_CANCELLED' as any,
             title: 'Transfer cancelled',
-            body: `${canceller.name} ${canceller.surname} has cancelled their account deletion. The transfer for ${decrypt(req.patient.name)} ${decrypt(req.patient.surname)} will not proceed.`,
+            body: `${canceller.name} ${canceller.surname} has cancelled their account deletion. The transfer for ${bodyPatient} will not proceed.`,
           };
         }),
-      });
+      );
+      await this.prisma.notification.createMany({ data: cancelNotes });
     }
 
     // Restore to active
@@ -781,7 +805,7 @@ export class AuthService {
     const acceptedDelegations = await this.prisma.delegationRequest.findMany({
       where: { fromCaregiverId: caregiverId, status: 'ACCEPTED' },
       include: {
-        patient: { select: { name: true, surname: true } },
+        patient: { select: { id: true, name: true, surname: true } },
         toCaregiver: { select: { name: true, surname: true } },
       },
     });
@@ -794,10 +818,12 @@ export class AuthService {
 
     const accessToken = await this.createSessionToken(caregiverId, caregiver.email);
 
-    const roleChangedPatients = acceptedDelegations.map(d => ({
-      patientName: `${decrypt(d.patient.name)} ${decrypt(d.patient.surname)}`,
-      newPrimaryName: `${d.toCaregiver.name} ${d.toCaregiver.surname}`,
-    }));
+    const roleChangedPatients = await Promise.all(
+      acceptedDelegations.map(async d => ({
+        patientName: await this.patientFullDisplayName(d.patient),
+        newPrimaryName: `${d.toCaregiver.name} ${d.toCaregiver.surname}`,
+      })),
+    );
 
     return {
       message: 'Account restored successfully.',
@@ -835,7 +861,7 @@ export class AuthService {
     if (existing) throw new BadRequestException('You already have a pending request for this patient');
 
     const [patient, requester] = await Promise.all([
-      this.prisma.patient.findUnique({ where: { id: patientId }, select: { name: true, surname: true } }),
+      this.prisma.patient.findUnique({ where: { id: patientId }, select: { id: true, name: true, surname: true } }),
       this.prisma.caregiver.findUnique({ where: { id: requesterId }, select: { name: true, surname: true } }),
     ]);
     if (!patient || !requester) throw new NotFoundException('Patient or requester not found');
@@ -844,7 +870,7 @@ export class AuthService {
       data: { patientId, requesterId, currentPrimaryId: primaryLink.caregiverId },
     });
 
-    const patientName = `${decrypt(patient.name)} ${decrypt(patient.surname)}`;
+    const patientName = await this.patientFullDisplayName(patient);
     const requesterName = `${requester.name} ${requester.surname}`;
 
     await this.prisma.notification.create({
@@ -871,34 +897,39 @@ export class AuthService {
     const requests = await this.prisma.roleRequest.findMany({
       where: { currentPrimaryId: caregiverId, status: 'PENDING' },
       include: {
-        patient: { select: { name: true, surname: true } },
+        patient: { select: { id: true, name: true, surname: true } },
         requester: { select: { id: true, name: true, surname: true, avatarUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return requests.map(r => ({
-      id: r.id,
-      patient: {
-        id: r.patientId,
-        name: decrypt(r.patient.name),
-        surname: decrypt(r.patient.surname),
-      },
-      requester: {
-        id: r.requester.id,
-        name: r.requester.name,
-        surname: r.requester.surname,
-        avatarUrl: r.requester.avatarUrl,
-      },
-      createdAt: r.createdAt,
-    }));
+    return Promise.all(
+      requests.map(async r => {
+        const { name: pn, surname: ps } = await this.decryptPatientRow(r.patient);
+        return {
+          id: r.id,
+          patient: {
+            id: r.patientId,
+            name: pn,
+            surname: ps,
+          },
+          requester: {
+            id: r.requester.id,
+            name: r.requester.name,
+            surname: r.requester.surname,
+            avatarUrl: r.requester.avatarUrl,
+          },
+          createdAt: r.createdAt,
+        };
+      }),
+    );
   }
 
   async respondToRoleRequest(requestId: string, primaryId: string, action: 'APPROVE' | 'DECLINE') {
     const roleRequest = await this.prisma.roleRequest.findUnique({
       where: { id: requestId },
       include: {
-        patient: { select: { name: true, surname: true } },
+        patient: { select: { id: true, name: true, surname: true } },
         requester: { select: { name: true, surname: true } },
         currentPrimary: { select: { name: true, surname: true } },
       },
@@ -907,7 +938,7 @@ export class AuthService {
     if (roleRequest.currentPrimaryId !== primaryId) throw new ForbiddenException('Only the current primary caregiver can respond to this request');
     if (roleRequest.status !== 'PENDING') throw new BadRequestException('This request has already been responded to');
 
-    const patientName = `${decrypt(roleRequest.patient.name)} ${decrypt(roleRequest.patient.surname)}`;
+    const patientName = await this.patientFullDisplayName(roleRequest.patient);
     const primaryName = `${roleRequest.currentPrimary.name} ${roleRequest.currentPrimary.surname}`;
 
     if (action === 'APPROVE') {
@@ -963,21 +994,26 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return requests.map(r => ({
-      id: r.id,
-      patient: {
-        id: r.patient.id,
-        name: decrypt(r.patient.name),
-        surname: decrypt(r.patient.surname),
-      },
-      fromCaregiver: {
-        id: r.fromCaregiver.id,
-        name: r.fromCaregiver.name,
-        surname: r.fromCaregiver.surname,
-        avatarUrl: r.fromCaregiver.avatarUrl,
-      },
-      createdAt: r.createdAt,
-    }));
+    return Promise.all(
+      requests.map(async r => {
+        const { name: pn, surname: ps } = await this.decryptPatientRow(r.patient);
+        return {
+          id: r.id,
+          patient: {
+            id: r.patient.id,
+            name: pn,
+            surname: ps,
+          },
+          fromCaregiver: {
+            id: r.fromCaregiver.id,
+            name: r.fromCaregiver.name,
+            surname: r.fromCaregiver.surname,
+            avatarUrl: r.fromCaregiver.avatarUrl,
+          },
+          createdAt: r.createdAt,
+        };
+      }),
+    );
   }
 
   async respondToDelegation(requestId: string, caregiverId: string, action: 'ACCEPT' | 'DECLINE') {
@@ -986,7 +1022,7 @@ export class AuthService {
       include: {
         toCaregiver: { select: { name: true, surname: true } },
         fromCaregiver: { select: { status: true } },
-        patient: { select: { name: true, surname: true } },
+        patient: { select: { id: true, name: true, surname: true } },
       },
     });
     if (!request) throw new NotFoundException('Delegation request not found');
@@ -1021,7 +1057,7 @@ export class AuthService {
 
     // Notify the primary caregiver of the outcome
     const responderName = `${request.toCaregiver.name} ${request.toCaregiver.surname}`;
-    const patientName = `${decrypt(request.patient.name)} ${decrypt(request.patient.surname)}`;
+    const patientName = await this.patientFullDisplayName(request.patient);
 
     if (action === 'ACCEPT') {
       await this.prisma.notification.create({
@@ -1103,18 +1139,18 @@ export class AuthService {
       },
     });
 
-    // If any primary patient still has secondary caregivers, block deletion
-    const patientsNeedingDelegation = primaryRelations
-      .filter(rel => rel.patient.patientCaregivers.length > 0)
-      .map(rel => ({
+    const blockList = primaryRelations.filter(rel => rel.patient.patientCaregivers.length > 0);
+    const patientsNeedingDelegation = await Promise.all(
+      blockList.map(async rel => ({
         patientId: rel.patient.id,
-        patientName: `${decrypt(rel.patient.name)} ${decrypt(rel.patient.surname)}`,
+        patientName: await this.patientFullDisplayName(rel.patient),
         secondaryCaregivers: rel.patient.patientCaregivers.map(pc => ({
           id: pc.caregiver.id,
           name: pc.caregiver.name,
           surname: pc.caregiver.surname,
         })),
-      }));
+      })),
+    );
 
     if (patientsNeedingDelegation.length > 0) {
       throw new ConflictException({

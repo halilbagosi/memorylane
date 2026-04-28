@@ -1,0 +1,74 @@
+# DigitalOcean App Platform — example spec for `doctl apps create --spec app-spec.example.yaml`
+# Replace placeholders: YOUR_GITHUB_ORG/YOUR_REPO, region, instance size, and secret env values.
+# For SECRET entries, prefer setting values in the control panel (or encrypted EV[...] values from `doctl`)
+# instead of committing real secrets in this file.
+#
+# UI alternative: New App → GitHub → Source directory `backend/server`,
+# Dockerfile path `Dockerfile`, HTTP port `8080`. Attach Postgres and bind DATABASE_URL.
+#
+# Note: container-local disk under /app/uploads/media is not durable across deploys/restarts
+# on App Platform unless you add persistent storage or switch media to object storage (e.g. Spaces).
+#
+# Dockerfile path is relative to repository root; source_dir is the build context.
+
+name: memorylane-api
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: YOUR_GITHUB_ORG/YOUR_REPO
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    source_dir: backend/server
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_TIME
+        type: GENERAL
+      - key: HOST
+        value: 0.0.0.0
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PORT
+        value: '8080'
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DATABASE_URL
+        value: ${db.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: JWT_SECRET
+        value: REPLACE_ME
+        scope: RUN_TIME
+        type: SECRET
+      - key: ENCRYPTION_KEY
+        value: REPLACE_ME
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEDIA_MASTER_KEY
+        value: REPLACE_ME
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEDIA_SIGNED_URL_SECRET
+        value: REPLACE_ME
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEDIA_STORAGE_DRIVER
+        value: local
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEDIA_STORAGE_LOCAL_PATH
+        value: /app/uploads/media
+        scope: RUN_TIME
+        type: GENERAL
+
+databases:
+  - name: db
+    engine: PG
+    version: '16'
+    production: false
