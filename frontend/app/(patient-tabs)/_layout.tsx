@@ -8,6 +8,7 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { M3TabBar } from '../../src/components/M3TabBar';
 import { getPatientInfo, deletePatientInfo } from '../../src/utils/auth';
 import { API_BASE_URL } from '../../src/config/api';
+import { PatientGreetingOverlay } from '../../src/components/PatientGreetingOverlay';
 import {
   isPatientBiometricVerified,
   markPatientBiometricVerified,
@@ -117,5 +118,10 @@ export default function PatientTabsLayout() {
     };
   }, []);
 
-  return Platform.OS === 'ios' ? <IOSTabLayout /> : <AndroidTabLayout />;
+  return (
+    <>
+      {Platform.OS === 'ios' ? <IOSTabLayout /> : <AndroidTabLayout />}
+      <PatientGreetingOverlay />
+    </>
+  );
 }
