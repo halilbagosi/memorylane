@@ -21,6 +21,11 @@ import { AdaptiveBadge } from '../src/components/AdaptiveBadge';
 import { AppIcon } from '../src/components/AppIcon';
 import { getPatientInfo, deletePatientInfo } from '../src/utils/auth';
 import { API_BASE_URL } from '../src/config/api';
+import {
+  isPatientBiometricVerified,
+  markPatientBiometricVerified,
+  unlockPatientWithBiometrics,
+} from '../src/utils/patientBiometric';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
@@ -55,11 +60,28 @@ export default function WelcomeScreen() {
           });
           const data = await res.json();
           if (res.ok && data.paired) {
+            const requiresBiometric = data.biometricRecoveryEnabled || patient.biometricRecoveryEnabled;
+            if (requiresBiometric && !isPatientBiometricVerified(patient.id)) {
+              const unlocked = await unlockPatientWithBiometrics();
+              if (!unlocked) {
+                setCheckingSession(false);
+                return;
+              }
+              markPatientBiometricVerified(patient.id);
+            }
             router.replace('/(patient-tabs)/quiz');
             return;
           }
         } catch {
           // Network error / timeout — still route to patient tabs so offline use isn't broken
+          if (patient.biometricRecoveryEnabled && !isPatientBiometricVerified(patient.id)) {
+            const unlocked = await unlockPatientWithBiometrics();
+            if (!unlocked) {
+              setCheckingSession(false);
+              return;
+            }
+            markPatientBiometricVerified(patient.id);
+          }
           router.replace('/(patient-tabs)/quiz');
           return;
         } finally {

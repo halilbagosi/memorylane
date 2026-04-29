@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, Platform, Modal, TextInput, Image, Alert, Linking,
-  KeyboardAvoidingView, PanResponder, Animated, TouchableWithoutFeedback,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useNavigation, CommonActions } from '@react-navigation/native';
@@ -15,6 +15,7 @@ import {
 } from '../src/utils/auth';
 import { AppIcon } from '../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
+import { ManageDeletionSheet } from '../src/components/ManageDeletionSheet';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -48,38 +49,6 @@ export default function AccountScreen() {
   const { openDeletion } = useLocalSearchParams<{ openDeletion?: string }>();
 
   const [token, setToken] = useState<string | null>(null);
-
-  // Swipe-down to dismiss the deletion sheet
-  const slideAnim = useRef(new Animated.Value(600)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5,
-      onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) {
-          slideAnim.setValue(gs.dy);
-          backdropAnim.setValue(Math.max(0, 1 - gs.dy / 400));
-        }
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 80) {
-          Animated.parallel([
-            Animated.timing(slideAnim, { toValue: 600, duration: 220, useNativeDriver: true }),
-            Animated.timing(backdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-          ]).start(() => {
-            slideAnim.setValue(600);
-            setDeletionModalVisible(false);
-          });
-        } else {
-          Animated.parallel([
-            Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }),
-            Animated.timing(backdropAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-          ]).start();
-        }
-      },
-    }),
-  ).current;
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [profile, setProfile] = useState<CaregiverInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -166,7 +135,7 @@ export default function AccountScreen() {
 
       // Auto-open deletion modal when navigated from inbox notification
       if (openDeletion === '1') {
-        openDeletionModal();
+        setDeletionModalVisible(true);
       }
     })();
   }, []);
@@ -442,12 +411,12 @@ export default function AccountScreen() {
   const revokeSession = (sessionId: string) => {
     const isCurrent = sessionId === currentSessionId;
     showDialog(
-      isCurrent ? 'Sign Out' : 'Log Out Device',
-      isCurrent ? 'You will be signed out of this device.' : 'This device will be logged out immediately.',
+      isCurrent ? 'Log Out' : 'Log Out Device',
+      isCurrent ? 'You will be logged out of this device.' : 'This device will be logged out immediately.',
       [
         { label: 'Cancel', onPress: dismissDialog },
         {
-          label: isCurrent ? 'Sign Out' : 'Log Out',
+          label: 'Log Out',
           destructive: true,
           onPress: async () => {
             dismissDialog();
@@ -470,7 +439,7 @@ export default function AccountScreen() {
   };
 
   const logoutOtherSessions = () => {
-    showDialog('Log Out Other Sessions', 'All other devices will be signed out immediately.', [
+    showDialog('Log Out Other Sessions', 'All other devices will be logged out immediately.', [
       { label: 'Cancel', onPress: dismissDialog },
       {
         label: 'Log Out Others',
@@ -492,10 +461,10 @@ export default function AccountScreen() {
   // ─── Logout current device ─────────────────────────────────────────────────
 
   const handleLogout = () => {
-    showDialog('Sign Out', 'You will be signed out of this device.', [
+    showDialog('Log Out', 'You will be logged out of this device.', [
       { label: 'Cancel', onPress: dismissDialog },
       {
-        label: 'Sign Out',
+        label: 'Log Out',
         destructive: true,
         onPress: async () => {
           dismissDialog();
@@ -518,7 +487,7 @@ export default function AccountScreen() {
 
   const handleDeleteAccount = () => {
     if (deletion.status === 'PENDING' || deletion.status === 'ALL_ACCEPTED' || deletion.status === 'SOME_DECLINED') {
-      openDeletionModal();
+      setDeletionModalVisible(true);
       return;
     }
 
@@ -579,12 +548,24 @@ export default function AccountScreen() {
           'Your account and all patient data you manage will be permanently deleted after a 10-day grace period. This cannot be undone.',
           [
             { label: 'Cancel', onPress: dismissDialog },
-            { label: 'Delete Account', destructive: true, onPress: () => { dismissDialog(); confirmFinalDeletion(); } },
+            { label: 'Delete Account', destructive: true, onPress: async () => {
+              dismissDialog();
+              try {
+                const res = await fetch(`${API_BASE_URL}/auth/confirm-deletion`, {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                  await clearAuth();
+                  navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+                }
+              } catch { /* ignore */ }
+            } },
           ],
         );
       } else {
         await loadDeletionStatus(token);
-        openDeletionModal();
+        setDeletionModalVisible(true);
       }
     } catch {
       showDialog('Error', 'Failed to connect to the server', [
@@ -593,63 +574,7 @@ export default function AccountScreen() {
     }
   };
 
-  const confirmFinalDeletion = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/confirm-deletion`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setDeletionModalVisible(false);
-        await clearAuth();
-        navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
-      } else {
-        showDialog('Error', data.message ?? 'Could not confirm deletion', [
-          { label: 'OK', onPress: dismissDialog },
-        ]);
-      }
-    } catch {
-      showDialog('Error', 'Failed to connect to the server', [
-        { label: 'OK', onPress: dismissDialog },
-      ]);
-    }
-  };
 
-  const closeDeletionModal = () => {
-    Animated.parallel([
-      Animated.timing(slideAnim, { toValue: 600, duration: 250, useNativeDriver: true }),
-      Animated.timing(backdropAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start(() => {
-      slideAnim.setValue(600);
-      setDeletionModalVisible(false);
-    });
-  };
-
-  const openDeletionModal = () => {
-    slideAnim.setValue(600);
-    backdropAnim.setValue(0);
-    setDeletionModalVisible(true);
-    Animated.parallel([
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 120 }),
-      Animated.timing(backdropAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-    ]).start();
-  };
-
-  const cancelDeletionRequest = async () => {
-    if (!token) return;
-    try {
-      await fetch(`${API_BASE_URL}/auth/cancel-deletion`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setDeletion({ status: 'IDLE', isPrimaryForAnyPatient: deletion.isPrimaryForAnyPatient, pendingRequests: [], acceptedRequests: [], declinedRequests: [] });
-      setDeletionModalVisible(false);
-      // Refresh profile so dashboard banner disappears
-      await loadProfile(token);
-    } catch { /* ignore */ }
-  };
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -765,11 +690,11 @@ export default function AccountScreen() {
                           {isCurrent && <Text style={styles.currentBadge}> · This device</Text>}
                         </Text>
                         <Text style={styles.rowValue}>
-                          {isCurrent ? 'Last active: Now' : `Signed in ${date}`}
+                          {isCurrent ? 'Last active: Now' : `Logged in ${date}`}
                         </Text>
                       </View>
                       <TouchableOpacity onPress={() => revokeSession(session.id)} style={styles.revokeBtn} activeOpacity={0.7}>
-                        <Text style={styles.revokeBtnText}>{isCurrent ? 'Sign Out' : 'Log Out'}</Text>
+                        <Text style={styles.revokeBtnText}>Log Out</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -792,8 +717,8 @@ export default function AccountScreen() {
                 <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#C0392B" />
               </View>
               <View style={styles.rowContent}>
-                <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Sign Out</Text>
-                <Text style={styles.rowValue}>Sign out of this device</Text>
+                <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Log Out</Text>
+                <Text style={styles.rowValue}>Log out of this device</Text>
               </View>
               <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
             </TouchableOpacity>
@@ -801,7 +726,7 @@ export default function AccountScreen() {
 
           <View style={styles.dangerCard}>
             {deletion.status === 'PENDING' || deletion.status === 'ALL_ACCEPTED' || deletion.status === 'SOME_DECLINED' ? (
-              <TouchableOpacity style={styles.row} onPress={openDeletionModal} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.row} onPress={() => setDeletionModalVisible(true)} activeOpacity={0.7}>
                 <View style={[styles.rowIcon, { backgroundColor: deletion.status === 'ALL_ACCEPTED' ? 'rgba(39,174,96,0.1)' : 'rgba(226,223,207,0.8)' }]}>
                   <AppIcon
                     iosName={deletion.status === 'ALL_ACCEPTED' ? 'checkmark.circle' : 'clock.badge.exclamationmark'}
@@ -985,123 +910,20 @@ export default function AccountScreen() {
         onDismiss={dismissDialog}
       />
 
-      {/* ── Deletion Status Modal ── */}
-      <Modal visible={deletionModalVisible} transparent animationType="none" onRequestClose={closeDeletionModal}>
-        <TouchableWithoutFeedback onPress={closeDeletionModal}>
-          <View style={styles.delegationOverlay}>
-            <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', opacity: backdropAnim }]} />
-            <TouchableWithoutFeedback onPress={() => {}}>
-              <Animated.View style={[styles.delegationSheet, { transform: [{ translateY: slideAnim }] }]}>
-                {/* Drag handle */}
-                <View {...panResponder.panHandlers} style={styles.sheetDragArea}>
-                  <View style={styles.sheetDragHandle} />
-                </View>
-
-            {deletion.status === 'PENDING' && (
-              <>
-                <AppIcon iosName="clock" androidFallback="⏳" size={32} color="#b45309" />
-                <Text style={[styles.delegationTitle, { marginTop: 12 }]}>Transferring Primary Roles</Text>
-                <Text style={styles.delegationBody}>
-                  You're still the primary caregiver. Your patients and access are unchanged. Nothing happens until you click "Finalize" after everyone accepts.
-                </Text>
-                <View style={styles.delegationList}>
-                  {deletion.pendingRequests.map(r => (
-                    <View key={r.id} style={styles.delegationRow}>
-                      <View style={styles.delegationAvatar}>
-                        <Text style={styles.delegationAvatarText}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.delegationName}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
-                        <Text style={{ fontSize: 12, color: colors.textMuted, fontFamily: typography.fontFamily.regular }}>Waiting to accept…</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-                <TouchableOpacity
-                  style={[styles.delegationCancelBtn, { backgroundColor: colors.secondary, borderRadius: 14, marginTop: 4 }]}
-                  onPress={closeDeletionModal}
-                >
-                  <Text style={[styles.delegationCancelText, { color: '#fff' }]}>Continue Using App</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.delegationCancelBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                  <Text style={[styles.delegationCancelText, { color: '#C0392B' }]}>Cancel Account Deletion</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {deletion.status === 'ALL_ACCEPTED' && (
-              <>
-                <AppIcon iosName="checkmark.seal.fill" androidFallback="✅" size={36} color="#27ae60" />
-                <Text style={[styles.delegationTitle, { marginTop: 12 }]}>Ready to Finalize</Text>
-                <Text style={styles.delegationBody}>
-                  All caregivers accepted. The moment you tap "Finalize" below, the roles swap and your account is deactivated. You are still the primary right now.
-                </Text>
-                <View style={styles.delegationList}>
-                  {deletion.acceptedRequests.map(r => (
-                    <View key={r.id} style={styles.delegationRow}>
-                      <View style={[styles.delegationAvatar, { backgroundColor: 'rgba(39,174,96,0.15)' }]}>
-                        <Text style={[styles.delegationAvatarText, { color: '#27ae60' }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.delegationName}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
-                        <Text style={{ fontSize: 12, color: '#27ae60', fontFamily: typography.fontFamily.regular }}>Will become primary</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-                <Text style={[styles.delegationBody, { fontSize: 12, color: colors.textMuted, marginTop: 4 }]}>
-                  After finalizing, your account enters a 10-day grace period before permanent removal. You can restore it anytime during that window.
-                </Text>
-                <TouchableOpacity style={[styles.delegationCancelBtn, { backgroundColor: '#27ae60', borderRadius: 14, marginTop: 8 }]} onPress={confirmFinalDeletion}>
-                  <Text style={[styles.delegationCancelText, { color: '#fff' }]}>Finalize — Transfer Roles</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.delegationCancelBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                  <Text style={styles.delegationCancelText}>Cancel — Stay as Primary</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {deletion.status === 'SOME_DECLINED' && (
-              <>
-                <AppIcon iosName="exclamationmark.triangle.fill" androidFallback="⚠" size={36} color="#C0392B" />
-                <Text style={[styles.delegationTitle, { marginTop: 12 }]}>Action Required</Text>
-                <Text style={styles.delegationBody}>
-                  A caregiver has declined the handover request. You need to pick another caregiver or cancel the deletion.
-                </Text>
-                <View style={styles.delegationList}>
-                  {deletion.declinedRequests.map(r => (
-                    <View key={r.id} style={styles.delegationRow}>
-                      <View style={[styles.delegationAvatar, { backgroundColor: 'rgba(231,76,60,0.12)' }]}>
-                        <Text style={[styles.delegationAvatarText, { color: '#C0392B' }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.delegationName}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
-                        <Text style={{ fontSize: 12, color: '#C0392B', fontFamily: typography.fontFamily.regular }}>Declined</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-                <TouchableOpacity
-                  style={[styles.delegationCancelBtn, { backgroundColor: colors.secondary, borderRadius: 14, marginTop: 8 }]}
-                  onPress={() => {
-                    setDeletionModalVisible(false);
-                    // Navigate to patients to let user manage from there
-                    router.push('/(caregiver-tabs)/patients');
-                  }}
-                >
-                  <Text style={[styles.delegationCancelText, { color: '#fff' }]}>Pick Another Caregiver</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.delegationCancelBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                  <Text style={[styles.delegationCancelText, { color: '#C0392B' }]}>Cancel Account Deletion</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-              </Animated.View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+      {/* ── Deletion Status Sheet ── */}
+      <ManageDeletionSheet
+        visible={deletionModalVisible}
+        onClose={() => setDeletionModalVisible(false)}
+        onDeleted={() => {
+          navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+        }}
+        onCancelled={async () => {
+          setDeletion({ status: 'IDLE', isPrimaryForAnyPatient: deletion.isPrimaryForAnyPatient, pendingRequests: [], acceptedRequests: [], declinedRequests: [] });
+          setDeletionModalVisible(false);
+          if (token) await loadProfile(token);
+        }}
+        onNavigateToCareTeams={() => router.push('/(caregiver-tabs)/patients')}
+      />
     </View>
   );
 }
@@ -1296,59 +1118,4 @@ const styles = StyleSheet.create({
   modalSaveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
   modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#FFFFFF' },
 
-  // Delegation
-  delegationOverlay: { flex: 1, justifyContent: 'flex-end' },
-  delegationSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  delegationProgressTrack: {
-    height: 4,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    borderRadius: 2,
-    marginBottom: 20,
-    overflow: 'hidden',
-  },
-  delegationProgressFill: { height: 4, backgroundColor: colors.primary, borderRadius: 2 },
-  delegationStep: { fontFamily: typography.fontFamily.regular, fontSize: 12, color: colors.textMuted, marginBottom: 4 },
-  delegationTitle: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: colors.textDark, marginBottom: 8 },
-  delegationBody: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: colors.textMuted, marginBottom: 20, lineHeight: 22 },
-  delegationList: { gap: 8, marginBottom: 20 },
-  delegationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.03)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
-    gap: 12,
-  },
-  delegationAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  delegationAvatarText: { fontFamily: typography.fontFamily.bold, fontSize: 16, color: colors.textLight },
-  delegationName: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 15, color: colors.textDark },
-  delegationCancelBtn: { alignItems: 'center', paddingVertical: 12 },
-  delegationCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: colors.textMuted },
-  sheetDragArea: {
-    alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 12,
-    marginTop: -8,
-  },
-  sheetDragHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-  },
 });

@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../src/theme/colors';
@@ -21,6 +22,7 @@ import { AdaptiveCard } from '../src/components/AdaptiveCard';
 import { AppIcon } from '../src/components/AppIcon';
 import { API_BASE_URL } from '../src/config/api';
 import { savePatientInfo } from '../src/utils/auth';
+import { markPatientBiometricVerified } from '../src/utils/patientBiometric';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
@@ -29,6 +31,31 @@ const isIOS = Platform.OS === 'ios';
 const PATIENT_ACCENT = '#8B7355';
 const PATIENT_BG = '#EAE0CE';
 
+function biometricErrorMessage(error?: string) {
+  switch (error) {
+    case 'missing_usage_description':
+      return 'Face ID is limited in Expo Go. You can use the phone passcode for now, then test Face ID in a development build later.';
+    case 'not_enrolled':
+      return 'Face or Fingerprint is not set up on this device yet. You can skip this and try again later.';
+    case 'not_available':
+      return 'Face or Fingerprint is not available for Expo Go on this device. Please check Face ID settings for Expo Go.';
+    case 'lockout':
+      return 'Face or Fingerprint is temporarily locked. Unlock the phone once normally, then try again.';
+    case 'user_cancel':
+    case 'system_cancel':
+    case 'app_cancel':
+      return 'No problem. You can try again or skip this for now.';
+    case 'timeout':
+      return "That took a little too long. Let's try that one more time.";
+    case 'unable_to_process':
+      return "Face or Fingerprint could not read clearly. Let's try that one more time.";
+    case 'authentication_failed':
+      return 'Face or Fingerprint did not match. Try again, or skip this for now.';
+    default:
+      return error ? `Biometric setup could not continue: ${error}` : "Let's try that one more time.";
+  }
+}
+
 export default function JoinSpaceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -36,8 +63,17 @@ export default function JoinSpaceScreen() {
   const [mode, setMode] = useState<'camera' | 'manual'>('camera');
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successInfo, setSuccessInfo] = useState<{ patientName: string; caregiverName: string } | null>(null);
+  const [biometricError, setBiometricError] = useState('');
+  const [successInfo, setSuccessInfo] = useState<{
+    id: string;
+    patientName: string;
+    patientSurname: string;
+    avatarUrl?: string | null;
+    caregiverName: string;
+  } | null>(null);
+  const [setupState, setSetupState] = useState<'confirm' | 'biometric-success' | 'skipped' | null>(null);
   const scannedRef = useRef(false);
   const successOpacity = useRef(new Animated.Value(0)).current;
   const successScale = useRef(new Animated.Value(0.9)).current;
@@ -73,12 +109,17 @@ export default function JoinSpaceScreen() {
         name: data.name,
         surname: data.surname,
         avatarUrl: data.avatarUrl ?? null,
+        biometricRecoveryEnabled: false,
       });
 
       setSuccessInfo({
+        id: data.id,
         patientName: data.name,
+        patientSurname: data.surname,
+        avatarUrl: data.avatarUrl ?? null,
         caregiverName: `${data.caregiver.name} ${data.caregiver.surname}`,
       });
+      setSetupState('confirm');
     } catch {
       setError('Could not connect to server');
       scannedRef.current = false;
@@ -93,34 +134,147 @@ export default function JoinSpaceScreen() {
     handleJoin(data);
   }
 
+  async function saveBiometricPreference(enabled: boolean) {
+    if (!successInfo) return;
+
+    await fetch(`${API_BASE_URL}/patients/${successInfo.id}/biometric-recovery`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  async function handleEnableBiometrics() {
+    if (!successInfo || biometricLoading) return;
+
+    setBiometricLoading(true);
+    setBiometricError('');
+
+    try {
+      const [hasHardware, isEnrolled] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
+
+      if (!hasHardware || !isEnrolled) {
+        setBiometricError('This device is not ready for Face or Fingerprint yet. You can skip this and try again later.');
+        return;
+      }
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Save your spot in MemoryLane',
+        cancelLabel: 'Not now',
+        fallbackLabel: 'Use Passcode',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        setBiometricError(biometricErrorMessage(result.error));
+        return;
+      }
+
+      await saveBiometricPreference(true);
+      await savePatientInfo({
+        id: successInfo.id,
+        name: successInfo.patientName,
+        surname: successInfo.patientSurname,
+        avatarUrl: successInfo.avatarUrl ?? null,
+        biometricRecoveryEnabled: true,
+      });
+      markPatientBiometricVerified(successInfo.id);
+      setSetupState('biometric-success');
+    } catch {
+      setBiometricError("Let's try that one more time.");
+    } finally {
+      setBiometricLoading(false);
+    }
+  }
+
+  function handleSkipBiometrics() {
+    setBiometricError('');
+    if (successInfo) markPatientBiometricVerified(successInfo.id);
+    setSetupState('skipped');
+  }
+
   useEffect(() => {
     if (successInfo) {
       Animated.parallel([
         Animated.timing(successOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
         Animated.spring(successScale, { toValue: 1, friction: 6, useNativeDriver: true }),
       ]).start();
-
-      const timer = setTimeout(() => {
-        router.replace('/(patient-tabs)/quiz');
-      }, 2500);
-      return () => clearTimeout(timer);
     }
   }, [successInfo]);
+
+  useEffect(() => {
+    if (setupState === 'biometric-success' || setupState === 'skipped') {
+      const timer = setTimeout(() => {
+        router.replace('/(patient-tabs)/quiz');
+      }, setupState === 'biometric-success' ? 1700 : 900);
+      return () => clearTimeout(timer);
+    }
+  }, [setupState]);
 
   // ─── Success confirmation ───
 
   if (successInfo) {
+    if (setupState === 'confirm') {
+      return (
+        <View style={[styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <StatusBar barStyle="dark-content" />
+          <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
+            <View style={styles.successIconOuter}>
+              <View style={styles.successIconInner}>
+                <AppIcon iosName="checkmark" androidFallback="✓" size={40} color="#fff" />
+              </View>
+            </View>
+            <Text style={styles.successTitle}>Paired with {successInfo.patientName}</Text>
+            <Text style={styles.successSubtitle}>
+              Would you like to enable Face or Fingerprint for {successInfo.patientName} to prevent them from getting locked out?
+            </Text>
+            <Text style={styles.biometricWhy}>
+              Save your spot so you can always come back to your photos.
+            </Text>
+
+            {biometricError ? (
+              <Text style={styles.biometricError}>{biometricError}</Text>
+            ) : null}
+
+            <AdaptiveButton
+              title="Yes, save their spot"
+              onPress={handleEnableBiometrics}
+              loading={biometricLoading}
+              loadingText="Opening..."
+              color={PATIENT_ACCENT}
+              style={styles.biometricPrimaryBtn}
+            />
+            <TouchableOpacity
+              style={styles.skipBiometricBtn}
+              onPress={handleSkipBiometrics}
+              disabled={biometricLoading}
+            >
+              <Text style={styles.skipBiometricText}>Skip for now</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      );
+    }
+
     return (
-      <View style={[styles.centered, { paddingTop: insets.top }]}>
+      <View style={[styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <StatusBar barStyle="dark-content" />
         <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
-          <View style={styles.successCheckCircle}>
-            <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color="#4CAF50" />
+          <View style={styles.successIconOuter}>
+            <View style={styles.successIconInner}>
+              <AppIcon iosName="checkmark" androidFallback="✓" size={40} color="#fff" />
+            </View>
           </View>
           <Text style={styles.successTitle}>You're all set!</Text>
           <Text style={styles.successSubtitle}>
-            Your family is waiting for you inside.{'\n'}Let's look at some memories.
+            {setupState === 'biometric-success'
+              ? 'Your spot is saved. Face or Fingerprint is ready.'
+              : 'Your family is waiting for you inside.'}
           </Text>
+          <Text style={styles.successTagline}>Let's look at some memories.</Text>
         </Animated.View>
       </View>
     );
@@ -169,12 +323,12 @@ export default function JoinSpaceScreen() {
   if (mode === 'manual') {
     return (
       <KeyboardAvoidingView
-        style={[styles.manualContainer, { paddingTop: insets.top + 44 }]}
+        style={styles.manualContainer}
         behavior={isIOS ? 'padding' : undefined}
       >
         <StatusBar barStyle="dark-content" />
 
-        <View style={styles.manualContent}>
+        <View style={[styles.manualContent, { paddingTop: Math.max(insets.top, insets.bottom, 24), paddingBottom: Math.max(insets.top, insets.bottom, 24) }]}>
           <View style={[styles.iconCircle, { backgroundColor: 'rgba(139, 115, 85, 0.12)' }]}>
             <AppIcon iosName="keyboard" androidFallback="..." size={32} color={PATIENT_ACCENT} />
           </View>
@@ -196,7 +350,7 @@ export default function JoinSpaceScreen() {
             autoCapitalize="characters"
             autoCorrect={false}
             error={error}
-            containerStyle={{ width: '100%', marginTop: 24 }}
+            containerStyle={styles.manualInput}
           />
 
           <AdaptiveButton
@@ -206,7 +360,7 @@ export default function JoinSpaceScreen() {
             loadingText="Linking..."
             disabled={joinCode.length < 6}
             color={PATIENT_ACCENT}
-            style={{ alignSelf: 'stretch', marginTop: 8 }}
+            style={styles.manualSubmitBtn}
           />
 
           <TouchableOpacity
@@ -302,7 +456,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    paddingHorizontal: 32,
+    paddingVertical: 48,
   },
   permText: {
     fontFamily: typography.fontFamily.medium,
@@ -339,6 +494,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
   },
   iconCircle: {
     width: 72,
@@ -360,6 +518,15 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textMuted,
     textAlign: 'center',
+    maxWidth: 280,
+  },
+  manualInput: {
+    width: '100%',
+    marginTop: 26,
+  },
+  manualSubmitBtn: {
+    alignSelf: 'stretch',
+    marginTop: 10,
   },
 
   altLink: {
@@ -492,26 +659,79 @@ const styles = StyleSheet.create({
   // ─── Success screen ───
   successContent: {
     alignItems: 'center',
-    paddingHorizontal: 32,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 360,
+    paddingHorizontal: 8,
   },
-  successCheckCircle: {
-    marginBottom: 20,
+  successIconOuter: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(139,115,85,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  successIconInner: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   successTitle: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 24,
+    fontSize: 30,
     color: colors.textDark,
-    marginBottom: 10,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   successSubtitle: {
-    fontFamily: typography.fontFamily.regular,
+    fontFamily: typography.fontFamily.medium,
     fontSize: 16,
     lineHeight: 24,
     color: colors.textMuted,
     textAlign: 'center',
+    maxWidth: 290,
   },
-  successCaregiverName: {
-    fontFamily: typography.fontFamily.bold,
+  successTagline: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 15,
     color: PATIENT_ACCENT,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  biometricWhy: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    lineHeight: 22,
+    color: PATIENT_ACCENT,
+    textAlign: 'center',
+    marginTop: 18,
+    marginBottom: 22,
+  },
+  biometricError: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#C0392B',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  biometricPrimaryBtn: {
+    alignSelf: 'stretch',
+    minWidth: 260,
+  },
+  skipBiometricBtn: {
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  skipBiometricText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: colors.textMuted,
   },
 });

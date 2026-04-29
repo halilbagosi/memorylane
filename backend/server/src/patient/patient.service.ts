@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException, ForbiddenException } 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
-import { encrypt, decrypt } from './encryption.util';
+import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
 
 @Injectable()
 export class PatientService {
@@ -76,20 +76,22 @@ export class PatientService {
       select: { name: true, surname: true },
     });
     if (primaryLink && joiner && primaryLink.caregiverId !== caregiverId) {
+      const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
       await this.prisma.notification.create({
         data: {
           caregiverId: primaryLink.caregiverId,
           type: 'SECONDARY_ADDED' as any,
           title: 'New team member',
-          body: `${joiner.name} ${joiner.surname} joined the care team for ${decrypt(patient.name)} ${decrypt(patient.surname)}.`,
+          body: `${joiner.name} ${joiner.surname} joined the care team for ${pn} ${ps}.`,
         },
       });
     }
 
+    const shown = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
     return {
       id: patient.id,
-      name: decrypt(patient.name),
-      surname: decrypt(patient.surname),
+      name: shown.name,
+      surname: shown.surname,
     };
   }
 
@@ -104,7 +106,7 @@ export class PatientService {
     // ── C7: Void any pending delegation requests targeting this caregiver ──
     const pendingDelegations = await this.prisma.delegationRequest.findMany({
       where: { toCaregiverId: caregiverId, patientId, status: 'PENDING' },
-      include: { patient: { select: { name: true, surname: true } } },
+      include: { patient: { select: { id: true, name: true, surname: true } } },
     });
 
     if (pendingDelegations.length > 0) {
@@ -125,7 +127,8 @@ export class PatientService {
 
       // Notify each primary caregiver that this secondary is no longer available
       for (const del of pendingDelegations) {
-        const patientName = `${decrypt(del.patient.name)} ${decrypt(del.patient.surname)}`;
+        const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, del.patient);
+        const patientName = `${pn} ${ps}`;
         await this.prisma.notification.create({
           data: {
             caregiverId: del.fromCaregiverId,
@@ -166,10 +169,91 @@ export class PatientService {
   async getPairedStatus(patientId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
-      select: { paired: true },
+      select: { paired: true, biometricRecoveryEnabled: true },
     });
     if (!patient) throw new NotFoundException('Patient not found');
-    return { paired: patient.paired };
+    return {
+      paired: patient.paired,
+      biometricRecoveryEnabled: patient.biometricRecoveryEnabled,
+    };
+  }
+
+  async getGreetingSpark(patientId: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, name: true, surname: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const patientName = (await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient)).name;
+    const [quizMedia, memoryMedia, latestAnalytics] = await Promise.all([
+      this.prisma.media.findMany({
+        where: {
+          patientId,
+          collection: 'QUIZ',
+          isActive: true,
+          firstName: { not: null },
+          relationshipType: { not: null },
+        },
+        select: { firstName: true, relationshipType: true },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+      }),
+      this.prisma.media.findMany({
+        where: {
+          patientId,
+          collection: 'MEMORY',
+          isActive: true,
+          note: { not: null },
+        },
+        select: { note: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      this.prisma.analyticsSnapshot.findFirst({
+        where: { patientId },
+        orderBy: { date: 'desc' },
+        select: { totalCorrect: true, totalAttempts: true },
+      }),
+    ]);
+
+    const messages: { kind: 'PERSONAL_FACT' | 'MOTIVATIONAL_SPARK' | 'DAILY_FACT'; message: string }[] = [];
+
+    for (const media of quizMedia) {
+      if (media.firstName && media.relationshipType) {
+        messages.push({
+          kind: 'PERSONAL_FACT',
+          message: `${media.firstName} is your ${media.relationshipType}.`,
+        });
+      }
+    }
+
+    for (const media of memoryMedia) {
+      const note = media.note?.trim();
+      if (note) {
+        const shortNote = note.length > 90 ? `${note.slice(0, 87)}...` : note;
+        messages.push({ kind: 'PERSONAL_FACT', message: shortNote });
+      }
+    }
+
+    if (latestAnalytics && latestAnalytics.totalAttempts > 0) {
+      messages.push({
+        kind: 'MOTIVATIONAL_SPARK',
+        message: `You got ${latestAnalytics.totalCorrect}/${latestAnalytics.totalAttempts} right on your last quiz. Great job.`,
+      });
+    }
+
+    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    messages.push({
+      kind: 'DAILY_FACT',
+      message: `Today is ${dayName}, ${patientName}. A good day to enjoy your memories.`,
+    });
+    messages.push({
+      kind: 'MOTIVATIONAL_SPARK',
+      message: `Good to see you, ${patientName}. You are loved.`,
+    });
+
+    return messages[Math.floor(Math.random() * messages.length)];
   }
 
   async unpairDevice(patientId: string, caregiverId: string) {
@@ -182,10 +266,27 @@ export class PatientService {
 
     await this.prisma.patient.update({
       where: { id: patientId },
-      data: { paired: false, deviceToken: null },
+      data: { paired: false, deviceToken: null, biometricRecoveryEnabled: false },
     });
 
     return { message: 'Device unpaired successfully' };
+  }
+
+  async setBiometricRecovery(patientId: string, enabled: boolean) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, paired: true },
+    });
+
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) throw new ConflictException('Device must be paired before enabling biometric recovery');
+
+    await this.prisma.patient.update({
+      where: { id: patientId },
+      data: { biometricRecoveryEnabled: enabled },
+    });
+
+    return { biometricRecoveryEnabled: enabled };
   }
 
   async updatePatient(patientId: string, caregiverId: string, data: { name?: string; surname?: string; avatarUrl?: string | null }) {
@@ -236,7 +337,7 @@ export class PatientService {
 
     await this.prisma.patient.update({
       where: { id: patient.id },
-      data: { paired: true },
+      data: { paired: true, biometricRecoveryEnabled: false },
     });
 
     // Notify all caregivers of this patient that a device was paired
@@ -244,7 +345,8 @@ export class PatientService {
       where: { patientId: patient.id },
       select: { caregiverId: true },
     });
-    const patientName = `${decrypt(patient.name)} ${decrypt(patient.surname)}`;
+    const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+    const patientName = `${pn} ${ps}`;
     if (caregiverLinks.length > 0) {
       await this.prisma.notification.createMany({
         data: caregiverLinks.map(link => ({
@@ -256,10 +358,11 @@ export class PatientService {
       });
     }
 
+    const joined = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
     return {
       id: patient.id,
-      name: decrypt(patient.name),
-      surname: decrypt(patient.surname),
+      name: joined.name,
+      surname: joined.surname,
       dateOfBirth: patient.dateOfBirth,
       avatarUrl: patient.avatarUrl ?? null,
       caregiver: {

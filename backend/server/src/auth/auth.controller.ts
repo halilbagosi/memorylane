@@ -8,6 +8,7 @@ import { ChangePasswordDto } from '../dto/change-password.dto';
 import { ChangeEmailDto } from '../dto/change-email.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
+import { DeclineReasonDto } from '../dto/decline-reason.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
@@ -139,8 +140,8 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('delegation-requests/:id/decline')
-  declineDelegation(@Request() req: any, @Param('id') id: string) {
-    return this.authService.respondToDelegation(id, req.user.userId, 'DECLINE');
+  declineDelegation(@Request() req: any, @Param('id') id: string, @Body() dto: DeclineReasonDto) {
+    return this.authService.respondToDelegation(id, req.user.userId, 'DECLINE', dto.reason);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -189,8 +190,8 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('role-requests/:id/decline')
-  declineRoleRequest(@Request() req: any, @Param('id') id: string) {
-    return this.authService.respondToRoleRequest(id, req.user.userId, 'DECLINE');
+  declineRoleRequest(@Request() req: any, @Param('id') id: string, @Body() dto: DeclineReasonDto) {
+    return this.authService.respondToRoleRequest(id, req.user.userId, 'DECLINE', dto.reason);
   }
 
   // ─── Notifications ──────────────────────────────────────────────────────────

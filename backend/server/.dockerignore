@@ -6,6 +6,8 @@ dist
 *.md
 coverage
 test
+**/*.spec.ts
 .eslintrc*
 .prettierrc
 .editorconfig
+docker-compose*.yml

@@ -20,6 +20,7 @@ model Caregiver {
   email             String          @unique
   passwordHash      String          @map("password_hash")
   avatarUrl         String?         @map("avatar_url") @db.Text
+  pushToken         String?         @map("push_token") @db.Text
   status            CaregiverStatus @default(ACTIVE)
   scheduledDeleteAt DateTime?       @map("scheduled_delete_at")
   createdAt         DateTime        @default(now()) @map("created_at")
@@ -45,6 +46,7 @@ model Notification {
   type        NotificationType
   title       String
   body        String
+  declineReason String?          @map("decline_reason")
   createdAt   DateTime         @default(now()) @map("created_at")
   readAt      DateTime?        @map("read_at")
 
@@ -84,6 +86,7 @@ model DelegationRequest {
   fromCaregiverId String           @map("from_caregiver_id")
   toCaregiverId   String           @map("to_caregiver_id")
   status          DelegationStatus @default(PENDING)
+  declineReason   String?          @map("decline_reason")
   createdAt       DateTime         @default(now()) @map("created_at")
   respondedAt     DateTime?        @map("responded_at")
 
@@ -100,6 +103,7 @@ model RoleRequest {
   requesterId      String            @map("requester_id")
   currentPrimaryId String            @map("current_primary_id")
   status           RoleRequestStatus @default(PENDING)
+  declineReason    String?           @map("decline_reason")
   createdAt        DateTime          @default(now()) @map("created_at")
   respondedAt      DateTime?         @map("responded_at")
 
@@ -133,6 +137,7 @@ model Patient {
   patientJoinCode    String              @unique @map("patient_join_code")    
   
   paired             Boolean             @default(false)
+  biometricRecoveryEnabled Boolean       @default(false) @map("biometric_recovery_enabled")
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
 
@@ -160,24 +165,73 @@ model PatientCaregiver {
   @@map("patient_caregivers")
 }
 
+enum MediaKind {
+  PHOTO
+  AUDIO
+  VIDEO
+  DOCUMENT
+}
+
+enum MediaStatus {
+  PENDING_UPLOAD
+  READY
+  FAILED
+}
+
+enum MediaCollection {
+  MEMORY
+  QUIZ
+}
+
 model Media {
-  id           String        @id @default(uuid())
-  patientId    String        @map("patient_id")
-  caregiverId  String?       @map("caregiver_id")
-  correctName  String        @map("correct_name")
-  relationship String
-  imageUrl     String        @map("image_url")
-  audioUrl     String        @map("audio_url")
-  decoy1       String        @map("decoy_1")
-  decoy2       String        @map("decoy_2")
-  isActive     Boolean       @default(true) @map("is_active")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id           String      @id @default(uuid())
+  publicId     String      @unique @default(uuid()) @map("public_id")
+  patientId    String      @map("patient_id")
+  caregiverId  String?     @map("caregiver_id")
+
+  kind         MediaKind
+  status       MediaStatus @default(PENDING_UPLOAD)
+  collection   MediaCollection @default(MEMORY)
+
+  // Quiz identity data. Required by the service for collection=QUIZ.
+  firstName        String?  @map("first_name")
+  lastName         String?  @map("last_name")
+  relationshipType String?  @map("relationship_type")
+  decoyNames       String[] @default([]) @map("decoy_names")
+
+  // Memory story data. Used by the caregiver Media Manager.
+  note             String?  @db.Text
+  eventYear        Int?     @map("event_year")
+  memoryCategory   String?  @map("memory_category")
+  isActive     Boolean     @default(true) @map("is_active")
+
+  // Object storage reference (random, non-guessable).
+  // Never returned to clients.
+  storageKey   String      @unique @map("storage_key")
+
+  contentType  String      @map("content_type")
+  byteSize     Int         @map("byte_size")
+
+  // Envelope encryption metadata.
+  // wrappedDek = AES-256-GCM(masterKey, dek) with dekIv + dekTag.
+  // payloadIv/payloadTag describe the AES-256-GCM encryption of the
+  // file payload at rest using the per-file DEK.
+  wrappedDek   String      @map("wrapped_dek")
+  dekIv        String      @map("dek_iv")
+  dekTag       String      @map("dek_tag")
+  payloadIv    String      @map("payload_iv")
+  payloadTag   String?     @map("payload_tag")
+  algorithm    String      @default("AES-256-GCM")
+  keyVersion   String      @default("v1") @map("key_version")
+
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   patient      Patient       @relation(fields: [patientId], references: [id])
   caregiver    Caregiver?    @relation(fields: [caregiverId], references: [id])
   quizAttempts QuizAttempt[]
 
+  @@index([patientId, createdAt])
   @@map("media")
 }
 

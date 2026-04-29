@@ -1,6 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { decrypt } from '../encryption.util';
+import { decryptPatientNamesWithOptionalReencrypt } from '../encryption.util';
 
 @Injectable()
 export class ManagementService {
@@ -46,7 +46,7 @@ export class ManagementService {
         where: { patientId, isPrimary: false },
         select: { caregiverId: true },
       }),
-      this.prisma.patient.findUnique({ where: { id: patientId }, select: { name: true, surname: true } }),
+      this.prisma.patient.findUnique({ where: { id: patientId }, select: { id: true, name: true, surname: true } }),
       this.prisma.caregiver.findUnique({ where: { id: caregiverId }, select: { name: true, surname: true } }),
     ]);
 
@@ -59,7 +59,8 @@ export class ManagementService {
       return await this.prisma.$transaction(async (tx) => {
         // Notify all secondary caregivers that the patient profile is gone
         if (secondaryLinks.length > 0 && patient) {
-          const patientName = `${decrypt(patient.name)} ${decrypt(patient.surname)}`;
+          const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(tx, patient);
+          const patientName = `${pn} ${ps}`;
           const deleterName = primaryCaregiver ? `${primaryCaregiver.name} ${primaryCaregiver.surname}` : 'The primary caregiver';
           await tx.notification.createMany({
             data: secondaryLinks.map(link => ({
@@ -73,7 +74,8 @@ export class ManagementService {
 
         // Notify secondaries who had pending delegation requests that the request is void
         if (pendingDelegations.length > 0 && patient) {
-          const patientName = `${decrypt(patient.name)} ${decrypt(patient.surname)}`;
+          const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(tx, patient);
+          const patientName = `${pn} ${ps}`;
           const uniqueSecondaryIds = [...new Set(pendingDelegations.map(d => d.toCaregiverId))];
           await tx.notification.createMany({
             data: uniqueSecondaryIds.map(secId => ({

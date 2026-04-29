@@ -45,6 +45,16 @@ export class PatientController {
     return this.patientService.getPairedStatus(patientId);
   }
 
+  @Get(':id/greeting-spark')
+  async getGreetingSpark(@Param('id') patientId: string) {
+    return this.patientService.getGreetingSpark(patientId);
+  }
+
+  @Patch(':id/biometric-recovery')
+  async setBiometricRecovery(@Param('id') patientId: string, @Body() body: { enabled: boolean }) {
+    return this.patientService.setBiometricRecovery(patientId, body.enabled === true);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch(':id/unpair')
   async unpairDevice(@Param('id') patientId: string, @Req() req: any) {
