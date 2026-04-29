@@ -169,10 +169,13 @@ export class PatientService {
   async getPairedStatus(patientId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
-      select: { paired: true },
+      select: { paired: true, biometricRecoveryEnabled: true },
     });
     if (!patient) throw new NotFoundException('Patient not found');
-    return { paired: patient.paired };
+    return {
+      paired: patient.paired,
+      biometricRecoveryEnabled: patient.biometricRecoveryEnabled,
+    };
   }
 
   async unpairDevice(patientId: string, caregiverId: string) {
@@ -185,10 +188,27 @@ export class PatientService {
 
     await this.prisma.patient.update({
       where: { id: patientId },
-      data: { paired: false, deviceToken: null },
+      data: { paired: false, deviceToken: null, biometricRecoveryEnabled: false },
     });
 
     return { message: 'Device unpaired successfully' };
+  }
+
+  async setBiometricRecovery(patientId: string, enabled: boolean) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, paired: true },
+    });
+
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) throw new ConflictException('Device must be paired before enabling biometric recovery');
+
+    await this.prisma.patient.update({
+      where: { id: patientId },
+      data: { biometricRecoveryEnabled: enabled },
+    });
+
+    return { biometricRecoveryEnabled: enabled };
   }
 
   async updatePatient(patientId: string, caregiverId: string, data: { name?: string; surname?: string; avatarUrl?: string | null }) {
@@ -239,7 +259,7 @@ export class PatientService {
 
     await this.prisma.patient.update({
       where: { id: patient.id },
-      data: { paired: true },
+      data: { paired: true, biometricRecoveryEnabled: false },
     });
 
     // Notify all caregivers of this patient that a device was paired

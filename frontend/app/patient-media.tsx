@@ -6,9 +6,11 @@ import {
   FlatList,
   Image,
   Linking,
+  Modal,
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   ScrollView,
@@ -27,8 +29,11 @@ import {
   deleteMedia,
   getAccessUrl,
   listPatientMedia,
+  updateMediaMetadata,
   uploadPatientMedia,
+  type MediaCollection,
   type MediaListItem,
+  type MediaMetadataInput,
 } from '../src/services/media';
 
 const isIOS = Platform.OS === 'ios';
@@ -54,6 +59,27 @@ type DialogState = {
 };
 
 const SUPPORTED_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MEMORY_CATEGORIES = ['Wedding', 'Holiday', 'Daily Life', 'Birthday', 'Family', 'Travel'];
+
+type FormMode = MediaCollection;
+
+type MediaForm = {
+  mode: FormMode;
+  firstName: string;
+  relationshipType: string;
+  note: string;
+  eventYear: string;
+  memoryCategory: string;
+};
+
+const emptyForm: MediaForm = {
+  mode: 'MEMORY',
+  firstName: '',
+  relationshipType: '',
+  note: '',
+  eventYear: String(new Date().getFullYear()),
+  memoryCategory: MEMORY_CATEGORIES[0],
+};
 
 function inferMimeFromAsset(asset: { uri: string; mimeType?: string }): string {
   const candidate = asset.mimeType?.toLowerCase();
@@ -86,7 +112,13 @@ export default function PatientMediaScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'ALL' | 'PHOTO' | 'VIDEO' | 'AUDIO' | 'DOCUMENT'>('ALL');
+  const [libraryTab, setLibraryTab] = useState<MediaCollection>('MEMORY');
+  const [form, setForm] = useState<MediaForm>(emptyForm);
+  const [selectedItem, setSelectedItem] = useState<MediaTileViewModel | null>(null);
+  const [editingItem, setEditingItem] = useState<MediaTileViewModel | null>(null);
+  const [pendingQuizAssets, setPendingQuizAssets] = useState<{ uri: string; mimeType?: string }[]>([]);
+  const [quizDetailsVisible, setQuizDetailsVisible] = useState(false);
+  const [savingMetadata, setSavingMetadata] = useState(false);
   const [dialog, setDialog] = useState<DialogState>({
     visible: false,
     title: '',
@@ -168,10 +200,51 @@ export default function PatientMediaScreen() {
 
   const readyTiles = useMemo(() => items, [items]);
 
-  const filteredTiles = useMemo(() => {
-    if (filter === 'ALL') return readyTiles;
-    return readyTiles.filter((item) => item.kind === filter);
-  }, [readyTiles, filter]);
+  const filteredTiles = useMemo(
+    () => readyTiles.filter((item) => item.collection === libraryTab),
+    [readyTiles, libraryTab],
+  );
+
+  const buildMetadata = (): MediaMetadataInput => {
+    if (form.mode === 'QUIZ') {
+      return {
+        collection: 'QUIZ',
+        firstName: form.firstName.trim(),
+        relationshipType: form.relationshipType,
+      };
+    }
+    return {
+      collection: 'MEMORY',
+      note: form.note.trim(),
+      eventYear: Number(form.eventYear),
+      memoryCategory: form.memoryCategory,
+    };
+  };
+
+  const validateForm = () => {
+    if (form.mode === 'QUIZ') {
+      if (!form.firstName.trim() || !form.relationshipType.trim()) {
+        return 'Quiz uploads need a person name and relationship.';
+      }
+      return null;
+    }
+    if (!form.note.trim()) return 'Please add a short memory note.';
+    const year = Number(form.eventYear);
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+      return 'Please enter a valid event year.';
+    }
+    return null;
+  };
+
+  const validateClearFacePlaceholder = () => {
+    if (form.mode !== 'QUIZ') return true;
+    showDialog(
+      'Face Check',
+      'Vision check placeholder passed. In production this will confirm there is one clear face before saving quiz media.',
+      [{ label: 'Continue', onPress: dismissDialog }],
+    );
+    return true;
+  };
 
   useEffect(() => {
     items.forEach((m) => {
@@ -198,28 +271,31 @@ export default function PatientMediaScreen() {
     else if (contentType.startsWith('video/')) kind = 'VIDEO';
     else if (contentType.startsWith('audio/')) kind = 'AUDIO';
 
+    if (form.mode === 'QUIZ' && kind !== 'PHOTO' && kind !== 'AUDIO') {
+      throw new Error('Quiz media needs a photo or audio file.');
+    }
+
     await uploadPatientMedia({
       patientId,
       kind,
       contentType,
       fileUri: asset.uri,
       byteSize,
+      metadata: buildMetadata(),
     });
   };
 
-  const handlePickAndUpload = async (source: 'camera' | 'library' | 'document') => {
-    if (!patientId) return;
-    let assetsToUpload: { uri: string; mimeType?: string }[] = [];
-
+  const pickAssets = async (source: 'camera' | 'library' | 'document') => {
     if (source === 'document') {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
         multiple: true,
       });
-      if (result.canceled) return;
-      assetsToUpload = result.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType }));
-    } else {
+      if (result.canceled) return [];
+      return result.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType }));
+    }
+
       let result: ImagePicker.ImagePickerResult;
       if (source === 'camera') {
         const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
@@ -285,32 +361,35 @@ export default function PatientMediaScreen() {
         });
       }
       
-      if (result.canceled) return;
+      if (result.canceled) return [];
       const assets = result.assets ?? [];
-      if (assets.length === 0) return;
-      assetsToUpload = assets.map((a: any) => ({ uri: a.uri, mimeType: a.mimeType }));
-    }
+      if (assets.length === 0) return [];
+      return assets.map((a: any) => ({ uri: a.uri, mimeType: a.mimeType }));
+  };
 
+  const uploadAssets = async (assetsToUpload: { uri: string; mimeType?: string }[]) => {
     if (assetsToUpload.length === 0) return;
 
     setUploading(true);
     const total = assetsToUpload.length;
     let failedCount = 0;
+    let firstFailure: string | null = null;
 
     try {
       for (let i = 0; i < assetsToUpload.length; i++) {
         setUploadProgress({ current: i + 1, total });
         try {
           await uploadSingleAsset(assetsToUpload[i]);
-        } catch {
+        } catch (e: any) {
           failedCount++;
+          firstFailure ||= e?.message ?? 'Unknown upload error';
         }
       }
       await loadMedia();
       if (failedCount > 0) {
         showDialog(
           'Upload Partially Failed',
-          `${failedCount} of ${total} item${total > 1 ? 's' : ''} could not be uploaded. The rest were saved successfully.`,
+          `${failedCount} of ${total} item${total > 1 ? 's' : ''} could not be uploaded.${firstFailure ? `\n\n${firstFailure}` : ''}`,
           [{ label: 'OK', onPress: dismissDialog }],
         );
       }
@@ -322,6 +401,41 @@ export default function PatientMediaScreen() {
       setUploading(false);
       setUploadProgress(null);
     }
+  };
+
+  const handlePickAndUpload = async (source: 'camera' | 'library' | 'document') => {
+    if (!patientId) return;
+
+    if (form.mode === 'MEMORY') {
+      const validationError = validateForm();
+      if (validationError) {
+        showDialog('Missing Details', validationError, [{ label: 'OK', onPress: dismissDialog }]);
+        return;
+      }
+    }
+
+    const assetsToUpload = await pickAssets(source);
+    if (!assetsToUpload || assetsToUpload.length === 0) return;
+
+    if (form.mode === 'QUIZ') {
+      const unsupported = assetsToUpload.find((asset) => {
+        const mime = inferMimeFromAsset(asset);
+        return !mime.startsWith('image/') && !mime.startsWith('audio/');
+      });
+      if (unsupported) {
+        showDialog('Photo or Audio Required', 'Quiz media must be a photo or audio file.', [
+          { label: 'OK', onPress: dismissDialog },
+        ]);
+        return;
+      }
+      setPendingQuizAssets(assetsToUpload);
+      showDialog('Quiz Upload Disabled Here', 'Please use the Memory Library sheet from the patient card for quiz uploads.', [
+        { label: 'OK', onPress: dismissDialog },
+      ]);
+      return;
+    }
+
+    await uploadAssets(assetsToUpload);
   };
 
   const showAddOptions = () => {
@@ -389,30 +503,72 @@ export default function PatientMediaScreen() {
         </View>
       )}
 
+      <ScrollView style={styles.managerPanel} contentContainerStyle={styles.managerContent}>
+        <Text style={styles.managerTitle}>Media Manager</Text>
+        <SegmentedControl
+          value={form.mode}
+          options={[
+            { value: 'QUIZ', label: 'Quiz' },
+            { value: 'MEMORY', label: 'Memories' },
+          ]}
+          onChange={(mode) => {
+            setLibraryTab(mode);
+            setForm((prev) => ({ ...prev, mode }));
+          }}
+        />
+
+        {form.mode === 'QUIZ' ? (
+          <View style={styles.quizPromptBox}>
+            <AppIcon iosName="person.crop.square" androidFallback="[]" size={22} color={colors.secondary} />
+            <Text style={styles.quizPromptText}>
+              Add a clear face photo or audio file first. The required person name and relationship will appear right after you choose it.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.formBlock}>
+            <FieldInput
+              label="Memory Notes"
+              value={form.note}
+              onChangeText={(note) => setForm((prev) => ({ ...prev, note }))}
+              multiline
+            />
+            <View style={styles.rowFields}>
+              <FieldInput
+                label="Year"
+                value={form.eventYear}
+                keyboardType="number-pad"
+                onChangeText={(eventYear) => setForm((prev) => ({ ...prev, eventYear }))}
+              />
+              <View style={styles.flexField}>
+                <ChipSelector
+                  label="Memory Type"
+                  options={MEMORY_CATEGORIES}
+                  value={form.memoryCategory}
+                  onChange={(memoryCategory) => setForm((prev) => ({ ...prev, memoryCategory }))}
+                />
+              </View>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
       <Text style={styles.helpText}>
-        Photos you add here are encrypted at rest with a unique key per file. They will power the patient's quiz and Relive Memory experience.
+        Quiz media stores a person photo or voice with their relationship to the patient. Memory media saves stories, years, and categories with the encrypted file.
       </Text>
 
-      <View>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.filterScrollContent}
-          style={styles.filterScroll}
-        >
-          {(['ALL', 'PHOTO', 'VIDEO', 'AUDIO', 'DOCUMENT'] as const).map((f) => (
-            <TouchableOpacity 
-              key={f} 
-              style={[styles.filterChip, filter === f && styles.filterChipActive]}
-              onPress={() => setFilter(f)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>
-                {f === 'ALL' ? 'All' : f === 'PHOTO' ? 'Photos' : f === 'VIDEO' ? 'Videos' : f === 'AUDIO' ? 'Audio' : 'Files'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={styles.libraryTabsWrap}>
+        <Text style={styles.libraryTitle}>Library</Text>
+        <SegmentedControl
+          value={libraryTab}
+          options={[
+            { value: 'QUIZ', label: 'Quiz' },
+            { value: 'MEMORY', label: 'Memories' },
+          ]}
+          onChange={(tab) => {
+            setLibraryTab(tab);
+            setForm((prev) => ({ ...prev, mode: tab }));
+          }}
+        />
       </View>
 
       {loading ? (
@@ -433,9 +589,9 @@ export default function PatientMediaScreen() {
           </View>
           <Text style={styles.emptyTitle}>No memories found</Text>
           <Text style={styles.emptyBody}>
-            {filter === 'ALL' 
-              ? "Add a photo to start building this patient's memory library."
-              : `No items found for filter: ${filter}`}
+            {libraryTab === 'MEMORY'
+              ? "Add a memory photo, video, or note to build this patient's story library."
+              : 'Add quiz photos or audio with the person details.'}
           </Text>
         </View>
       ) : (
@@ -448,7 +604,7 @@ export default function PatientMediaScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
           renderItem={({ item }) => (
-            <MediaTile item={item} onLongPress={() => handleDelete(item)} />
+            <MediaTile item={item} onPress={() => setSelectedItem(item)} onLongPress={() => handleDelete(item)} />
           )}
         />
       )}
@@ -474,15 +630,60 @@ export default function PatientMediaScreen() {
         actions={dialog.actions}
         onDismiss={dismissDialog}
       />
+      <MediaPreviewModal
+        item={selectedItem}
+        onClose={() => setSelectedItem(null)}
+        onEdit={(item) => {
+          setSelectedItem(null);
+          setEditingItem(item);
+          setForm({
+            mode: item.collection,
+            firstName: item.firstName ?? '',
+            relationshipType: item.relationshipType ?? '',
+            note: item.note ?? '',
+            eventYear: item.eventYear ? String(item.eventYear) : String(new Date().getFullYear()),
+            memoryCategory: item.memoryCategory ?? MEMORY_CATEGORIES[0],
+          });
+        }}
+      />
+      <MetadataEditModal
+        visible={!!editingItem}
+        form={form}
+        saving={savingMetadata}
+        onChange={setForm}
+        onClose={() => setEditingItem(null)}
+        onSave={async () => {
+          if (!editingItem) return;
+          const validationError = validateForm();
+          if (validationError) {
+            showDialog('Missing Details', validationError, [{ label: 'OK', onPress: dismissDialog }]);
+            return;
+          }
+          setSavingMetadata(true);
+          try {
+            await updateMediaMetadata(editingItem.publicId, buildMetadata());
+            await loadMedia();
+            setEditingItem(null);
+          } catch (e: any) {
+            showDialog('Update Failed', e?.message ?? 'Could not update media details.', [
+              { label: 'OK', onPress: dismissDialog },
+            ]);
+          } finally {
+            setSavingMetadata(false);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 function MediaTile({
   item,
+  onPress,
   onLongPress,
 }: {
   item: MediaTileViewModel;
+  onPress: () => void;
   onLongPress: () => void;
 }) {
   if (item.status !== 'READY') {
@@ -509,14 +710,313 @@ function MediaTile({
     );
   }
   return (
-    <TouchableOpacity onLongPress={onLongPress} delayLongPress={250} style={styles.tile} activeOpacity={0.85}>
+    <TouchableOpacity onPress={onPress} onLongPress={onLongPress} delayLongPress={250} style={styles.tile} activeOpacity={0.85}>
       <Image source={{ uri: item.signedUrl }} style={styles.tileImage} />
     </TouchableOpacity>
   );
 }
 
+function FieldInput({
+  label,
+  value,
+  onChangeText,
+  multiline,
+  keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  multiline?: boolean;
+  keyboardType?: 'default' | 'number-pad';
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.textArea]}
+        value={value}
+        onChangeText={onChangeText}
+        multiline={multiline}
+        keyboardType={keyboardType ?? 'default'}
+        placeholderTextColor={colors.textMuted}
+      />
+    </View>
+  );
+}
+
+function SegmentedControl({
+  value,
+  options,
+  onChange,
+}: {
+  value: FormMode;
+  options: { value: FormMode; label: string }[];
+  onChange: (value: FormMode) => void;
+}) {
+  return (
+    <View style={styles.segmented}>
+      {options.map((option) => (
+        <TouchableOpacity
+          key={option.value}
+          style={[styles.segment, value === option.value && styles.segmentActive]}
+          onPress={() => onChange(option.value)}
+        >
+          <Text style={[styles.segmentText, value === option.value && styles.segmentTextActive]}>{option.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function ChipSelector({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectorRow}>
+        {options.map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[styles.selectorChip, value === option && styles.selectorChipActive]}
+            onPress={() => onChange(option)}
+          >
+            <Text style={[styles.selectorChipText, value === option && styles.selectorChipTextActive]}>{option}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function MediaPreviewModal({
+  item,
+  onClose,
+  onEdit,
+}: {
+  item: MediaTileViewModel | null;
+  onClose: () => void;
+  onEdit: (item: MediaTileViewModel) => void;
+}) {
+  if (!item?.signedUrl) return null;
+  return (
+    <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.previewBackdrop}>
+        <View style={styles.previewModal}>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewTitle}>{item.collection === 'QUIZ' ? 'Quiz Media' : 'Memory'}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.iconButton}>
+              <AppIcon iosName="xmark" androidFallback="x" size={18} color={colors.textDark} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={styles.zoomPane}
+            maximumZoomScale={4}
+            minimumZoomScale={1}
+            contentContainerStyle={styles.zoomContent}
+          >
+            <Image source={{ uri: item.signedUrl }} style={styles.previewImage} resizeMode="contain" />
+          </ScrollView>
+          <Text style={styles.previewMeta}>
+            {item.collection === 'QUIZ'
+              ? [item.firstName, item.relationshipType].filter(Boolean).join(' - ') || 'No person details saved'
+              : item.note || 'No description saved'}
+          </Text>
+          <TouchableOpacity style={styles.primaryAction} onPress={() => onEdit(item)}>
+            <Text style={styles.primaryActionText}>Edit Details</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function MetadataEditModal({
+  visible,
+  title = 'Edit Details',
+  form,
+  saving,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  title?: string;
+  form: MediaForm;
+  saving: boolean;
+  onChange: React.Dispatch<React.SetStateAction<MediaForm>>;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.previewBackdrop}>
+        <View style={styles.editModal}>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.iconButton}>
+              <AppIcon iosName="xmark" androidFallback="x" size={18} color={colors.textDark} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.editContent}>
+            <SegmentedControl
+              value={form.mode}
+              options={[
+                { value: 'QUIZ', label: 'Quiz' },
+                { value: 'MEMORY', label: 'Memories' },
+              ]}
+              onChange={(mode) => onChange((prev) => ({ ...prev, mode }))}
+            />
+            {form.mode === 'QUIZ' ? (
+              <>
+                <View style={styles.rowFields}>
+                  <FieldInput label="Person Name" value={form.firstName} onChangeText={(firstName) => onChange((prev) => ({ ...prev, firstName }))} />
+                  <FieldInput label="Relationship" value={form.relationshipType} onChangeText={(relationshipType) => onChange((prev) => ({ ...prev, relationshipType }))} />
+                </View>
+              </>
+            ) : (
+              <>
+                <FieldInput label="Memory Notes" value={form.note} onChangeText={(note) => onChange((prev) => ({ ...prev, note }))} multiline />
+                <FieldInput label="Year" value={form.eventYear} keyboardType="number-pad" onChangeText={(eventYear) => onChange((prev) => ({ ...prev, eventYear }))} />
+                <ChipSelector label="Memory Type" options={MEMORY_CATEGORIES} value={form.memoryCategory} onChange={(memoryCategory) => onChange((prev) => ({ ...prev, memoryCategory }))} />
+              </>
+            )}
+          </ScrollView>
+          <TouchableOpacity style={[styles.primaryAction, saving && styles.fabDisabled]} onPress={onSave} disabled={saving}>
+            <Text style={styles.primaryActionText}>{saving ? 'Saving...' : 'Save Details'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.neutral },
+  managerPanel: {
+    maxHeight: 330,
+    backgroundColor: colors.neutral,
+  },
+  managerContent: {
+    paddingHorizontal: GRID_PADDING,
+    paddingTop: 14,
+    paddingBottom: 8,
+    gap: 12,
+  },
+  managerTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 18,
+    color: colors.textDark,
+  },
+  segmented: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: 12,
+    backgroundColor: colors.neutralLight,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderRadius: 9,
+  },
+  segmentActive: {
+    backgroundColor: colors.secondary,
+  },
+  segmentText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  segmentTextActive: {
+    color: colors.textLight,
+  },
+  formBlock: {
+    gap: 10,
+  },
+  rowFields: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  field: {
+    flex: 1,
+    gap: 6,
+  },
+  flexField: {
+    flex: 1.5,
+  },
+  fieldLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  input: {
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: colors.textDark,
+  },
+  textArea: {
+    minHeight: 86,
+    textAlignVertical: 'top',
+  },
+  selectorRow: {
+    gap: 8,
+    paddingRight: 6,
+  },
+  selectorChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: colors.neutralLight,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  selectorChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  selectorChipText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  selectorChipTextActive: {
+    color: colors.textLight,
+  },
+  quizPromptBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(45,79,62,0.14)',
+  },
+  quizPromptText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textDark,
+  },
   uploadBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -543,34 +1043,15 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     lineHeight: 18,
   },
-  filterScroll: {
-    flexGrow: 0,
-    marginBottom: 16,
-  },
-  filterScrollContent: {
+  libraryTabsWrap: {
     paddingHorizontal: GRID_PADDING,
+    marginBottom: 14,
     gap: 8,
   },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.neutralLight,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    ...(isIOS ? {} : { elevation: 1 }),
-  },
-  filterChipActive: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
-  filterChipText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  filterChipTextActive: {
-    color: colors.textLight,
+  libraryTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: colors.textDark,
   },
   gridContent: {
     paddingHorizontal: GRID_PADDING,
@@ -678,5 +1159,68 @@ const styles = StyleSheet.create({
   },
   fabDisabled: {
     opacity: 0.6,
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  previewModal: {
+    maxHeight: '88%',
+    borderRadius: 18,
+    backgroundColor: colors.neutral,
+    padding: 14,
+    gap: 12,
+  },
+  editModal: {
+    maxHeight: '90%',
+    borderRadius: 18,
+    backgroundColor: colors.neutral,
+    padding: 14,
+    gap: 12,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  previewTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 18,
+    color: colors.textDark,
+  },
+  iconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.neutralLight,
+  },
+  zoomPane: {
+    width: '100%',
+    maxHeight: Dimensions.get('window').height * 0.58,
+    backgroundColor: '#111',
+    borderRadius: 12,
+  },
+  zoomContent: {
+    minHeight: Dimensions.get('window').height * 0.45,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImage: {
+    width: '100%',
+    height: Dimensions.get('window').height * 0.5,
+  },
+  previewMeta: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: colors.textDark,
+    lineHeight: 20,
+  },
+  editContent: {
+    gap: 12,
+    paddingBottom: 4,
   },
 });

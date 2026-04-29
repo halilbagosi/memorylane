@@ -53,6 +53,11 @@ export class AuthService {
     return `${o.name} ${o.surname}`;
   }
 
+  private normalizeDeclineReason(reason?: string) {
+    const trimmed = reason?.trim();
+    return trimmed ? trimmed : null;
+  }
+
   private async createSessionToken(caregiverId: string, email: string, deviceLabel?: string | null) {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
@@ -614,7 +619,7 @@ export class AuthService {
       patientId: string;
       patientName: string;
       status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'NEEDS_SELECTION';
-      currentRequest: { id: string; toCaregiver: { id: string; name: string; surname: string }; status: string } | null;
+      currentRequest: { id: string; toCaregiver: { id: string; name: string; surname: string }; status: string; declineReason?: string | null } | null;
       availableSecondaries: { id: string; name: string; surname: string }[];
     }>();
 
@@ -643,6 +648,7 @@ export class AuthService {
         id: req.id,
         toCaregiver: { id: req.toCaregiver.id, name: req.toCaregiver.name, surname: req.toCaregiver.surname },
         status: req.status,
+        declineReason: req.declineReason,
       };
 
       if (req.status === 'PENDING') entry.status = 'PENDING';
@@ -673,6 +679,7 @@ export class AuthService {
         id: p.currentRequest?.id ?? '',
         patientId: p.patientId,
         toCaregiver: p.currentRequest?.toCaregiver ?? { id: '', name: '', surname: '' },
+        declineReason: p.currentRequest?.declineReason ?? null,
       })),
       isPrimaryForAnyPatient: primaryCount > 0,
     };
@@ -925,7 +932,7 @@ export class AuthService {
     );
   }
 
-  async respondToRoleRequest(requestId: string, primaryId: string, action: 'APPROVE' | 'DECLINE') {
+  async respondToRoleRequest(requestId: string, primaryId: string, action: 'APPROVE' | 'DECLINE', reason?: string) {
     const roleRequest = await this.prisma.roleRequest.findUnique({
       where: { id: requestId },
       include: {
@@ -965,17 +972,20 @@ export class AuthService {
         });
       });
     } else {
+      const declineReason = this.normalizeDeclineReason(reason);
+      const reasonSuffix = declineReason ? ` Reason: "${declineReason}"` : '';
       await this.prisma.$transaction(async (tx) => {
         await tx.roleRequest.update({
           where: { id: requestId },
-          data: { status: 'DECLINED', respondedAt: new Date() },
+          data: { status: 'DECLINED', respondedAt: new Date(), declineReason },
         });
         await tx.notification.create({
           data: {
             caregiverId: roleRequest.requesterId,
             type: 'ROLE_REQUEST_DECLINED' as any,
             title: 'Request declined',
-            body: `${primaryName} declined your request for the primary role for ${patientName}.`,
+            body: `${primaryName} declined your request for the primary role for ${patientName}.${reasonSuffix}`,
+            declineReason,
           },
         });
       });
@@ -1016,7 +1026,7 @@ export class AuthService {
     );
   }
 
-  async respondToDelegation(requestId: string, caregiverId: string, action: 'ACCEPT' | 'DECLINE') {
+  async respondToDelegation(requestId: string, caregiverId: string, action: 'ACCEPT' | 'DECLINE', reason?: string) {
     const request = await this.prisma.delegationRequest.findFirst({
       where: { id: requestId, toCaregiverId: caregiverId, status: 'PENDING' },
       include: {
@@ -1047,17 +1057,21 @@ export class AuthService {
       });
     }
 
+    const declineReason = this.normalizeDeclineReason(reason);
+
     await this.prisma.delegationRequest.update({
       where: { id: requestId },
       data: {
         status: action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED',
         respondedAt: new Date(),
+        ...(action === 'DECLINE' ? { declineReason } : {}),
       },
     });
 
     // Notify the primary caregiver of the outcome
     const responderName = `${request.toCaregiver.name} ${request.toCaregiver.surname}`;
     const patientName = await this.patientFullDisplayName(request.patient);
+    const reasonSuffix = declineReason ? ` Reason: "${declineReason}"` : '';
 
     if (action === 'ACCEPT') {
       await this.prisma.notification.create({
@@ -1085,7 +1099,8 @@ export class AuthService {
             caregiverId: request.fromCaregiverId,
             type: 'DELEGATION_DECLINED' as any,
             title: 'Transfer failed',
-            body: `${responderName} declined the handover for ${patientName}. No other caregivers are pending. Please pick another or cancel.`,
+            body: `${responderName} declined the handover for ${patientName}. No other caregivers are pending. Please pick another or cancel.${reasonSuffix}`,
+            declineReason,
           },
         });
       } else {
@@ -1095,7 +1110,8 @@ export class AuthService {
             caregiverId: request.fromCaregiverId,
             type: 'DELEGATION_DECLINED' as any,
             title: 'Request declined',
-            body: `${responderName} declined your handover request for ${patientName}.`,
+            body: `${responderName} declined your handover request for ${patientName}.${reasonSuffix}`,
+            declineReason,
           },
         });
       }

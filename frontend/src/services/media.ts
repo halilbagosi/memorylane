@@ -3,6 +3,7 @@ import { getToken } from '../utils/auth';
 
 export type MediaKind = 'PHOTO' | 'AUDIO' | 'VIDEO' | 'DOCUMENT';
 export type MediaStatus = 'PENDING_UPLOAD' | 'READY' | 'FAILED';
+export type MediaCollection = 'MEMORY' | 'QUIZ';
 
 export interface MediaListItem {
   publicId: string;
@@ -11,6 +12,14 @@ export interface MediaListItem {
   contentType: string;
   byteSize: number;
   createdAt: string;
+  caregiverId: string | null;
+  collection: MediaCollection;
+  firstName: string | null;
+  lastName: string | null;
+  relationshipType: string | null;
+  note: string | null;
+  eventYear: number | null;
+  memoryCategory: string | null;
 }
 
 export interface UploadIntentResponse {
@@ -36,6 +45,17 @@ export interface UploadOptions {
   contentType: string;
   fileUri: string;
   byteSize: number;
+  metadata?: MediaMetadataInput;
+}
+
+export interface MediaMetadataInput {
+  collection: MediaCollection;
+  firstName?: string;
+  lastName?: string;
+  relationshipType?: string;
+  note?: string;
+  eventYear?: number;
+  memoryCategory?: string;
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -84,6 +104,7 @@ async function createUploadIntent(input: {
   kind: MediaKind;
   contentType: string;
   byteSize: number;
+  metadata?: MediaMetadataInput;
 }): Promise<UploadIntentResponse> {
   const res = await fetch(`${API_BASE_URL}/media/upload-intent`, {
     method: 'POST',
@@ -91,9 +112,30 @@ async function createUploadIntent(input: {
       'Content-Type': 'application/json',
       ...(await authHeaders()),
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      patientId: input.patientId,
+      kind: input.kind,
+      contentType: input.contentType,
+      byteSize: input.byteSize,
+      ...(input.metadata ?? {}),
+    }),
   });
   return jsonOrThrow(res);
+}
+
+export async function updateMediaMetadata(
+  publicId: string,
+  metadata: MediaMetadataInput,
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/media/${encodeURIComponent(publicId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(metadata),
+  });
+  await jsonOrThrow(res);
 }
 
 async function completeUpload(publicId: string): Promise<{ publicId: string; status: MediaStatus }> {
@@ -129,6 +171,7 @@ export async function uploadPatientMedia(
     kind: options.kind,
     contentType: options.contentType,
     byteSize: options.byteSize,
+    metadata: options.metadata,
   });
 
   if (options.byteSize > intent.maxByteSize) {

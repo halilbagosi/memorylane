@@ -24,6 +24,7 @@ export interface PatientInfo {
   name: string;
   surname: string;
   avatarUrl?: string | null;
+  biometricRecoveryEnabled?: boolean;
 }
 
 type CaregiverStatus = 'ACTIVE' | 'PENDING_DELETION' | 'DEACTIVATED';

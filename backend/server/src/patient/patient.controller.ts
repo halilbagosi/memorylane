@@ -45,6 +45,11 @@ export class PatientController {
     return this.patientService.getPairedStatus(patientId);
   }
 
+  @Patch(':id/biometric-recovery')
+  async setBiometricRecovery(@Param('id') patientId: string, @Body() body: { enabled: boolean }) {
+    return this.patientService.setBiometricRecovery(patientId, body.enabled === true);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch(':id/unpair')
   async unpairDevice(@Param('id') patientId: string, @Req() req: any) {

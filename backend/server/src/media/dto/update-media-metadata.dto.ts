@@ -5,40 +5,13 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
-  Min,
   MaxLength,
+  Min,
 } from 'class-validator';
+import { MediaCollectionDto } from './create-upload-intent.dto';
 
-export enum MediaKindDto {
-  PHOTO = 'PHOTO',
-  AUDIO = 'AUDIO',
-  VIDEO = 'VIDEO',
-  DOCUMENT = 'DOCUMENT',
-}
-
-export enum MediaCollectionDto {
-  MEMORY = 'MEMORY',
-  QUIZ = 'QUIZ',
-}
-
-export class CreateUploadIntentDto {
-  @IsUUID()
-  patientId!: string;
-
-  @IsEnum(MediaKindDto)
-  kind!: MediaKindDto;
-
-  @IsString()
-  @MaxLength(127)
-  contentType!: string;
-
-  @IsInt()
-  @Min(1)
-  @Max(100 * 1024 * 1024)
-  byteSize!: number;
-
+export class UpdateMediaMetadataDto {
   @IsOptional()
   @IsEnum(MediaCollectionDto)
   collection?: MediaCollectionDto;

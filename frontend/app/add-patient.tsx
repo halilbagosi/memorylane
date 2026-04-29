@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  TouchableOpacity, Modal, Image, Alert, Linking,
+  TouchableOpacity, Modal, Image, Alert, Linking, Animated, Easing,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -58,6 +59,9 @@ export default function AddPatientScreen() {
   const [errors, setErrors] = useState<{ name?: string; surname?: string; dateOfBirth?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
+
+  // Backdrop animation for iOS date picker
+  const backdropAnim = useRef(new Animated.Value(0)).current;
 
   const [dialog, setDialog] = useState<{
     visible: boolean;
@@ -172,7 +176,29 @@ export default function AddPatientScreen() {
   const confirmIOSDate = () => {
     setDateOfBirth(tempDate);
     setErrors(prev => ({ ...prev, dateOfBirth: undefined }));
-    setShowPicker(false);
+    hidePickerAnimated();
+  };
+
+  const showPickerAnimated = () => {
+    if (dateOfBirth) setTempDate(dateOfBirth);
+    setShowPicker(true);
+    Animated.timing(backdropAnim, {
+      toValue: 1,
+      duration: 450,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const hidePickerAnimated = () => {
+    Animated.timing(backdropAnim, {
+      toValue: 0,
+      duration: 220,
+      easing: Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      setShowPicker(false);
+    });
   };
 
   const onAndroidDismiss = useCallback(() => {
@@ -304,10 +330,7 @@ export default function AddPatientScreen() {
                 isIOS ? styles.iosDateButton : styles.androidDateButton,
                 errors.dateOfBirth && styles.dateButtonError,
               ]}
-              onPress={() => {
-                if (dateOfBirth) setTempDate(dateOfBirth);
-                setShowPicker(true);
-              }}
+              onPress={showPickerAnimated}
               activeOpacity={0.7}
             >
               <AppIcon
@@ -353,30 +376,52 @@ export default function AddPatientScreen() {
 
           {/* iOS: native inline picker in a modal sheet */}
           {isIOS && (
-            <Modal visible={showPicker} transparent animationType="slide">
-              <View style={styles.modalOverlay}>
-                <View style={styles.iosPickerContainer}>
-                  <View style={styles.iosPickerHeader}>
-                    <TouchableOpacity onPress={() => setShowPicker(false)}>
-                      <Text style={styles.iosPickerCancel}>Cancel</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.iosPickerTitle}>Date of Birth</Text>
-                    <TouchableOpacity onPress={confirmIOSDate}>
-                      <Text style={styles.iosPickerDone}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <DateTimePicker
-                    value={tempDate}
-                    mode="date"
-                    display="spinner"
-                    onChange={onIOSDateChange}
-                    maximumDate={new Date()}
-                    minimumDate={new Date(1900, 0, 1)}
-                    themeVariant="light"
-                    style={styles.iosInlinePicker}
+            <Modal visible={showPicker} transparent animationType="none" onRequestClose={hidePickerAnimated}>
+              <TouchableWithoutFeedback onPress={hidePickerAnimated}>
+                <View style={styles.modalOverlay}>
+                  <Animated.View
+                    style={[
+                      StyleSheet.absoluteFill,
+                      { backgroundColor: 'rgba(0,0,0,0.38)', opacity: backdropAnim },
+                    ]}
                   />
+                  <TouchableWithoutFeedback onPress={() => {}}>
+                    <Animated.View
+                      style={[
+                        styles.iosPickerContainer,
+                        {
+                          transform: [{
+                            translateY: backdropAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [300, 0],
+                            }),
+                          }],
+                        },
+                      ]}
+                    >
+                      <View style={styles.iosPickerHeader}>
+                        <TouchableOpacity onPress={hidePickerAnimated}>
+                          <Text style={styles.iosPickerCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.iosPickerTitle}>Date of Birth</Text>
+                        <TouchableOpacity onPress={confirmIOSDate}>
+                          <Text style={styles.iosPickerDone}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <DateTimePicker
+                        value={tempDate}
+                        mode="date"
+                        display="spinner"
+                        onChange={onIOSDateChange}
+                        maximumDate={new Date()}
+                        minimumDate={new Date(1900, 0, 1)}
+                        themeVariant="light"
+                        style={styles.iosInlinePicker}
+                      />
+                    </Animated.View>
+                  </TouchableWithoutFeedback>
                 </View>
-              </View>
+              </TouchableWithoutFeedback>
             </Modal>
           )}
 
@@ -538,7 +583,6 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   iosPickerContainer: {
     backgroundColor: colors.neutral,

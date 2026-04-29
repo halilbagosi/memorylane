@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Req,
@@ -14,6 +15,7 @@ import {
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateUploadIntentDto } from './dto/create-upload-intent.dto';
+import { UpdateMediaMetadataDto } from './dto/update-media-metadata.dto';
 import { MediaService } from './media.service';
 
 interface AuthenticatedRequest extends Request {
@@ -58,6 +60,16 @@ export class MediaController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.mediaService.issueAccessUrl(req.user.userId, publicId, this.apiBaseUrl(req));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':publicId')
+  async updateMetadata(
+    @Param('publicId') publicId: string,
+    @Body() dto: UpdateMediaMetadataDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.mediaService.updateMetadata(req.user.userId, publicId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

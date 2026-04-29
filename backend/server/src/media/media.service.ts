@@ -12,7 +12,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { KeyWrapService } from './crypto/key-wrap.service';
 import { MediaCryptoService } from './crypto/media-crypto.service';
 import { SignedUrlService } from './crypto/signed-url.service';
-import { CreateUploadIntentDto, MediaKindDto } from './dto/create-upload-intent.dto';
+import { CreateUploadIntentDto } from './dto/create-upload-intent.dto';
+import { UpdateMediaMetadataDto } from './dto/update-media-metadata.dto';
 import {
   ALLOWED_MIME_BY_KIND,
   getMaxBytes,
@@ -45,7 +46,27 @@ export interface MediaListItem {
   contentType: string;
   byteSize: number;
   createdAt: string;
+  caregiverId: string | null;
+  collection: 'MEMORY' | 'QUIZ';
+  firstName: string | null;
+  lastName: string | null;
+  relationshipType: string | null;
+  decoyNames: string[];
+  note: string | null;
+  eventYear: number | null;
+  memoryCategory: string | null;
 }
+
+type MediaMetadataFields = {
+  collection?: 'MEMORY' | 'QUIZ';
+  firstName?: string | null;
+  lastName?: string | null;
+  relationshipType?: string | null;
+  decoyNames?: string[] | null;
+  note?: string | null;
+  eventYear?: number | null;
+  memoryCategory?: string | null;
+};
 
 @Injectable()
 export class MediaService {
@@ -81,6 +102,7 @@ export class MediaService {
     }
 
     await this.assertCaregiverAccess(caregiverId, dto.patientId);
+    const metadata = this.normalizeMetadata(dto);
 
     const dek = this.keyWrap.generateDek();
     const wrapped = this.keyWrap.wrapDek(dek);
@@ -93,6 +115,7 @@ export class MediaService {
         caregiverId,
         kind,
         status: 'PENDING_UPLOAD',
+        ...metadata,
         storageKey,
         contentType: normalizedMime,
         byteSize: dto.byteSize,
@@ -199,6 +222,15 @@ export class MediaService {
         contentType: true,
         byteSize: true,
         createdAt: true,
+        caregiverId: true,
+        collection: true,
+        firstName: true,
+        lastName: true,
+        relationshipType: true,
+        decoyNames: true,
+        note: true,
+        eventYear: true,
+        memoryCategory: true,
       },
     });
     return rows.map((r) => ({
@@ -208,6 +240,15 @@ export class MediaService {
       contentType: r.contentType,
       byteSize: r.byteSize,
       createdAt: r.createdAt.toISOString(),
+      caregiverId: r.caregiverId ?? null,
+      collection: r.collection as 'MEMORY' | 'QUIZ',
+      firstName: r.firstName ?? null,
+      lastName: r.lastName ?? null,
+      relationshipType: r.relationshipType ?? null,
+      decoyNames: r.decoyNames ?? [],
+      note: r.note ?? null,
+      eventYear: r.eventYear ?? null,
+      memoryCategory: r.memoryCategory ?? null,
     }));
   }
 
@@ -257,15 +298,93 @@ export class MediaService {
     }
   }
 
-  /** Caregiver removes a media item. Permanently deletes ciphertext and metadata. */
+  /** Caregiver removes a media item. Primary caregivers can delete any item;
+   *  secondaries can only delete their own uploads. */
   async deleteMedia(caregiverId: string, publicId: string) {
     const media = await this.requireCaregiverMedia(caregiverId, publicId);
+
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId: media.patientId } },
+      select: { isPrimary: true },
+    });
+    const isPrimary = link?.isPrimary ?? false;
+
+    if (!isPrimary && media.caregiverId !== caregiverId) {
+      throw new ForbiddenException('Only the primary caregiver or the uploader can delete this memory');
+    }
+
     await this.storage.deleteObject(media.storageKey).catch(() => undefined);
     await this.prisma.media.delete({ where: { id: media.id } });
     return { publicId, deleted: true };
   }
 
   // ─── Internal helpers ─────────────────────────────────────────────────────
+
+  async updateMetadata(caregiverId: string, publicId: string, dto: UpdateMediaMetadataDto) {
+    const media = await this.requireCaregiverMedia(caregiverId, publicId);
+    const metadata = this.normalizeMetadata({ ...media, ...dto });
+    return this.prisma.media.update({
+      where: { id: media.id },
+      data: metadata,
+      select: {
+        publicId: true,
+        collection: true,
+        firstName: true,
+        lastName: true,
+        relationshipType: true,
+        decoyNames: true,
+        note: true,
+        eventYear: true,
+        memoryCategory: true,
+      },
+    });
+  }
+
+  private normalizeMetadata(dto: Partial<MediaMetadataFields>) {
+    const collection = dto.collection ?? 'MEMORY';
+    const trimOrNull = (value?: string | null) => {
+      const trimmed = value?.trim();
+      return trimmed ? trimmed : null;
+    };
+
+    if (collection === 'QUIZ') {
+      const firstName = trimOrNull(dto.firstName);
+      const lastName = trimOrNull(dto.lastName);
+      const relationshipType = trimOrNull(dto.relationshipType);
+      const decoyNames = (dto.decoyNames ?? []).map((name) => name.trim()).filter(Boolean);
+      if (!firstName || !relationshipType) {
+        throw new BadRequestException(
+          'Quiz media requires a person name and relationship',
+        );
+      }
+      return {
+        collection,
+        firstName,
+        lastName,
+        relationshipType,
+        decoyNames,
+        note: null,
+        eventYear: null,
+        memoryCategory: null,
+      };
+    }
+
+    const note = trimOrNull(dto.note);
+    if (!note) {
+      throw new BadRequestException('Memory media requires a descriptive note');
+    }
+
+    return {
+      collection: 'MEMORY' as const,
+      firstName: null,
+      lastName: null,
+      relationshipType: null,
+      decoyNames: [],
+      note,
+      eventYear: dto.eventYear ?? null,
+      memoryCategory: trimOrNull(dto.memoryCategory),
+    };
+  }
 
   private async assertCaregiverAccess(caregiverId: string, patientId: string): Promise<void> {
     const link = await this.prisma.patientCaregiver.findUnique({
