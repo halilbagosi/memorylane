@@ -154,6 +154,26 @@ Typical categories:
 - encryption master key (or KMS config)
 - object storage endpoint, bucket, access key, secret key
 - signed URL expiration durations
+- AWS Rekognition credentials for strict QUIZ photo face verification
+
+### QUIZ photo face verification
+
+QUIZ photo uploads are checked with AWS Rekognition before the raw image is encrypted and stored. The service enforces one detected face, front-facing pose, high confidence, and basic clarity thresholds. If the face is small in the frame, the backend crops the accepted image to a square headshot with Sharp before encryption.
+
+Required AWS environment variables:
+
+- `AWS_REGION`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+
+Optional threshold tuning:
+
+- `QUIZ_FACE_MIN_CONFIDENCE`
+- `QUIZ_FACE_MIN_SHARPNESS`
+- `QUIZ_FACE_MIN_BRIGHTNESS`
+- `QUIZ_FACE_MAX_YAW`
+- `QUIZ_FACE_MAX_ROLL`
+- `QUIZ_FACE_MIN_AREA_BEFORE_CROP`
 
 ## Summary
 

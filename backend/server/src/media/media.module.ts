@@ -3,6 +3,7 @@ import { raw } from 'express';
 import { KeyWrapService } from './crypto/key-wrap.service';
 import { MediaCryptoService } from './crypto/media-crypto.service';
 import { SignedUrlService } from './crypto/signed-url.service';
+import { FaceVerificationService } from './face-verification.service';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { LocalStorageService } from './storage/local-storage.service';
@@ -21,6 +22,7 @@ const RAW_UPLOAD_LIMIT = (() => {
     MediaService,
     KeyWrapService,
     MediaCryptoService,
+    FaceVerificationService,
     SignedUrlService,
     { provide: STORAGE_SERVICE, useClass: LocalStorageService },
   ],
@@ -30,5 +32,8 @@ export class MediaModule implements NestModule {
     consumer
       .apply(raw({ type: () => true, limit: RAW_UPLOAD_LIMIT }))
       .forRoutes({ path: 'media/storage/upload/:token', method: RequestMethod.PUT });
+    consumer
+      .apply(raw({ type: () => true, limit: RAW_UPLOAD_LIMIT }))
+      .forRoutes({ path: 'media/quiz-photo/verify', method: RequestMethod.POST });
   }
 }

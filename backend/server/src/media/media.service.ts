@@ -14,6 +14,7 @@ import { MediaCryptoService } from './crypto/media-crypto.service';
 import { SignedUrlService } from './crypto/signed-url.service';
 import { CreateUploadIntentDto } from './dto/create-upload-intent.dto';
 import { UpdateMediaMetadataDto } from './dto/update-media-metadata.dto';
+import { FaceVerificationService } from './face-verification.service';
 import {
   ALLOWED_MIME_BY_KIND,
   getMaxBytes,
@@ -52,6 +53,7 @@ export interface MediaListItem {
   firstName: string | null;
   lastName: string | null;
   relationshipType: string | null;
+  birthYear: number | null;
   decoyNames: string[];
   note: string | null;
   eventYear: number | null;
@@ -77,6 +79,7 @@ type MediaMetadataFields = {
   firstName?: string | null;
   lastName?: string | null;
   relationshipType?: string | null;
+  birthYear?: number | null;
   decoyNames?: string[] | null;
   note?: string | null;
   eventYear?: number | null;
@@ -91,6 +94,7 @@ export class MediaService {
     private readonly keyWrap: KeyWrapService,
     private readonly mediaCrypto: MediaCryptoService,
     private readonly signedUrls: SignedUrlService,
+    private readonly faceVerification: FaceVerificationService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
@@ -190,19 +194,35 @@ export class MediaService {
       throw new BadRequestException('Uploaded byte size does not match intent');
     }
 
+    let payload = body;
+    let contentType = media.contentType;
+    let byteSize = media.byteSize;
+    if (media.collection === 'QUIZ' && media.kind === 'PHOTO') {
+      const processed = await this.faceVerification.validateAndProcessQuizPhoto(body).catch(async (error) => {
+        await this.prisma.media.update({
+          where: { id: media.id },
+          data: { status: 'FAILED' },
+        });
+        throw error;
+      });
+      payload = processed.buffer;
+      contentType = processed.contentType === 'original' ? media.contentType : processed.contentType;
+      byteSize = processed.byteSize;
+    }
+
     const dek = this.keyWrap.unwrapDek({
       wrappedDek: media.wrappedDek,
       dekIv: media.dekIv,
       dekTag: media.dekTag,
     });
     const iv = Buffer.from(media.payloadIv, 'base64');
-    const { ciphertext, tag } = this.mediaCrypto.encryptPayload(body, dek, iv);
+    const { ciphertext, tag } = this.mediaCrypto.encryptPayload(payload, dek, iv);
     dek.fill(0);
 
     await this.storage.putObject(media.storageKey, ciphertext);
     await this.prisma.media.update({
       where: { id: media.id },
-      data: { payloadTag: tag.toString('base64') },
+      data: { payloadTag: tag.toString('base64'), contentType, byteSize },
     });
   }
 
@@ -247,6 +267,7 @@ export class MediaService {
         firstName: true,
         lastName: true,
         relationshipType: true,
+        birthYear: true,
         decoyNames: true,
         note: true,
         eventYear: true,
@@ -267,6 +288,7 @@ export class MediaService {
       firstName: r.firstName ?? null,
       lastName: r.lastName ?? null,
       relationshipType: r.relationshipType ?? null,
+      birthYear: r.birthYear ?? null,
       decoyNames: r.decoyNames ?? [],
       note: r.note ?? null,
       eventYear: r.eventYear ?? null,
@@ -395,6 +417,7 @@ export class MediaService {
         firstName: true,
         lastName: true,
         relationshipType: true,
+        birthYear: true,
         decoyNames: true,
         note: true,
         eventYear: true,
@@ -402,6 +425,12 @@ export class MediaService {
         memoryCategory: true,
       },
     });
+  }
+
+  async verifyQuizPhoto(caregiverId: string, patientId: string, body: Buffer) {
+    if (!patientId) throw new BadRequestException('patientId is required');
+    await this.assertCaregiverAccess(caregiverId, patientId);
+    return this.faceVerification.validateQuizPhoto(body);
   }
 
   private normalizeMetadata(dto: Partial<MediaMetadataFields>) {
@@ -415,17 +444,23 @@ export class MediaService {
       const firstName = trimOrNull(dto.firstName);
       const lastName = trimOrNull(dto.lastName);
       const relationshipType = trimOrNull(dto.relationshipType);
+      const birthYear = dto.birthYear ?? null;
       const decoyNames = (dto.decoyNames ?? []).map((name) => name.trim()).filter(Boolean);
-      if (!firstName || !relationshipType) {
+      if (!firstName || !relationshipType || birthYear === null) {
         throw new BadRequestException(
-          'Quiz media requires a person name and relationship',
+          'Quiz media requires a person name, relationship, and birth year',
         );
+      }
+      const currentYear = new Date().getFullYear();
+      if (!Number.isInteger(birthYear) || birthYear < 1900 || birthYear > currentYear) {
+        throw new BadRequestException(`Quiz media birth year must be between 1900 and ${currentYear}`);
       }
       return {
         collection,
         firstName,
         lastName,
         relationshipType,
+        birthYear,
         decoyNames,
         note: null,
         eventYear: null,
@@ -444,6 +479,7 @@ export class MediaService {
       firstName: null,
       lastName: null,
       relationshipType: null,
+      birthYear: null,
       decoyNames: [],
       note,
       eventYear: dto.eventYear ?? null,

@@ -59,6 +59,12 @@ export class CreateUploadIntentDto {
   relationshipType?: string;
 
   @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(2100)
+  birthYear?: number;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(3)
   @IsString({ each: true })

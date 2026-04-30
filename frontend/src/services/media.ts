@@ -18,6 +18,7 @@ export interface MediaListItem {
   firstName: string | null;
   lastName: string | null;
   relationshipType: string | null;
+  birthYear: number | null;
   note: string | null;
   eventYear: number | null;
   isApproximateYear: boolean;
@@ -54,6 +55,23 @@ export interface AccessUrlResponse {
   expiresAt: string;
 }
 
+export type QuizPhotoVerificationCode =
+  | 'NO_FACE_DETECTED'
+  | 'TOO_MANY_FACES'
+  | 'LOW_CONFIDENCE'
+  | 'LOW_CLARITY'
+  | 'NOT_FRONTAL'
+  | 'INVALID_IMAGE'
+  | 'FACE_VERIFICATION_UNAVAILABLE';
+
+export interface QuizPhotoVerificationResult {
+  accepted: boolean;
+  code?: QuizPhotoVerificationCode;
+  message?: string;
+  confidence?: number;
+  cropped?: boolean;
+}
+
 export interface UploadOptions {
   patientId: string;
   kind: MediaKind;
@@ -68,6 +86,7 @@ export interface MediaMetadataInput {
   firstName?: string;
   lastName?: string;
   relationshipType?: string;
+  birthYear?: number;
   note?: string;
   eventYear?: number;
   isApproximateYear?: boolean;
@@ -83,13 +102,24 @@ async function authHeaders(): Promise<Record<string, string>> {
 async function jsonOrThrow(res: Response): Promise<any> {
   if (res.ok) return res.json();
   let detail: string | undefined;
+  let code: string | undefined;
   try {
     const data = await res.json();
-    detail = data?.message ?? data?.error ?? JSON.stringify(data);
+    const nested = typeof data?.message === 'object' && data.message !== null ? data.message : null;
+    code = data?.code ?? nested?.code;
+    detail = nested?.message ?? data?.message ?? data?.error ?? JSON.stringify(data);
   } catch {
     detail = await res.text().catch(() => undefined);
   }
-  throw new Error(`Request failed (${res.status})${detail ? `: ${detail}` : ''}`);
+  const error = new Error(`Request failed (${res.status})${detail ? `: ${detail}` : ''}`) as Error & {
+    status?: number;
+    code?: string;
+    detail?: string;
+  };
+  error.status = res.status;
+  error.code = code;
+  error.detail = detail;
+  throw error;
 }
 
 export async function listPatientMedia(patientId: string): Promise<MediaListItem[]> {
@@ -198,6 +228,21 @@ async function fetchLocalBlob(uri: string): Promise<Blob> {
   return localResponse.blob();
 }
 
+export async function verifyQuizPhoto(
+  patientId: string,
+  imageBase64: string,
+): Promise<QuizPhotoVerificationResult> {
+  const res = await fetch(`${API_BASE_URL}/media/quiz-photo/verify-base64`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify({ patientId, imageBase64 }),
+  });
+  return jsonOrThrow(res);
+}
+
 /**
  * Caregiver upload flow:
  *  1) request signed PUT URL from backend
@@ -229,7 +274,14 @@ export async function uploadPatientMedia(
     body: blob,
   });
   if (!putRes.ok) {
-    const detail = await putRes.text().catch(() => undefined);
+    let detail: string | undefined;
+    try {
+      const data = await putRes.json();
+      const nested = typeof data?.message === 'object' && data.message !== null ? data.message : null;
+      detail = nested?.message ?? data?.message ?? data?.error ?? JSON.stringify(data);
+    } catch {
+      detail = await putRes.text().catch(() => undefined);
+    }
     throw new Error(
       `Upload failed (${putRes.status})${detail ? `: ${detail}` : ''}`,
     );

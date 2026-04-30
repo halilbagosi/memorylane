@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { KeyWrapService } from './crypto/key-wrap.service';
 import { MediaCryptoService } from './crypto/media-crypto.service';
 import { SignedUrlService } from './crypto/signed-url.service';
+import { FaceVerificationService } from './face-verification.service';
 import { MediaService } from './media.service';
 import { STORAGE_SERVICE, StorageService } from './storage/storage.interface';
 
@@ -38,6 +39,7 @@ describe('MediaService', () => {
   let keyWrap: KeyWrapService;
   let mediaCrypto: MediaCryptoService;
   let signedUrls: SignedUrlService;
+  let faceVerification: Pick<FaceVerificationService, 'validateAndProcessQuizPhoto' | 'validateQuizPhoto'>;
 
   beforeEach(async () => {
     process.env.MEDIA_MASTER_KEY =
@@ -52,6 +54,15 @@ describe('MediaService', () => {
 
     prisma = makePrisma();
     storage = makeStorage();
+    faceVerification = {
+      validateAndProcessQuizPhoto: jest.fn(async (buffer: Buffer) => ({
+        buffer,
+        contentType: 'original',
+        byteSize: buffer.length,
+        cropped: false,
+      })),
+      validateQuizPhoto: jest.fn(async () => ({ accepted: true })),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -60,6 +71,7 @@ describe('MediaService', () => {
         { provide: KeyWrapService, useValue: keyWrap },
         { provide: MediaCryptoService, useValue: mediaCrypto },
         { provide: SignedUrlService, useValue: signedUrls },
+        { provide: FaceVerificationService, useValue: faceVerification },
         { provide: STORAGE_SERVICE, useValue: storage },
       ],
     }).compile();
@@ -125,7 +137,14 @@ describe('MediaService', () => {
 
       const result = await service.createUploadIntent(
         caregiverId,
-        { patientId, kind: 'PHOTO' as any, contentType: 'image/jpeg', byteSize: 4096 },
+        {
+          patientId,
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: 4096,
+          collection: 'MEMORY' as any,
+          note: 'A family memory',
+        },
         'http://localhost:3000',
       );
 
@@ -173,7 +192,7 @@ describe('MediaService', () => {
       expect(item.kind).toBe('PHOTO');
       expect(item.status).toBe('READY');
       expect((item as any).patientId).toBeUndefined();
-      expect((item as any).caregiverId).toBeUndefined();
+      expect(item.caregiverId).toBeNull();
       expect((item as any).storageKey).toBeUndefined();
       expect((item as any).wrappedDek).toBeUndefined();
     });
@@ -201,6 +220,8 @@ describe('MediaService', () => {
           kind: 'PHOTO' as any,
           contentType: 'image/jpeg',
           byteSize: 16,
+          collection: 'MEMORY' as any,
+          note: 'A family memory',
         },
         'http://localhost:3000',
       );
@@ -246,6 +267,59 @@ describe('MediaService', () => {
       const out = await service.readDecryptedPayload(getToken);
       expect(out.contentType).toBe('image/jpeg');
       expect(out.body.equals(plaintext)).toBe(true);
+    });
+
+    it('accepts quiz photos with birth year metadata and verifies before storage', async () => {
+      prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
+      prisma.media.findMany.mockResolvedValueOnce([]);
+      const fakeRow: any = {};
+      prisma.media.create.mockImplementationOnce(async ({ data }: any) => {
+        Object.assign(fakeRow, data, {
+          id: 'internal-quiz-1',
+          publicId: 'quiz-pub-1',
+          kind: data.kind,
+          status: data.status,
+        });
+        return { publicId: 'quiz-pub-1', kind: data.kind, status: data.status };
+      });
+
+      const plaintext = Buffer.from('fake-jpeg-payload');
+      const intent = await service.createUploadIntent(
+        'cg-1',
+        {
+          patientId: '00000000-0000-0000-0000-000000000001',
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: plaintext.length,
+          collection: 'QUIZ' as any,
+          firstName: 'Bela',
+          relationshipType: 'Friend',
+          birthYear: 2004,
+        },
+        'http://localhost:3000',
+      );
+
+      prisma.media.findUnique.mockImplementation(async ({ where }: any) => {
+        if (where.publicId === 'quiz-pub-1') return fakeRow;
+        return null;
+      });
+      prisma.media.update.mockImplementation(async ({ data }: any) => {
+        Object.assign(fakeRow, data);
+        return fakeRow;
+      });
+
+      let storedCiphertext: Buffer | null = null;
+      storage.putObject.mockImplementation(async (_key, body) => {
+        storedCiphertext = body;
+      });
+
+      const token = decodeURIComponent(intent.uploadUrl.split('/').pop() as string);
+      await service.storeUploadedPayload(token, plaintext);
+
+      expect(faceVerification.validateAndProcessQuizPhoto).toHaveBeenCalledWith(plaintext);
+      expect(fakeRow.birthYear).toBe(2004);
+      expect(storedCiphertext).not.toBeNull();
+      expect(fakeRow.payloadTag).toBeTruthy();
     });
   });
 });

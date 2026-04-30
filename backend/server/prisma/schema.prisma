@@ -198,6 +198,7 @@ model Media {
   firstName        String?  @map("first_name")
   lastName         String?  @map("last_name")
   relationshipType String?  @map("relationship_type")
+  birthYear        Int?     @map("birth_year")
   decoyNames       String[] @default([]) @map("decoy_names")
 
   // Memory story data. Used by the caregiver Media Manager.
