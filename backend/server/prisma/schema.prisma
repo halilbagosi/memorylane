@@ -138,6 +138,7 @@ model Patient {
   
   paired             Boolean             @default(false)
   biometricRecoveryEnabled Boolean       @default(false) @map("biometric_recovery_enabled")
+  quizModes          String[]            @default(["NAME", "AGE", "RELATIONSHIP"]) @map("quiz_modes")
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
 

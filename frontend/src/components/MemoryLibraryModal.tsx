@@ -19,16 +19,21 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from './AppIcon';
+import { ZoomableImage } from './ZoomableImage';
 import {
   deleteMedia,
   getAccessUrl,
+  getQuizModes,
   listPatientMedia,
   updateMediaMetadata,
+  updateQuizModes,
   uploadPatientMedia,
   type MediaCollection,
   type MediaListItem,
   type MediaMetadataInput,
+  type QuizMode,
 } from '../services/media';
 
 const isIOS = Platform.OS === 'ios';
@@ -112,6 +117,8 @@ export function MemoryLibrarySheetContent({
   const [editIsApproximate, setEditIsApproximate] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
+  const [quizModes, setQuizModes] = useState<QuizMode[]>(['NAME', 'AGE', 'RELATIONSHIP']);
+  const [savingQuizModes, setSavingQuizModes] = useState(false);
 
   const loadMedia = useCallback(async () => {
     if (!patientId) return;
@@ -143,8 +150,27 @@ export function MemoryLibrarySheetContent({
     setSelected(new Set());
     setLibraryTab('QUIZ');
     setKindFilter('ALL');
-    loadMedia().finally(() => setLoading(false));
+    Promise.all([
+      loadMedia(),
+      getQuizModes(patientId).then(setQuizModes).catch(() => undefined),
+    ]).finally(() => setLoading(false));
   }, [patientId]);
+
+  const handleToggleQuizMode = async (mode: QuizMode) => {
+    const isActive = quizModes.includes(mode);
+    if (isActive && quizModes.length === 1) return; // must keep at least one
+    const next = isActive ? quizModes.filter((m) => m !== mode) : [...quizModes, mode];
+    setQuizModes(next);
+    setSavingQuizModes(true);
+    try {
+      const saved = await updateQuizModes(patientId, next);
+      setQuizModes(saved);
+    } catch {
+      setQuizModes(quizModes); // revert on error
+    } finally {
+      setSavingQuizModes(false);
+    }
+  };
 
   const ensureSignedUrl = useCallback(
     async (publicId: string, forceRefresh = false) => {
@@ -602,7 +628,7 @@ export function MemoryLibrarySheetContent({
           onPress={() => setEditMode(true)}
           activeOpacity={0.7}
         >
-          <Text style={styles.navActionText}>Edit</Text>
+          <Text style={styles.navActionText}>Select</Text>
         </TouchableOpacity>
       ) : (
         <View style={{ width: 60 }} />
@@ -695,7 +721,7 @@ export function MemoryLibrarySheetContent({
         {navHeader}
         {uploadBanner}
         {libraryTabs}
-        {mediaFilters}
+        {libraryTab === 'MEMORY' && mediaFilters}
         {addRowButton}
       </View>
 
@@ -800,6 +826,17 @@ export function MemoryLibrarySheetContent({
           scrollEnabled={isIOS}
           nestedScrollEnabled={true}
           style={isIOS ? styles.flatListIOS : undefined}
+          ListHeaderComponent={
+            <View>
+              <QuizModeSelector
+                patientName={patientName}
+                activeModes={quizModes}
+                saving={savingQuizModes}
+                onToggle={handleToggleQuizMode}
+              />
+              {mediaFilters}
+            </View>
+          }
           renderItem={({ item }) => {
             const isSelected = selected.has(item.publicId);
             const canDelete = isPrimary || item.caregiverId === myId;
@@ -945,7 +982,13 @@ export function MemoryLibrarySheetContent({
       </Modal>
 
       <MediaDetailsModal
-        item={previewItem}
+        item={previewItem?.kind !== 'PHOTO' && previewItem?.kind !== 'VIDEO' ? previewItem : null}
+        onClose={() => setPreviewItem(null)}
+        onEdit={openMetadataEdit}
+      />
+
+      <MemoryFullscreenPreviewModal
+        item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null}
         onClose={() => setPreviewItem(null)}
         onEdit={openMetadataEdit}
       />
@@ -966,6 +1009,54 @@ export function MemoryLibrarySheetContent({
         onClose={() => setEditingMedia(null)}
         onSave={saveMetadataEdit}
       />
+    </View>
+  );
+}
+
+// ── QuizModeSelector ─────────────────────────────────────────────────────────
+
+const ALL_QUIZ_MODES: { key: QuizMode; label: string }[] = [
+  { key: 'NAME', label: 'Name' },
+  { key: 'AGE', label: 'Age' },
+  { key: 'RELATIONSHIP', label: 'Relationship' },
+];
+
+function QuizModeSelector({
+  patientName,
+  activeModes,
+  saving,
+  onToggle,
+}: {
+  patientName: string;
+  activeModes: QuizMode[];
+  saving: boolean;
+  onToggle: (mode: QuizMode) => void;
+}) {
+  return (
+    <View style={styles.quizSelectorWrapper}>
+      <Text style={styles.quizSelectorLabel} numberOfLines={1}>
+        Customize {patientName}'s quiz:
+      </Text>
+      <View style={styles.quizSelectorPills}>
+        {ALL_QUIZ_MODES.map(({ key, label }) => {
+          const active = activeModes.includes(key);
+          const isLast = active && activeModes.length === 1;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[styles.quizPill, active && styles.quizPillActive, isLast && styles.quizPillLast]}
+              onPress={() => onToggle(key)}
+              activeOpacity={0.75}
+              disabled={saving || isLast}
+            >
+              <Text style={[styles.quizPillText, active && styles.quizPillTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        {saving && <ActivityIndicator size="small" color={colors.secondary} style={{ marginLeft: 6 }} />}
+      </View>
     </View>
   );
 }
@@ -1168,6 +1259,109 @@ function MediaDetailsModal({
             <Text style={styles.editDetailsText}>Edit Details</Text>
           </TouchableOpacity>
         </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── MemoryFullscreenPreviewModal ──────────────────────────────────────────────
+
+function MemoryFullscreenPreviewModal({
+  item,
+  onClose,
+  onEdit,
+}: {
+  item: MediaTileVM | null;
+  onClose: () => void;
+  onEdit: (item: MediaTileVM) => void;
+}) {
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setImageLoading(true);
+      setImageFailed(false);
+    }
+  }, [item?.publicId, item?.signedUrl]);
+
+  if (!item) return null;
+
+  const isPhoto = item.kind === 'PHOTO';
+  const isVideo = item.kind === 'VIDEO';
+  const yearLabel =
+    item.eventYear != null
+      ? item.isApproximateYear
+        ? `~${item.eventYear}`
+        : String(item.eventYear)
+      : null;
+
+  return (
+    <Modal visible animationType="fade" onRequestClose={onClose}>
+      <View style={styles.fsPreviewScreen}>
+        {(isPhoto || isVideo) && item.signedUrl && !imageFailed ? (
+          <>
+            <ZoomableImage
+              uri={item.signedUrl}
+              onLoad={() => setImageLoading(false)}
+              onError={() => { setImageLoading(false); setImageFailed(true); }}
+            />
+            {imageLoading && (
+              <View style={styles.fsPreviewLoadingOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.fsPreviewFallback}>
+            <AppIcon
+              iosName={
+                imageFailed
+                  ? 'exclamationmark.triangle'
+                  : item.kind === 'AUDIO'
+                  ? 'waveform'
+                  : item.kind === 'VIDEO'
+                  ? 'video.fill'
+                  : 'doc.fill'
+              }
+              androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'}
+              size={56}
+              color={colors.secondary}
+            />
+            <Text style={styles.fsPreviewKindLabel}>
+              {imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close">
+          <AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={colors.textDark} />
+        </TouchableOpacity>
+
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.72)']}
+          style={styles.fsPreviewDetails}
+        >
+          {item.collection === 'QUIZ' ? (
+            <>
+              {!!item.firstName && <Text style={styles.fsPreviewName}>{item.firstName}</Text>}
+              {!!item.relationshipType && (
+                <Text style={styles.fsPreviewRelationship}>{item.relationshipType}</Text>
+              )}
+            </>
+          ) : (
+            <>
+              {!!yearLabel && <Text style={styles.fsPreviewYear}>{yearLabel}</Text>}
+              {!!(item as any).memoryCategory && (
+                <Text style={styles.fsPreviewCategory}>{(item as any).memoryCategory}</Text>
+              )}
+              {!!item.note && <Text style={styles.fsPreviewNote}>{item.note}</Text>}
+            </>
+          )}
+          <TouchableOpacity style={styles.fsPreviewEditBtn} onPress={() => onEdit(item)}>
+            <Text style={styles.fsPreviewEditText}>Edit Details</Text>
+          </TouchableOpacity>
+        </LinearGradient>
       </View>
     </Modal>
   );
@@ -1828,6 +2022,141 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
     color: colors.textMuted,
+  },
+
+  // Quiz mode selector
+  quizSelectorWrapper: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 16,
+    marginBottom: 12,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  quizSelectorLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  quizSelectorPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  quizPill: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 50,
+    backgroundColor: colors.neutral,
+    borderWidth: 1.5,
+    borderColor: colors.secondary,
+  },
+  quizPillActive: {
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
+  },
+  quizPillLast: {
+    opacity: 0.5,
+  },
+  quizPillText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.secondary,
+  },
+  quizPillTextActive: {
+    color: '#fff',
+  },
+
+  // Fullscreen memory preview (mirrors relive tab layout)
+  fsPreviewScreen: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fsPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  fsPreviewLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000',
+  },
+  fsPreviewFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: colors.neutral,
+  },
+  fsPreviewKindLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  fsPreviewBackBtn: {
+    position: 'absolute',
+    top: isIOS ? 56 : 20,
+    left: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fsPreviewDetails: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 56,
+    paddingBottom: isIOS ? 44 : 28,
+    gap: 5,
+  },
+  fsPreviewName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 22,
+    color: '#fff',
+  },
+  fsPreviewRelationship: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  fsPreviewYear: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: '#fff',
+  },
+  fsPreviewCategory: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  fsPreviewNote: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 22,
+    marginTop: 2,
+  },
+  fsPreviewEditBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  fsPreviewEditText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: '#fff',
   },
 });
 

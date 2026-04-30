@@ -144,6 +144,26 @@ async function createUploadIntent(input: {
   return jsonOrThrow(res);
 }
 
+export type QuizMode = 'NAME' | 'AGE' | 'RELATIONSHIP';
+
+export async function getQuizModes(patientId: string): Promise<QuizMode[]> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
+    headers: await authHeaders(),
+  });
+  const data = await jsonOrThrow(res);
+  return data.quizModes;
+}
+
+export async function updateQuizModes(patientId: string, modes: QuizMode[]): Promise<QuizMode[]> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ modes }),
+  });
+  const data = await jsonOrThrow(res);
+  return data.quizModes;
+}
+
 export async function updateMediaMetadata(
   publicId: string,
   metadata: MediaMetadataInput,

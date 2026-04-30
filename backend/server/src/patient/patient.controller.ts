@@ -55,6 +55,18 @@ export class PatientController {
     return this.patientService.getWelcomeCard(patientId);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/quiz-modes')
+  async getQuizModes(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.getQuizModes(patientId, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/quiz-modes')
+  async updateQuizModes(@Param('id') patientId: string, @Body() body: { modes: string[] }, @Req() req: any) {
+    return this.patientService.updateQuizModes(patientId, req.user.userId, body.modes);
+  }
+
   @Patch(':id/biometric-recovery')
   async setBiometricRecovery(@Param('id') patientId: string, @Body() body: { enabled: boolean }) {
     return this.patientService.setBiometricRecovery(patientId, body.enabled === true);
