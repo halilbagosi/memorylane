@@ -35,9 +35,16 @@ const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_GUTTER = 8;
 const GRID_PADDING = 16;
-const GRID_COLUMNS = 3;
-const TILE_SIZE =
-  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GUTTER * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+const QUIZ_COLUMNS = 3;
+const MEMORY_COLUMNS = 3;
+const MEMORY_GRID_PADDING = GRID_PADDING;
+const MEMORY_GRID_GAP = GRID_GUTTER;
+const TILE_SIZE_QUIZ =
+  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GUTTER * (QUIZ_COLUMNS - 1)) / QUIZ_COLUMNS;
+const TILE_SIZE_MEMORY =
+  (SCREEN_WIDTH - MEMORY_GRID_PADDING * 2 - MEMORY_GRID_GAP * (MEMORY_COLUMNS - 1)) / MEMORY_COLUMNS;
+// Keep TILE_SIZE as the quiz default so MemoryTile/styles that reference it still work for QUIZ
+const TILE_SIZE = TILE_SIZE_QUIZ;
 type MediaKindFilter = 'ALL' | 'PHOTO' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
 interface MediaTileVM extends MediaListItem {
@@ -94,12 +101,17 @@ export function MemoryLibrarySheetContent({
   const [pendingMemoryAssets, setPendingMemoryAssets] = useState<{ uri: string; mimeType?: string }[]>([]);
   const [memoryDetailsVisible, setMemoryDetailsVisible] = useState(false);
   const [memoryNote, setMemoryNote] = useState('');
+  const [memoryYear, setMemoryYear] = useState('');
+  const [memoryIsApproximate, setMemoryIsApproximate] = useState(false);
   const [previewItem, setPreviewItem] = useState<MediaTileVM | null>(null);
   const [editingMedia, setEditingMedia] = useState<MediaTileVM | null>(null);
   const [editFirstName, setEditFirstName] = useState('');
   const [editRelationship, setEditRelationship] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editYear, setEditYear] = useState('');
+  const [editIsApproximate, setEditIsApproximate] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
 
   const loadMedia = useCallback(async () => {
     if (!patientId) return;
@@ -108,9 +120,16 @@ export function MemoryLibrarySheetContent({
       const data = await listPatientMedia(patientId);
       setItems((prev) => {
         const urlMap = new Map(prev.map((m) => [m.publicId, m]));
+        const now = Date.now();
         return data.map((d) => {
           const ex = urlMap.get(d.publicId);
-          return ex ? { ...d, signedUrl: ex.signedUrl, signedUrlExpiresAt: ex.signedUrlExpiresAt } : d;
+          const hasFreshUrl =
+            ex?.signedUrl &&
+            ex.signedUrlExpiresAt &&
+            ex.signedUrlExpiresAt > now + 5_000;
+          return hasFreshUrl
+            ? { ...d, signedUrl: ex.signedUrl, signedUrlExpiresAt: ex.signedUrlExpiresAt }
+            : d;
         });
       });
     } catch (e: any) {
@@ -128,18 +147,19 @@ export function MemoryLibrarySheetContent({
   }, [patientId]);
 
   const ensureSignedUrl = useCallback(
-    async (publicId: string) => {
+    async (publicId: string, forceRefresh = false) => {
       const existing = items.find((m) => m.publicId === publicId);
       if (!existing || existing.status !== 'READY') return null;
       const now = Date.now();
-      if (existing.signedUrl && existing.signedUrlExpiresAt && existing.signedUrlExpiresAt > now + 5_000)
+      if (!forceRefresh && existing.signedUrl && existing.signedUrlExpiresAt && existing.signedUrlExpiresAt > now + 5_000)
         return existing.signedUrl;
       setItems((prev) =>
-        prev.map((m) => (m.publicId === publicId ? { ...m, loadingUrl: true, urlError: undefined } : m)),
+        prev.map((m) => (m.publicId === publicId ? { ...m, signedUrl: undefined, loadingUrl: true, urlError: undefined } : m)),
       );
       try {
         const access = await getAccessUrl(publicId);
         const expiresAt = new Date(access.expiresAt).getTime();
+        Image.prefetch(access.url).catch(() => undefined);
         setItems((prev) =>
           prev.map((m) =>
             m.publicId === publicId
@@ -160,17 +180,79 @@ export function MemoryLibrarySheetContent({
     [items],
   );
 
+  const handleImageLoadError = useCallback(
+    (publicId: string) => {
+      setImageRetryIds((prev) => {
+        if (prev.has(publicId)) {
+          setItems((itemsPrev) =>
+            itemsPrev.map((m) =>
+              m.publicId === publicId
+                ? { ...m, signedUrl: undefined, loadingUrl: false, urlError: 'Could not load image' }
+                : m,
+            ),
+          );
+          return prev;
+        }
+        const next = new Set(prev);
+        next.add(publicId);
+        ensureSignedUrl(publicId, true);
+        return next;
+      });
+    },
+    [ensureSignedUrl],
+  );
+
   useEffect(() => {
+    const now = Date.now();
     items.forEach((m) => {
-      if (m.status === 'READY' && !m.signedUrl && !m.loadingUrl && !m.urlError) {
+      const needsUrl =
+        !m.signedUrl || !m.signedUrlExpiresAt || m.signedUrlExpiresAt <= now + 5_000;
+      if (m.status === 'READY' && needsUrl && !m.loadingUrl && !m.urlError) {
         ensureSignedUrl(m.publicId);
       }
     });
   }, [items]);
 
   const filteredItems = useMemo(() => {
-    return items.filter((m) => m.collection === libraryTab && (kindFilter === 'ALL' || m.kind === kindFilter));
+    const base = items.filter((m) => m.collection === libraryTab && (kindFilter === 'ALL' || m.kind === kindFilter));
+    if (libraryTab === 'MEMORY') {
+      return [...base].sort((a, b) => {
+        const yearA = a.eventYear ?? new Date(a.createdAt).getFullYear();
+        const yearB = b.eventYear ?? new Date(b.createdAt).getFullYear();
+        if (yearA !== yearB) return yearA - yearB;
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+    }
+    return base;
   }, [items, kindFilter, libraryTab]);
+
+  type ListRow =
+    | { type: 'HEADER'; label: string; key: string }
+    | { type: 'ROW'; items: MediaTileVM[]; key: string };
+
+  const groupedMemoryData = useMemo((): ListRow[] | null => {
+    if (libraryTab !== 'MEMORY') return null;
+    const groups: { label: string; items: MediaTileVM[] }[] = [];
+    const labelOf = (item: MediaTileVM) => {
+      const year = item.eventYear ?? new Date(item.createdAt).getFullYear();
+      return Number.isFinite(year) ? `${Math.floor(year / 10) * 10}s` : 'Undated';
+    };
+    for (const item of filteredItems) {
+      const label = labelOf(item);
+      const last = groups[groups.length - 1];
+      if (last && last.label === label) last.items.push(item);
+      else groups.push({ label, items: [item] });
+    }
+    const rows: ListRow[] = [];
+    for (const g of groups) {
+      rows.push({ type: 'HEADER', label: g.label, key: `hdr-${g.label}` });
+      for (let i = 0; i < g.items.length; i += MEMORY_COLUMNS) {
+        const chunk = g.items.slice(i, i + MEMORY_COLUMNS);
+        rows.push({ type: 'ROW', items: chunk, key: `row-${chunk[0].publicId}` });
+      }
+    }
+    return rows;
+  }, [filteredItems, libraryTab]);
 
   const uploadSingleAsset = async (
     asset: { uri: string; mimeType?: string },
@@ -287,6 +369,26 @@ export function MemoryLibrarySheetContent({
       Alert.alert('Missing Details', 'Person name and relationship are required for quiz media.');
       return;
     }
+    const selectedPhotos = pendingQuizAssets.filter((asset) => inferMime(asset).startsWith('image/'));
+    if (selectedPhotos.length > 1) {
+      Alert.alert('One Photo Per Person', 'Please upload only one quiz photo for each person.');
+      return;
+    }
+    const normalizedName = firstName.replace(/\s+/g, ' ').toLocaleLowerCase();
+    const duplicatePhoto = items.some(
+      (item) =>
+        item.collection === 'QUIZ' &&
+        item.kind === 'PHOTO' &&
+        item.status !== 'FAILED' &&
+        item.firstName?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === normalizedName,
+    );
+    if (selectedPhotos.length > 0 && duplicatePhoto) {
+      Alert.alert(
+        'Photo Already Exists',
+        `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
+      );
+      return;
+    }
     setQuizDetailsVisible(false);
     await uploadAssets(pendingQuizAssets, {
       collection: 'QUIZ',
@@ -304,16 +406,30 @@ export function MemoryLibrarySheetContent({
       Alert.alert('Missing Note', 'Please add a descriptive note before saving this memory.');
       return;
     }
+    const yearNum = memoryYear.trim() ? parseInt(memoryYear.trim(), 10) : undefined;
+    if (memoryYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
+      Alert.alert('Invalid Year', 'Please enter a year between 1900 and 2100.');
+      return;
+    }
     setMemoryDetailsVisible(false);
-    await uploadAssets(pendingMemoryAssets, { collection: 'MEMORY', note });
+    await uploadAssets(pendingMemoryAssets, {
+      collection: 'MEMORY',
+      note,
+      eventYear: yearNum,
+      isApproximateYear: memoryIsApproximate,
+    });
     setPendingMemoryAssets([]);
     setMemoryNote('');
+    setMemoryYear('');
+    setMemoryIsApproximate(false);
   };
 
   const openMetadataEdit = (item: MediaTileVM) => {
     setEditFirstName(item.firstName ?? '');
     setEditRelationship(item.relationshipType ?? '');
     setEditNote(item.note ?? '');
+    setEditYear(item.eventYear !== null ? String(item.eventYear) : '');
+    setEditIsApproximate(item.isApproximateYear ?? false);
     setPreviewItem(null);
     setTimeout(() => setEditingMedia(item), 180);
   };
@@ -340,9 +456,16 @@ export function MemoryLibrarySheetContent({
           Alert.alert('Missing Note', 'Descriptive note is required.');
           return;
         }
+        const yearNum = editYear.trim() ? parseInt(editYear.trim(), 10) : undefined;
+        if (editYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
+          Alert.alert('Invalid Year', 'Please enter a year between 1900 and 2100.');
+          return;
+        }
         await updateMediaMetadata(editingMedia.publicId, {
           collection: 'MEMORY',
           note,
+          eventYear: yearNum,
+          isApproximateYear: editIsApproximate,
         });
       }
       await loadMedia();
@@ -354,6 +477,8 @@ export function MemoryLibrarySheetContent({
               lastName: prev.lastName,
               relationshipType: editRelationship.trim() || prev.relationshipType,
               note: editNote.trim() || prev.note,
+              eventYear: editYear.trim() ? parseInt(editYear.trim(), 10) : prev.eventYear,
+              isApproximateYear: editIsApproximate,
             }
           : prev,
       );
@@ -608,15 +733,70 @@ export function MemoryLibrarySheetContent({
               : 'Tap "Add Memory" above to get started.'}
           </Text>
         </View>
+      ) : groupedMemoryData ? (
+        <FlatList
+          key="memory-grouped"
+          data={groupedMemoryData}
+          keyExtractor={(row) => row.key}
+          contentContainerStyle={[styles.memoryGrid, isIOS && { paddingBottom: 100 }]}
+          scrollEnabled={isIOS}
+          nestedScrollEnabled={true}
+          style={isIOS ? styles.flatListIOS : undefined}
+          removeClippedSubviews
+          initialNumToRender={18}
+          maxToRenderPerBatch={18}
+          updateCellsBatchingPeriod={40}
+          windowSize={9}
+          renderItem={({ item: row }) => {
+            if (row.type === 'HEADER') {
+              return <YearHeader label={row.label} />;
+            }
+            const canDeleteOf = (m: MediaTileVM) => isPrimary || m.caregiverId === myId;
+            return (
+              <View style={styles.memoryGridRow}>
+                {row.items.map((item) => {
+                  const isSelected = selected.has(item.publicId);
+                  const canDelete = canDeleteOf(item);
+                  return (
+                    <MemoryTile
+                      key={item.publicId}
+                      item={item}
+                      tileSize={TILE_SIZE_MEMORY}
+                      editMode={editMode}
+                      isSelected={isSelected}
+                      canDelete={canDelete}
+                      isPrimary={isPrimary}
+                      onImageError={() => handleImageLoadError(item.publicId)}
+                      onPress={() => {
+                        if (editMode && (isPrimary || canDelete)) { toggleSelect(item.publicId); return; }
+                        if (!editMode) {
+                          setQuizDetailsVisible(false);
+                          setMemoryDetailsVisible(false);
+                          setPendingQuizAssets([]);
+                          setPendingMemoryAssets([]);
+                          setPreviewItem(item);
+                        }
+                      }}
+                      onLongPress={() => { if (!editMode && canDelete) confirmDelete(item); }}
+                    />
+                  );
+                })}
+                {row.items.length < MEMORY_COLUMNS &&
+                  Array.from({ length: MEMORY_COLUMNS - row.items.length }).map((_, i) => (
+                    <View key={`pad-${i}`} style={{ width: TILE_SIZE_MEMORY, height: TILE_SIZE_MEMORY }} />
+                  ))}
+              </View>
+            );
+          }}
+        />
       ) : (
         <FlatList
+          key="quiz-grid"
           data={filteredItems}
           keyExtractor={(item) => item.publicId}
-          numColumns={GRID_COLUMNS}
+          numColumns={QUIZ_COLUMNS}
           contentContainerStyle={[styles.grid, isIOS && { paddingBottom: 100 }]}
           columnWrapperStyle={styles.gridRow}
-          // iOS: FlatList scrolls inside the flex:1 formSheet
-          // Android: outer M3BottomSheet ScrollView scrolls; FlatList just lays out
           scrollEnabled={isIOS}
           nestedScrollEnabled={true}
           style={isIOS ? styles.flatListIOS : undefined}
@@ -630,6 +810,7 @@ export function MemoryLibrarySheetContent({
                 isSelected={isSelected}
                 canDelete={canDelete}
                 isPrimary={isPrimary}
+                onImageError={() => handleImageLoadError(item.publicId)}
                 onPress={() => {
                   if (editMode && (isPrimary || canDelete)) {
                     toggleSelect(item.publicId);
@@ -714,7 +895,7 @@ export function MemoryLibrarySheetContent({
         <View style={styles.modalBackdrop}>
           <View style={styles.quizModal}>
             <Text style={styles.quizModalTitle}>Memory Details</Text>
-            <Text style={styles.quizModalBody}>Add a descriptive note for this memory before saving it.</Text>
+            <Text style={styles.quizModalBody}>Add a note and optionally the year this memory took place.</Text>
             <TextInput
               style={[styles.detailInput, styles.noteInput]}
               value={memoryNote}
@@ -723,6 +904,25 @@ export function MemoryLibrarySheetContent({
               placeholderTextColor={colors.textMuted}
               multiline
             />
+            <TextInput
+              style={styles.detailInput}
+              value={memoryYear}
+              onChangeText={setMemoryYear}
+              placeholder="Year (e.g. 1985) — optional"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              maxLength={4}
+            />
+            <TouchableOpacity
+              style={styles.approxRow}
+              onPress={() => setMemoryIsApproximate((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.approxCheckbox, memoryIsApproximate && styles.approxCheckboxActive]}>
+                {memoryIsApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.approxLabel}>Approximate year</Text>
+            </TouchableOpacity>
             <View style={styles.quizModalActions}>
               <TouchableOpacity
                 style={styles.quizCancelBtn}
@@ -730,12 +930,14 @@ export function MemoryLibrarySheetContent({
                   setMemoryDetailsVisible(false);
                   setPendingMemoryAssets([]);
                   setMemoryNote('');
+                  setMemoryYear('');
+                  setMemoryIsApproximate(false);
                 }}
               >
                 <Text style={styles.quizCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.quizSaveBtn} onPress={saveMemoryDetailsAndUpload}>
-                <Text style={styles.quizSaveText}>Save Memory</Text>
+                <Text style={styles.quizSaveText}>Save Changes</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -753,13 +955,38 @@ export function MemoryLibrarySheetContent({
         firstName={editFirstName}
         relationship={editRelationship}
         note={editNote}
+        year={editYear}
+        isApproximate={editIsApproximate}
         saving={savingEdit}
         onChangeFirstName={setEditFirstName}
         onChangeRelationship={setEditRelationship}
         onChangeNote={setEditNote}
+        onChangeYear={setEditYear}
+        onToggleApproximate={() => setEditIsApproximate((v) => !v)}
         onClose={() => setEditingMedia(null)}
         onSave={saveMetadataEdit}
       />
+    </View>
+  );
+}
+
+// ── YearHeader ────────────────────────────────────────────────────────────────
+
+function YearHeader({ label }: { label: string }) {
+  const decadeMatch = label.match(/^(\d+)(s)$/);
+
+  return (
+    <View style={styles.yearHeader}>
+      <Text style={styles.yearHeaderText}>
+        {decadeMatch ? (
+          <>
+            {decadeMatch[1]}
+            <Text style={styles.yearHeaderSuffix}>{decadeMatch[2]}</Text>
+          </>
+        ) : (
+          label
+        )}
+      </Text>
     </View>
   );
 }
@@ -768,24 +995,32 @@ export function MemoryLibrarySheetContent({
 
 function MemoryTile({
   item,
+  tileSize = TILE_SIZE,
+  seamless = false,
   editMode,
   isSelected,
   canDelete,
   isPrimary,
+  onImageError,
   onPress,
   onLongPress,
 }: {
   item: MediaTileVM;
+  tileSize?: number;
+  seamless?: boolean;
   editMode: boolean;
   isSelected: boolean;
   canDelete: boolean;
   isPrimary: boolean;
+  onImageError?: () => void;
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const tileStyle = { width: tileSize, height: tileSize };
+  const baseTileStyle = [styles.tile, tileStyle, seamless && styles.tileSeamless];
   if (item.status !== 'READY') {
     return (
-      <View style={[styles.tile, styles.tilePlaceholder]}>
+      <View style={[baseTileStyle, styles.tilePlaceholder]}>
         <ActivityIndicator size="small" color={colors.secondary} />
         <Text style={styles.tilePendingText}>Uploading…</Text>
       </View>
@@ -793,7 +1028,7 @@ function MemoryTile({
   }
   if (item.urlError) {
     return (
-      <View style={[styles.tile, styles.tilePlaceholder]}>
+      <View style={[baseTileStyle, styles.tilePlaceholder]}>
         <AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" />
         <Text style={styles.tilePendingText}>Error</Text>
       </View>
@@ -801,7 +1036,7 @@ function MemoryTile({
   }
   if (!item.signedUrl) {
     return (
-      <View style={[styles.tile, styles.tilePlaceholder]}>
+      <View style={[baseTileStyle, styles.tilePlaceholder]}>
         <ActivityIndicator size="small" color={colors.secondary} />
       </View>
     );
@@ -816,12 +1051,12 @@ function MemoryTile({
       delayLongPress={260}
       activeOpacity={editMode ? 0.9 : 0.82}
       style={[
-        styles.tile,
+        baseTileStyle,
         isSelected && styles.tileSelected,
         editMode && !isSelectableInEdit && styles.tileDisabled,
       ]}
     >
-      <Image source={{ uri: item.signedUrl }} style={styles.tileImage} />
+      <Image source={{ uri: item.signedUrl }} style={styles.tileImage} resizeMode="cover" onError={onImageError} />
 
       {item.kind !== 'PHOTO' && (
         <View style={styles.kindBadge}>
@@ -858,6 +1093,14 @@ function MediaDetailsModal({
   onClose: () => void;
   onEdit: (item: MediaTileVM) => void;
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+    setImageLoading(item?.kind === 'PHOTO' && !!item.signedUrl);
+  }, [item?.publicId, item?.signedUrl]);
+
   if (!item) return null;
 
   const title =
@@ -877,7 +1120,6 @@ function MediaDetailsModal({
     item.collection === 'QUIZ'
       ? [item.firstName, item.relationshipType].filter(Boolean).join(' · ')
       : item.note || 'No note saved';
-
   return (
     <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
@@ -888,6 +1130,32 @@ function MediaDetailsModal({
               <AppIcon iosName="xmark" androidFallback="x" size={16} color={colors.textDark} />
             </TouchableOpacity>
           </View>
+
+          {item.kind === 'PHOTO' && item.signedUrl && !imageFailed ? (
+            <View style={styles.previewMediaImageFrame}>
+              {imageLoading && (
+                <View style={styles.previewImageLoading}>
+                  <ActivityIndicator size="small" color={colors.secondary} />
+                </View>
+              )}
+              <Image
+                source={{ uri: item.signedUrl }}
+                style={styles.previewMediaImage}
+                resizeMode="contain"
+                onError={() => setImageFailed(true)}
+                onLoadEnd={() => setImageLoading(false)}
+              />
+            </View>
+          ) : (
+            <View style={styles.previewMediaFallback}>
+              <AppIcon
+                iosName={item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'}
+                androidFallback={item.kind === 'AUDIO' ? 'Audio' : item.kind === 'VIDEO' ? 'Video' : 'File'}
+                size={40}
+                color={colors.secondary}
+              />
+            </View>
+          )}
 
           <View style={styles.detailsList}>
             {!!primaryDetail && <Text style={styles.detailLine}>{primaryDetail}</Text>}
@@ -910,10 +1178,14 @@ function EditMetadataModal({
   firstName,
   relationship,
   note,
+  year,
+  isApproximate,
   saving,
   onChangeFirstName,
   onChangeRelationship,
   onChangeNote,
+  onChangeYear,
+  onToggleApproximate,
   onClose,
   onSave,
 }: {
@@ -921,10 +1193,14 @@ function EditMetadataModal({
   firstName: string;
   relationship: string;
   note: string;
+  year: string;
+  isApproximate: boolean;
   saving: boolean;
   onChangeFirstName: (value: string) => void;
   onChangeRelationship: (value: string) => void;
   onChangeNote: (value: string) => void;
+  onChangeYear: (value: string) => void;
+  onToggleApproximate: () => void;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -939,21 +1215,38 @@ function EditMetadataModal({
               <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={colors.textMuted} />
             </>
           ) : (
-            <TextInput
-              style={[styles.detailInput, styles.noteInput]}
-              value={note}
-              onChangeText={onChangeNote}
-              placeholder="Descriptive note"
-              placeholderTextColor={colors.textMuted}
-              multiline
-            />
+            <>
+              <TextInput
+                style={[styles.detailInput, styles.noteInput]}
+                value={note}
+                onChangeText={onChangeNote}
+                placeholder="Descriptive note"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+              <TextInput
+                style={styles.detailInput}
+                value={year}
+                onChangeText={onChangeYear}
+                placeholder="Year (e.g. 1985) — optional"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={4}
+              />
+              <TouchableOpacity style={styles.approxRow} onPress={onToggleApproximate} activeOpacity={0.7}>
+                <View style={[styles.approxCheckbox, isApproximate && styles.approxCheckboxActive]}>
+                  {isApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
+                </View>
+                <Text style={styles.approxLabel}>Approximate year</Text>
+              </TouchableOpacity>
+            </>
           )}
           <View style={styles.quizModalActions}>
             <TouchableOpacity style={styles.quizCancelBtn} onPress={onClose} disabled={saving}>
               <Text style={styles.quizCancelText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.quizSaveBtn, saving && styles.fabDisabled]} onPress={onSave} disabled={saving}>
-              <Text style={styles.quizSaveText}>{saving ? 'Saving...' : 'Save'}</Text>
+              <Text style={styles.quizSaveText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1116,7 +1409,13 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 24,
   },
+  memoryGrid: {
+    paddingHorizontal: MEMORY_GRID_PADDING,
+    paddingTop: 4,
+    paddingBottom: 24,
+  },
   gridRow: { gap: GRID_GUTTER, marginBottom: GRID_GUTTER },
+  memoryGridRow: { flexDirection: 'row', gap: MEMORY_GRID_GAP, marginBottom: MEMORY_GRID_GAP },
 
   // Tiles
   tile: {
@@ -1125,6 +1424,9 @@ const styles = StyleSheet.create({
     borderRadius: isIOS ? 10 : 14,
     overflow: 'hidden',
     backgroundColor: '#fff',
+  },
+  tileSeamless: {
+    borderRadius: 0,
   },
   tileSelected: {
     opacity: 0.78,
@@ -1137,7 +1439,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
   },
-  tileImage: { width: '100%', height: '100%' },
+  tileImage: { width: '100%', height: '100%', objectFit: 'cover' },
   kindBadge: {
     position: 'absolute',
     bottom: 5,
@@ -1305,6 +1607,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.textDark,
   },
+  previewMediaImageFrame: {
+    width: '100%',
+    height: Math.min(SCREEN_WIDTH * 0.72, 360),
+    alignSelf: 'center',
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: colors.neutral,
+  },
+  previewMediaImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewImageLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewMediaFallback: {
+    width: '100%',
+    height: 160,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   detailsList: {
     gap: 6,
   },
@@ -1356,6 +1683,151 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
     color: '#fff',
+  },
+
+  // Year group header (MEMORY timeline)
+  yearHeader: {
+    paddingHorizontal: GRID_PADDING,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  yearHeaderText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  yearHeaderSuffix: {
+    fontSize: 10,
+  },
+
+  // Approximate year toggle
+  approxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  approxCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approxCheckboxActive: {
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
+  },
+  approxCheckmark: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: '#fff',
+  },
+  approxLabel: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: colors.textDark,
+  },
+
+  // Full-screen media preview modal
+  fullPreviewBackdrop: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fullPreviewClose: {
+    position: 'absolute',
+    top: isIOS ? 56 : 20,
+    right: 18,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullPreviewScroll: {
+    flex: 1,
+  },
+  fullPreviewContent: {
+    flexGrow: 1,
+  },
+  fullPreviewImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH,
+    backgroundColor: '#111',
+  },
+  fullPreviewMediaFallback: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 0.6,
+    backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  fullPreviewKindLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: '#aaa',
+  },
+  fullPreviewDetails: {
+    backgroundColor: colors.neutral,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -24,
+    padding: 24,
+    paddingBottom: 48,
+    gap: 8,
+  },
+  fullPreviewYear: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 26,
+    color: colors.primary,
+  },
+  fullPreviewCategory: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  fullPreviewNote: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 16,
+    color: colors.textDark,
+    lineHeight: 24,
+  },
+  fullPreviewName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 22,
+    color: colors.textDark,
+  },
+  fullPreviewRelationship: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 16,
+    color: colors.textMuted,
+  },
+  fullPreviewMeta: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  fullPreviewUploaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  fullPreviewUploader: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
   },
 });
 

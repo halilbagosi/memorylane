@@ -166,6 +166,27 @@ export class PatientService {
     }));
   }
 
+  async getWelcomeCard(patientId: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, name: true, surname: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const patientName = (await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient)).name;
+
+    const primaryLink = await this.prisma.patientCaregiver.findFirst({
+      where: { patientId, isPrimary: true },
+      include: { caregiver: { select: { name: true, avatarUrl: true } } },
+    });
+
+    return {
+      patientName,
+      caregiverName: primaryLink?.caregiver.name ?? null,
+      caregiverAvatarUrl: primaryLink?.caregiver.avatarUrl ?? null,
+    };
+  }
+
   async getPairedStatus(patientId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },

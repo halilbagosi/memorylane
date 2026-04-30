@@ -50,6 +50,9 @@ export class UpdateMediaMetadataDto {
   eventYear?: number;
 
   @IsOptional()
+  isApproximateYear?: boolean;
+
+  @IsOptional()
   @IsString()
   @MaxLength(80)
   memoryCategory?: string;

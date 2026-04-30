@@ -47,6 +47,7 @@ export interface MediaListItem {
   byteSize: number;
   createdAt: string;
   caregiverId: string | null;
+  caregiverName: string | null;
   collection: 'MEMORY' | 'QUIZ';
   firstName: string | null;
   lastName: string | null;
@@ -54,7 +55,21 @@ export interface MediaListItem {
   decoyNames: string[];
   note: string | null;
   eventYear: number | null;
+  isApproximateYear: boolean;
   memoryCategory: string | null;
+}
+
+export interface TimelineItem {
+  publicId: string;
+  kind: MediaKindValue;
+  contentType: string;
+  note: string | null;
+  eventYear: number | null;
+  isApproximateYear: boolean;
+  memoryCategory: string | null;
+  createdAt: string;
+  downloadUrl: string;
+  downloadExpiresAt: string;
 }
 
 type MediaMetadataFields = {
@@ -65,6 +80,7 @@ type MediaMetadataFields = {
   decoyNames?: string[] | null;
   note?: string | null;
   eventYear?: number | null;
+  isApproximateYear?: boolean | null;
   memoryCategory?: string | null;
 };
 
@@ -103,6 +119,9 @@ export class MediaService {
 
     await this.assertCaregiverAccess(caregiverId, dto.patientId);
     const metadata = this.normalizeMetadata(dto);
+    if (metadata.collection === 'QUIZ' && kind === 'PHOTO') {
+      await this.assertUniqueQuizPhotoName(dto.patientId, metadata.firstName);
+    }
 
     const dek = this.keyWrap.generateDek();
     const wrapped = this.keyWrap.wrapDek(dek);
@@ -223,6 +242,7 @@ export class MediaService {
         byteSize: true,
         createdAt: true,
         caregiverId: true,
+        caregiver: { select: { name: true } },
         collection: true,
         firstName: true,
         lastName: true,
@@ -230,6 +250,7 @@ export class MediaService {
         decoyNames: true,
         note: true,
         eventYear: true,
+        isApproximateYear: true,
         memoryCategory: true,
       },
     });
@@ -241,6 +262,7 @@ export class MediaService {
       byteSize: r.byteSize,
       createdAt: r.createdAt.toISOString(),
       caregiverId: r.caregiverId ?? null,
+      caregiverName: r.caregiver?.name ?? null,
       collection: r.collection as 'MEMORY' | 'QUIZ',
       firstName: r.firstName ?? null,
       lastName: r.lastName ?? null,
@@ -248,6 +270,7 @@ export class MediaService {
       decoyNames: r.decoyNames ?? [],
       note: r.note ?? null,
       eventYear: r.eventYear ?? null,
+      isApproximateYear: r.isApproximateYear,
       memoryCategory: r.memoryCategory ?? null,
     }));
   }
@@ -318,11 +341,51 @@ export class MediaService {
     return { publicId, deleted: true };
   }
 
+  /** Returns READY MEMORY items for a patient, sorted chronologically.
+   *  Each item includes a short-lived signed download URL so the patient
+   *  device can render photos/videos without a caregiver JWT. */
+  async getPatientTimeline(patientId: string, apiBaseUrl: string): Promise<TimelineItem[]> {
+    const rows = await this.prisma.media.findMany({
+      where: { patientId, collection: 'MEMORY', status: 'READY' },
+      orderBy: [{ eventYear: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        publicId: true,
+        kind: true,
+        contentType: true,
+        note: true,
+        eventYear: true,
+        isApproximateYear: true,
+        memoryCategory: true,
+        createdAt: true,
+      },
+    });
+
+    const ttl = getSignedUrlTtlSeconds();
+    return rows.map((r) => {
+      const { token, expiresAt } = this.signedUrls.issue(r.publicId, 'get', ttl);
+      return {
+        publicId: r.publicId,
+        kind: r.kind as MediaKindValue,
+        contentType: r.contentType,
+        note: r.note ?? null,
+        eventYear: r.eventYear ?? null,
+        isApproximateYear: r.isApproximateYear,
+        memoryCategory: r.memoryCategory ?? null,
+        createdAt: r.createdAt.toISOString(),
+        downloadUrl: this.buildSignedUrl(apiBaseUrl, 'download', token),
+        downloadExpiresAt: expiresAt.toISOString(),
+      };
+    });
+  }
+
   // ─── Internal helpers ─────────────────────────────────────────────────────
 
   async updateMetadata(caregiverId: string, publicId: string, dto: UpdateMediaMetadataDto) {
     const media = await this.requireCaregiverMedia(caregiverId, publicId);
     const metadata = this.normalizeMetadata({ ...media, ...dto });
+    if (metadata.collection === 'QUIZ' && media.kind === 'PHOTO') {
+      await this.assertUniqueQuizPhotoName(media.patientId, metadata.firstName, media.id);
+    }
     return this.prisma.media.update({
       where: { id: media.id },
       data: metadata,
@@ -335,6 +398,7 @@ export class MediaService {
         decoyNames: true,
         note: true,
         eventYear: true,
+        isApproximateYear: true,
         memoryCategory: true,
       },
     });
@@ -365,6 +429,7 @@ export class MediaService {
         decoyNames,
         note: null,
         eventYear: null,
+        isApproximateYear: false,
         memoryCategory: null,
       };
     }
@@ -382,6 +447,7 @@ export class MediaService {
       decoyNames: [],
       note,
       eventYear: dto.eventYear ?? null,
+      isApproximateYear: dto.isApproximateYear === true,
       memoryCategory: trimOrNull(dto.memoryCategory),
     };
   }
@@ -413,6 +479,40 @@ export class MediaService {
     const b = randomBytes(1).toString('hex');
     const rest = randomBytes(30).toString('hex');
     return `${a}/${b}/${rest}`;
+  }
+
+  private async assertUniqueQuizPhotoName(
+    patientId: string,
+    firstName: string | null,
+    excludeMediaId?: string,
+  ): Promise<void> {
+    const normalized = this.normalizePersonName(firstName);
+    if (!normalized) return;
+
+    const existing = await this.prisma.media.findMany({
+      where: {
+        patientId,
+        collection: 'QUIZ',
+        kind: 'PHOTO',
+        status: { in: ['READY', 'PENDING_UPLOAD'] },
+        ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
+      },
+      select: { firstName: true },
+    });
+
+    const duplicate = existing.some(
+      (media) => this.normalizePersonName(media.firstName) === normalized,
+    );
+    if (duplicate) {
+      throw new BadRequestException(
+        `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
+      );
+    }
+  }
+
+  private normalizePersonName(value?: string | null): string | null {
+    const normalized = value?.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+    return normalized || null;
   }
 
   private buildSignedUrl(apiBaseUrl: string, action: 'upload' | 'download', token: string): string {

@@ -200,10 +200,11 @@ model Media {
   decoyNames       String[] @default([]) @map("decoy_names")
 
   // Memory story data. Used by the caregiver Media Manager.
-  note             String?  @db.Text
-  eventYear        Int?     @map("event_year")
-  memoryCategory   String?  @map("memory_category")
-  isActive     Boolean     @default(true) @map("is_active")
+  note               String?  @db.Text
+  eventYear          Int?     @map("event_year")
+  isApproximateYear  Boolean  @default(false) @map("is_approximate_year")
+  memoryCategory     String?  @map("memory_category")
+  isActive           Boolean  @default(true) @map("is_active")
 
   // Object storage reference (random, non-guessable).
   // Never returned to clients.

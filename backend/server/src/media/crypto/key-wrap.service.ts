@@ -20,8 +20,8 @@ export interface WrappedDek {
  * MEDIA_MASTER_KEY (32-byte hex preferred, otherwise SHA-256 stretched).
  *
  * In production, the absence of MEDIA_MASTER_KEY is a fatal misconfiguration;
- * in development we fall back to an ephemeral key with a loud warning so
- * encrypted files do not survive restarts.
+ * in development we fall back to ENCRYPTION_KEY/JWT_SECRET when available so
+ * encrypted demo media survives local restarts.
  */
 @Injectable()
 export class KeyWrapService implements OnModuleInit {
@@ -29,7 +29,10 @@ export class KeyWrapService implements OnModuleInit {
   private masterKey!: Buffer;
 
   onModuleInit() {
-    const raw = process.env.MEDIA_MASTER_KEY;
+    const raw =
+      process.env.MEDIA_MASTER_KEY ||
+      process.env.ENCRYPTION_KEY ||
+      process.env.JWT_SECRET;
     if (!raw) {
       if (process.env.NODE_ENV === 'production') {
         throw new Error('MEDIA_MASTER_KEY must be set in production');
@@ -39,6 +42,11 @@ export class KeyWrapService implements OnModuleInit {
       );
       this.masterKey = randomBytes(DEK_BYTES);
       return;
+    }
+    if (!process.env.MEDIA_MASTER_KEY && process.env.NODE_ENV !== 'production') {
+      this.logger.warn(
+        'MEDIA_MASTER_KEY is not set; deriving the dev media key from ENCRYPTION_KEY/JWT_SECRET. Set MEDIA_MASTER_KEY for production-like behavior.',
+      );
     }
     if (/^[0-9a-fA-F]{64}$/.test(raw)) {
       this.masterKey = Buffer.from(raw, 'hex');

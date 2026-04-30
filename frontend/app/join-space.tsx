@@ -7,6 +7,7 @@ import {
   StatusBar,
   Platform,
   KeyboardAvoidingView,
+  BackHandler,
   Dimensions,
   Animated,
 } from 'react-native';
@@ -29,7 +30,6 @@ const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
 const isIOS = Platform.OS === 'ios';
 
 const PATIENT_ACCENT = '#8B7355';
-const PATIENT_BG = '#EAE0CE';
 
 function biometricErrorMessage(error?: string) {
   switch (error) {
@@ -196,6 +196,19 @@ export default function JoinSpaceScreen() {
     setSetupState('skipped');
   }
 
+  // Intercept Android hardware back while in manual mode → go to scanner, not main page
+  useEffect(() => {
+    if (mode !== 'manual') return;
+    const onBack = () => {
+      setMode('camera');
+      setError('');
+      scannedRef.current = false;
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => sub.remove();
+  }, [mode]);
+
   useEffect(() => {
     if (successInfo) {
       Animated.parallel([
@@ -328,7 +341,14 @@ export default function JoinSpaceScreen() {
       >
         <StatusBar barStyle="dark-content" />
 
-        <View style={[styles.manualContent, { paddingTop: Math.max(insets.top, insets.bottom, 24), paddingBottom: Math.max(insets.top, insets.bottom, 24) }]}>
+        {/* Content — centered, shifted slightly above mid */}
+        <View style={[
+          styles.manualContent,
+          {
+            paddingTop: insets.top + 56,
+            paddingBottom: Math.max(insets.bottom, 24) + 100,
+          },
+        ]}>
           <View style={[styles.iconCircle, { backgroundColor: 'rgba(139, 115, 85, 0.12)' }]}>
             <AppIcon iosName="keyboard" androidFallback="..." size={32} color={PATIENT_ACCENT} />
           </View>
@@ -362,17 +382,6 @@ export default function JoinSpaceScreen() {
             color={PATIENT_ACCENT}
             style={styles.manualSubmitBtn}
           />
-
-          <TouchableOpacity
-            style={styles.altLink}
-            onPress={() => {
-              setMode('camera');
-              setError('');
-              scannedRef.current = false;
-            }}
-          >
-            <Text style={styles.altLinkText}>Back to scanner</Text>
-          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     );
@@ -482,6 +491,23 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+
+  // ─── Manual entry back button ───
+  manualBackBtn: {
+    position: 'absolute',
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    zIndex: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  manualBackText: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 17,
+    color: PATIENT_ACCENT,
   },
 
   // ─── Manual entry ───

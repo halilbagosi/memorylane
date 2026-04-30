@@ -77,6 +77,9 @@ export class CreateUploadIntentDto {
   eventYear?: number;
 
   @IsOptional()
+  isApproximateYear?: boolean;
+
+  @IsOptional()
   @IsString()
   @MaxLength(80)
   memoryCategory?: string;

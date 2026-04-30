@@ -53,6 +53,16 @@ export class MediaController {
     return this.mediaService.listForPatient(req.user.userId, patientId);
   }
 
+  /** Public endpoint — no JWT required. Returns READY MEMORY items for the
+   *  patient device, sorted chronologically, each with a signed download URL. */
+  @Get('patient/:patientId/timeline')
+  async getPatientTimeline(
+    @Param('patientId') patientId: string,
+    @Req() req: Request,
+  ) {
+    return this.mediaService.getPatientTimeline(patientId, this.apiBaseUrl(req));
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get(':publicId/access-url')
   async accessUrl(

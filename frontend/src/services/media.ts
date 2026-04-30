@@ -13,13 +13,28 @@ export interface MediaListItem {
   byteSize: number;
   createdAt: string;
   caregiverId: string | null;
+  caregiverName: string | null;
   collection: MediaCollection;
   firstName: string | null;
   lastName: string | null;
   relationshipType: string | null;
   note: string | null;
   eventYear: number | null;
+  isApproximateYear: boolean;
   memoryCategory: string | null;
+}
+
+export interface TimelineItem {
+  publicId: string;
+  kind: MediaKind;
+  contentType: string;
+  note: string | null;
+  eventYear: number | null;
+  isApproximateYear: boolean;
+  memoryCategory: string | null;
+  createdAt: string;
+  downloadUrl: string;
+  downloadExpiresAt: string;
 }
 
 export interface UploadIntentResponse {
@@ -55,6 +70,7 @@ export interface MediaMetadataInput {
   relationshipType?: string;
   note?: string;
   eventYear?: number;
+  isApproximateYear?: boolean;
   memoryCategory?: string;
 }
 
@@ -80,6 +96,11 @@ export async function listPatientMedia(patientId: string): Promise<MediaListItem
   const res = await fetch(`${API_BASE_URL}/media/patient/${encodeURIComponent(patientId)}`, {
     headers: { ...(await authHeaders()) },
   });
+  return jsonOrThrow(res);
+}
+
+export async function getPatientTimeline(patientId: string): Promise<TimelineItem[]> {
+  const res = await fetch(`${API_BASE_URL}/media/patient/${encodeURIComponent(patientId)}/timeline`);
   return jsonOrThrow(res);
 }
 

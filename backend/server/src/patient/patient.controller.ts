@@ -50,6 +50,11 @@ export class PatientController {
     return this.patientService.getGreetingSpark(patientId);
   }
 
+  @Get(':id/welcome-card')
+  async getWelcomeCard(@Param('id') patientId: string) {
+    return this.patientService.getWelcomeCard(patientId);
+  }
+
   @Patch(':id/biometric-recovery')
   async setBiometricRecovery(@Param('id') patientId: string, @Body() body: { enabled: boolean }) {
     return this.patientService.setBiometricRecovery(patientId, body.enabled === true);
