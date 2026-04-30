@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -46,6 +46,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'doc.on.doc': 'content-copy',
   'exclamationmark.triangle': 'alert-outline',
   'clock.badge.exclamationmark': 'clock-alert-outline',
+  'lightbulb': 'lightbulb-outline',
+  'lightbulb.fill': 'lightbulb-on',
 };
 
 interface AppIconProps {
@@ -54,6 +56,7 @@ interface AppIconProps {
   size?: number;
   color?: string;
   weight?: 'ultraLight' | 'thin' | 'light' | 'regular' | 'medium' | 'semibold' | 'bold' | 'heavy' | 'black';
+  style?: StyleProp<ViewStyle>;
 }
 
 // SF Symbols via expo-symbols require iOS 16+
@@ -66,6 +69,7 @@ export function AppIcon({
   size = 22,
   color = colors.textDark,
   weight = 'medium',
+  style,
 }: AppIconProps) {
   if (supportsSymbols) {
     return (
@@ -74,7 +78,7 @@ export function AppIcon({
         size={size}
         tintColor={color}
         weight={weight}
-        style={{ width: size, height: size }}
+        style={[{ width: size, height: size }, style]}
       />
     );
   }
@@ -86,12 +90,13 @@ export function AppIcon({
         name={materialName}
         size={size}
         color={color}
+        style={style}
       />
     );
   }
 
   return (
-    <View style={[styles.androidContainer, { width: size, height: size }]}>
+    <View style={[styles.androidContainer, { width: size, height: size }, style]}>
       <MaterialCommunityIcons
         name="help-circle-outline"
         size={size}
