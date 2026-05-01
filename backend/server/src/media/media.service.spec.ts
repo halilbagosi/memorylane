@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
@@ -19,6 +20,7 @@ const makePrisma = () => ({
   media: {
     create: jest.fn(),
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -39,7 +41,14 @@ describe('MediaService', () => {
   let keyWrap: KeyWrapService;
   let mediaCrypto: MediaCryptoService;
   let signedUrls: SignedUrlService;
-  let faceVerification: Pick<FaceVerificationService, 'validateAndProcessQuizPhoto' | 'validateQuizPhoto'>;
+  let faceVerification: Pick<
+    FaceVerificationService,
+    | 'validateAndProcessQuizPhoto'
+    | 'validateQuizPhoto'
+    | 'checkForDuplicateFace'
+    | 'indexFaceInCollection'
+    | 'removeFaceFromCollection'
+  >;
 
   beforeEach(async () => {
     process.env.MEDIA_MASTER_KEY =
@@ -62,6 +71,9 @@ describe('MediaService', () => {
         cropped: false,
       })),
       validateQuizPhoto: jest.fn(async () => ({ accepted: true })),
+      checkForDuplicateFace: jest.fn(async () => false),
+      indexFaceInCollection: jest.fn(async () => 'aws-face-1'),
+      removeFaceFromCollection: jest.fn(async () => undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -129,6 +141,7 @@ describe('MediaService', () => {
 
     it('persists encrypted metadata and issues a signed PUT URL on success', async () => {
       prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
       prisma.media.create.mockResolvedValueOnce({
         publicId: 'public-abc',
         kind: 'PHOTO',
@@ -144,6 +157,7 @@ describe('MediaService', () => {
           byteSize: 4096,
           collection: 'MEMORY' as any,
           note: 'A family memory',
+          contentHash: 'a'.repeat(64),
         },
         'http://localhost:3000',
       );
@@ -158,11 +172,34 @@ describe('MediaService', () => {
       expect(args.data.dekTag).toBeTruthy();
       expect(args.data.payloadIv).toBeTruthy();
       expect(args.data.algorithm).toBe('AES-256-GCM');
+      expect(args.data.contentHash).toBe('a'.repeat(64));
 
       expect(result.publicId).toBe('public-abc');
       expect(result.uploadMethod).toBe('PUT');
       expect(result.uploadUrl).toContain('/media/storage/upload/');
       expect(result.expiresAt).toBeTruthy();
+    });
+
+    it('rejects a duplicate photo hash before issuing an upload URL', async () => {
+      prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId });
+      prisma.media.findFirst.mockResolvedValueOnce({ id: 'existing-media' });
+
+      await expect(
+        service.createUploadIntent(
+          caregiverId,
+          {
+            patientId,
+            kind: 'PHOTO' as any,
+            contentType: 'image/jpeg',
+            byteSize: 4096,
+            collection: 'MEMORY' as any,
+            note: 'A family memory',
+            contentHash: 'b'.repeat(64),
+          },
+          'http://localhost:3000',
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.media.create).not.toHaveBeenCalled();
     });
   });
 
@@ -269,6 +306,46 @@ describe('MediaService', () => {
       expect(out.body.equals(plaintext)).toBe(true);
     });
 
+    it('rejects a duplicate photo hash during the signed upload', async () => {
+      prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
+      const fakeRow: any = {};
+      prisma.media.create.mockImplementationOnce(async ({ data }: any) => {
+        Object.assign(fakeRow, data, {
+          id: 'internal-duplicate',
+          publicId: 'dup-pub-1',
+          kind: data.kind,
+          status: data.status,
+        });
+        return { publicId: 'dup-pub-1', kind: data.kind, status: data.status };
+      });
+
+      const plaintext = Buffer.from('duplicate-photo');
+      const intent = await service.createUploadIntent(
+        'cg-1',
+        {
+          patientId: '00000000-0000-0000-0000-000000000001',
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: plaintext.length,
+          collection: 'MEMORY' as any,
+          note: 'A family memory',
+        },
+        'http://localhost:3000',
+      );
+
+      prisma.media.findUnique.mockResolvedValueOnce(fakeRow);
+      prisma.media.findFirst.mockResolvedValueOnce({ id: 'already-ready' });
+      prisma.media.update.mockImplementation(async ({ data }: any) => {
+        Object.assign(fakeRow, data);
+        return fakeRow;
+      });
+
+      const token = decodeURIComponent(intent.uploadUrl.split('/').pop() as string);
+      await expect(service.storeUploadedPayload(token, plaintext)).rejects.toThrow(ConflictException);
+      expect(fakeRow.status).toBe('FAILED');
+      expect(storage.putObject).not.toHaveBeenCalled();
+    });
+
     it('accepts quiz photos with birth year metadata and verifies before storage', async () => {
       prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
       prisma.media.findMany.mockResolvedValueOnce([]);
@@ -317,9 +394,50 @@ describe('MediaService', () => {
       await service.storeUploadedPayload(token, plaintext);
 
       expect(faceVerification.validateAndProcessQuizPhoto).toHaveBeenCalledWith(plaintext);
+      expect(faceVerification.checkForDuplicateFace).toHaveBeenCalled();
+      expect(faceVerification.indexFaceInCollection).toHaveBeenCalled();
+      expect(fakeRow.awsFaceId).toBe('aws-face-1');
       expect(fakeRow.birthYear).toBe(2004);
       expect(storedCiphertext).not.toBeNull();
       expect(fakeRow.payloadTag).toBeTruthy();
+    });
+  });
+
+  describe('verifyQuizPhoto', () => {
+    it('rejects a quiz photo that already matches an indexed face', async () => {
+      prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      (faceVerification.checkForDuplicateFace as jest.Mock).mockResolvedValueOnce(true);
+
+      const result = await service.verifyQuizPhoto(
+        'cg-1',
+        '00000000-0000-0000-0000-000000000001',
+        Buffer.from('used-before'),
+      );
+
+      expect(result).toEqual({
+        accepted: false,
+        code: 'DUPLICATE_PHOTO',
+        message: 'This person already has a quiz photo.',
+      });
+    });
+
+    it('rejects a quiz photo whose exact content hash was already uploaded', async () => {
+      prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
+      prisma.media.findFirst.mockResolvedValueOnce({ id: 'existing-photo' });
+
+      const result = await service.verifyQuizPhoto(
+        'cg-1',
+        '00000000-0000-0000-0000-000000000001',
+        Buffer.from('same-photo'),
+      );
+
+      expect(result).toEqual({
+        accepted: false,
+        code: 'DUPLICATE_PHOTO',
+        message: 'This quiz photo has already been used.',
+      });
+      expect(faceVerification.checkForDuplicateFace).not.toHaveBeenCalled();
     });
   });
 });

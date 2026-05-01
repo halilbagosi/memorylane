@@ -84,12 +84,13 @@ async function normalizeQuizPhotoAsset(asset: { uri: string; mimeType?: string }
   const mime = inferMime(asset);
   if (!mime.startsWith('image/')) return asset;
 
+  const originalUri = asset.uri;
   const converted = await ImageManipulator.manipulateAsync(
     asset.uri,
     [{ resize: { width: 1600 } }],
     { compress: 0.88, format: ImageManipulator.SaveFormat.JPEG },
   );
-  return { uri: converted.uri, mimeType: 'image/jpeg' };
+  return { uri: converted.uri, mimeType: 'image/jpeg', originalUri };
 }
 
 async function readAssetBase64(uri: string) {
@@ -320,7 +321,7 @@ export function MemoryLibrarySheetContent({
   }, [filteredItems, libraryTab]);
 
   const uploadSingleAsset = async (
-    asset: { uri: string; mimeType?: string },
+    asset: { uri: string; mimeType?: string; originalUri?: string },
     metadata: MediaMetadataInput,
   ) => {
     const blobResp = await fetch(asset.uri).catch((error) => {
@@ -337,11 +338,15 @@ export function MemoryLibrarySheetContent({
     if (metadata.collection === 'QUIZ' && kind !== 'PHOTO' && kind !== 'AUDIO') {
       throw new Error('Quiz media must be a photo or audio file.');
     }
-    try {
-      await uploadPatientMedia({ patientId, kind, contentType, fileUri: asset.uri, byteSize, metadata });
-    } catch (error: any) {
-      throw new Error(error?.message ?? 'Upload failed before the server returned details.');
-    }
+    await uploadPatientMedia({
+      patientId,
+      kind,
+      contentType,
+      fileUri: asset.uri,
+      hashUri: asset.originalUri,
+      byteSize,
+      metadata,
+    });
   };
 
   const resetQuizDraft = () => {
@@ -363,7 +368,9 @@ export function MemoryLibrarySheetContent({
       LOW_CLARITY: `This photo is a bit hard to see. A brighter, clearer photo will help ${name} recognize them better.`,
       NOT_FRONTAL: `A front-facing photo will help ${name} recognize this person more easily.`,
       INVALID_IMAGE: 'We could not read this image. Please try another photo.',
-      FACE_VERIFICATION_UNAVAILABLE: 'Face verification is temporarily unavailable. Please try again in a moment.',
+      DUPLICATE_PHOTO: 'This photo or person has already been added to the quiz. Please choose a new photo.',
+      FACE_VERIFICATION_UNAVAILABLE:
+        fallback ?? 'Face verification is temporarily unavailable. Please try again in a moment.',
     };
     return messages[code as QuizPhotoVerificationCode] ?? fallback ?? `To help ${name} recognize this person, please use a clear, close-up photo of just one face.`;
   };
@@ -510,20 +517,34 @@ export function MemoryLibrarySheetContent({
     setUploading(true);
     const total = assets.length;
     let failed = 0;
+    let duplicates = 0;
+    let firstDuplicateDetail: string | null = null;
     let firstError: string | null = null;
     for (let i = 0; i < assets.length; i++) {
       setUploadProgress({ current: i + 1, total });
       try {
         await uploadSingleAsset(assets[i], metadata);
       } catch (e: any) {
-        failed++;
-        firstError ||= e?.message ?? 'Upload failed';
+        if ((e as any).status === 409) {
+          duplicates++;
+          firstDuplicateDetail ||= (e as any).detail ?? (e as any).message ?? null;
+        } else {
+          failed++;
+          firstError ||= e?.message ?? 'Upload failed';
+        }
       }
     }
     await loadMedia();
     setUploading(false);
     setUploadProgress(null);
-    if (failed > 0) Alert.alert('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`);
+    if (duplicates > 0 && failed === 0) {
+      const msg = duplicates === 1
+        ? (firstDuplicateDetail ?? 'This photo has already been added.')
+        : `${duplicates} photos were skipped — they have already been added.`;
+      Alert.alert('Already Added', msg);
+    } else if (failed > 0) {
+      Alert.alert('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`);
+    }
   };
 
   const saveQuizDetailsAndUpload = async () => {
@@ -1091,6 +1112,12 @@ export function MemoryLibrarySheetContent({
                   <AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={colors.secondary} />
                 </View>
                 <Text style={styles.guidanceTipText}>Looking at the camera</Text>
+              </View>
+              <View style={styles.guidanceTip}>
+                <View style={[styles.guidanceIcon, styles.guidanceIconError]}>
+                  <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color="#C0392B" />
+                </View>
+                <Text style={styles.guidanceTipText}>Same photo not allowed</Text>
               </View>
             </View>
             <View style={styles.quizModalActions}>
@@ -2079,6 +2106,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(3,87,58,0.1)',
+  },
+  guidanceIconError: {
+    backgroundColor: 'rgba(192,57,43,0.1)',
   },
   guidanceTipText: {
     flex: 1,

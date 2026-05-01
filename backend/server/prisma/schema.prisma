@@ -207,6 +207,8 @@ model Media {
   isApproximateYear  Boolean  @default(false) @map("is_approximate_year")
   memoryCategory     String?  @map("memory_category")
   isActive           Boolean  @default(true) @map("is_active")
+  contentHash        String?  @map("content_hash")
+  awsFaceId          String?  @map("aws_face_id")
 
   // Object storage reference (random, non-guessable).
   // Never returned to clients.
@@ -235,6 +237,7 @@ model Media {
   quizAttempts QuizAttempt[]
 
   @@index([patientId, createdAt])
+  @@index([patientId, contentHash])
   @@map("media")
 }
 

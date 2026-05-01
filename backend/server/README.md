@@ -166,6 +166,27 @@ Required AWS environment variables:
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 
+The AWS user or role must allow these Rekognition actions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:DetectFaces",
+        "rekognition:CreateCollection",
+        "rekognition:SearchFacesByImage",
+        "rekognition:IndexFaces",
+        "rekognition:DeleteFaces"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
 Optional threshold tuning:
 
 - `QUIZ_FACE_MIN_CONFIDENCE`

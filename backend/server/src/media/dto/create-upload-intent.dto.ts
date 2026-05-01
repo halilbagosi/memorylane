@@ -89,4 +89,9 @@ export class CreateUploadIntentDto {
   @IsString()
   @MaxLength(80)
   memoryCategory?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  contentHash?: string;
 }

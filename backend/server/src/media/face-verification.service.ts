@@ -1,5 +1,14 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { DetectFacesCommand, FaceDetail, RekognitionClient } from '@aws-sdk/client-rekognition';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  CreateCollectionCommand,
+  DeleteFacesCommand,
+  DetectFacesCommand,
+  FaceDetail,
+  IndexFacesCommand,
+  RekognitionClient,
+  ResourceAlreadyExistsException,
+  SearchFacesByImageCommand,
+} from '@aws-sdk/client-rekognition';
 import sharp from 'sharp';
 
 export type QuizPhotoVerificationCode =
@@ -9,6 +18,7 @@ export type QuizPhotoVerificationCode =
   | 'LOW_CLARITY'
   | 'NOT_FRONTAL'
   | 'INVALID_IMAGE'
+  | 'DUPLICATE_PHOTO'
   | 'FACE_VERIFICATION_UNAVAILABLE';
 
 export interface QuizPhotoVerificationResult {
@@ -40,11 +50,15 @@ const FRIENDLY_MESSAGES: Record<QuizPhotoVerificationCode, string> = {
   LOW_CLARITY: 'This photo is a bit hard to see. Try a brighter, clearer photo.',
   NOT_FRONTAL: 'A front-facing photo will help the patient recognize this person more easily.',
   INVALID_IMAGE: 'We could not decode this image. Please try a JPEG or PNG photo.',
+  DUPLICATE_PHOTO: 'This photo has already been added.',
   FACE_VERIFICATION_UNAVAILABLE: 'Face verification is temporarily unavailable. Please try again.',
 };
 
+const FACE_MATCH_THRESHOLD = Number(process.env.QUIZ_FACE_MATCH_THRESHOLD) || 90;
+
 @Injectable()
 export class FaceVerificationService {
+  private readonly logger = new Logger(FaceVerificationService.name);
   private readonly rekognition = new RekognitionClient({
     region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
   });
@@ -135,10 +149,7 @@ export class FaceVerificationService {
           message: FRIENDLY_MESSAGES.INVALID_IMAGE,
         });
       }
-      throw new ServiceUnavailableException({
-        code: 'FACE_VERIFICATION_UNAVAILABLE',
-        message: FRIENDLY_MESSAGES.FACE_VERIFICATION_UNAVAILABLE,
-      });
+      throw this.toUnavailable(error);
     }
 
     if (faces.length === 0) {
@@ -199,6 +210,104 @@ export class FaceVerificationService {
     const box = face.BoundingBox;
     if (!box?.Width || !box.Height) return false;
     return box.Width * box.Height < MIN_FACE_AREA_BEFORE_CROP;
+  }
+
+  // Face collection helpers
+
+  private collectionId(patientId: string): string {
+    return `ml-${patientId.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
+  }
+
+  private async ensureCollection(patientId: string): Promise<void> {
+    try {
+      await this.rekognition.send(
+        new CreateCollectionCommand({ CollectionId: this.collectionId(patientId) }),
+      );
+    } catch (error) {
+      if (error instanceof ResourceAlreadyExistsException) return;
+      this.logger.error('Failed to create Rekognition collection', { patientId, error });
+      throw this.toUnavailable(error);
+    }
+  }
+
+  /** Returns true when a face that matches the provided image already exists
+   *  in this patient's collection (similarity >= FACE_MATCH_THRESHOLD). */
+  async checkForDuplicateFace(patientId: string, imageBuffer: Buffer): Promise<boolean> {
+    try {
+      await this.ensureCollection(patientId);
+      const response = await this.rekognition.send(
+        new SearchFacesByImageCommand({
+          CollectionId: this.collectionId(patientId),
+          Image: { Bytes: imageBuffer },
+          MaxFaces: 1,
+          FaceMatchThreshold: FACE_MATCH_THRESHOLD,
+        }),
+      );
+      return (response.FaceMatches?.length ?? 0) > 0;
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'name' in error &&
+        (error.name === 'InvalidParameterException' ||
+          error.name === 'InvalidImageFormatException')
+      ) {
+        return false;
+      }
+      this.logger.error('SearchFacesByImage failed', { patientId, error });
+      throw this.toUnavailable(error);
+    }
+  }
+
+  /** Adds the face to the patient's collection. Returns the AWS face ID. */
+  async indexFaceInCollection(
+    patientId: string,
+    externalImageId: string,
+    imageBuffer: Buffer,
+  ): Promise<string | undefined> {
+    try {
+      await this.ensureCollection(patientId);
+      const response = await this.rekognition.send(
+        new IndexFacesCommand({
+          CollectionId: this.collectionId(patientId),
+          Image: { Bytes: imageBuffer },
+          ExternalImageId: externalImageId,
+          MaxFaces: 1,
+          DetectionAttributes: [],
+        }),
+      );
+      return response.FaceRecords?.[0]?.Face?.FaceId;
+    } catch (error) {
+      this.logger.error('IndexFaces failed', { patientId, error });
+      throw this.toUnavailable(error);
+    }
+  }
+
+  /** Removes a previously indexed face from the patient's collection. */
+  async removeFaceFromCollection(patientId: string, faceId: string): Promise<void> {
+    try {
+      await this.rekognition.send(
+        new DeleteFacesCommand({
+          CollectionId: this.collectionId(patientId),
+          FaceIds: [faceId],
+        }),
+      );
+    } catch (error) {
+      this.logger.warn('DeleteFaces failed', { patientId, faceId, error });
+    }
+  }
+
+  // Image processing
+
+  private toUnavailable(error: unknown): ServiceUnavailableException {
+    const name = error && typeof error === 'object' && 'name' in error ? String(error.name) : 'unknown';
+    const isProd = process.env.NODE_ENV === 'production';
+    return new ServiceUnavailableException({
+      code: 'FACE_VERIFICATION_UNAVAILABLE',
+      message: isProd
+        ? FRIENDLY_MESSAGES.FACE_VERIFICATION_UNAVAILABLE
+        : `${FRIENDLY_MESSAGES.FACE_VERIFICATION_UNAVAILABLE} Check AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and Rekognition permissions. (${name})`,
+    });
   }
 
   private async cropToHeadshot(imageBuffer: Buffer, face: FaceDetail): Promise<Buffer> {

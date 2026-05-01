@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -7,7 +8,7 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { KeyWrapService } from './crypto/key-wrap.service';
 import { MediaCryptoService } from './crypto/media-crypto.service';
@@ -122,6 +123,9 @@ export class MediaService {
     }
 
     await this.assertCaregiverAccess(caregiverId, dto.patientId);
+    if (kind === 'PHOTO' && dto.contentHash) {
+      await this.assertUniqueContentHash(dto.patientId, dto.contentHash);
+    }
     const metadata = this.normalizeMetadata(dto);
     if (metadata.collection === 'QUIZ' && kind === 'PHOTO') {
       await this.assertUniqueQuizPhotoName(dto.patientId, metadata.firstName);
@@ -142,6 +146,7 @@ export class MediaService {
         storageKey,
         contentType: normalizedMime,
         byteSize: dto.byteSize,
+        contentHash: dto.contentHash ?? null,
         wrappedDek: wrapped.wrappedDek,
         dekIv: wrapped.dekIv,
         dekTag: wrapped.dekTag,
@@ -194,9 +199,22 @@ export class MediaService {
       throw new BadRequestException('Uploaded byte size does not match intent');
     }
 
+    const uploadedContentHash =
+      media.kind === 'PHOTO' ? createHash('sha256').update(body).digest('hex') : null;
+    if (uploadedContentHash) {
+      await this.assertUniqueContentHash(media.patientId, uploadedContentHash, media.id).catch(async (error) => {
+        await this.prisma.media.update({
+          where: { id: media.id },
+          data: { status: 'FAILED' },
+        });
+        throw error;
+      });
+    }
+
     let payload = body;
     let contentType = media.contentType;
     let byteSize = media.byteSize;
+    let awsFaceId: string | undefined;
     if (media.collection === 'QUIZ' && media.kind === 'PHOTO') {
       const processed = await this.faceVerification.validateAndProcessQuizPhoto(body).catch(async (error) => {
         await this.prisma.media.update({
@@ -208,6 +226,14 @@ export class MediaService {
       payload = processed.buffer;
       contentType = processed.contentType === 'original' ? media.contentType : processed.contentType;
       byteSize = processed.byteSize;
+
+      const isDuplicate = await this.faceVerification.checkForDuplicateFace(media.patientId, payload);
+      if (isDuplicate) {
+        await this.prisma.media.update({ where: { id: media.id }, data: { status: 'FAILED' } });
+        throw new ConflictException('This person has already been added to the quiz.');
+      }
+
+      awsFaceId = await this.faceVerification.indexFaceInCollection(media.patientId, media.publicId, payload);
     }
 
     const dek = this.keyWrap.unwrapDek({
@@ -222,7 +248,13 @@ export class MediaService {
     await this.storage.putObject(media.storageKey, ciphertext);
     await this.prisma.media.update({
       where: { id: media.id },
-      data: { payloadTag: tag.toString('base64'), contentType, byteSize },
+      data: {
+        payloadTag: tag.toString('base64'),
+        contentType,
+        byteSize,
+        ...(uploadedContentHash && !media.contentHash ? { contentHash: uploadedContentHash } : {}),
+        ...(awsFaceId ? { awsFaceId } : {}),
+      },
     });
   }
 
@@ -359,6 +391,9 @@ export class MediaService {
     }
 
     await this.storage.deleteObject(media.storageKey).catch(() => undefined);
+    if (media.awsFaceId && media.collection === 'QUIZ') {
+      await this.faceVerification.removeFaceFromCollection(media.patientId, media.awsFaceId).catch(() => undefined);
+    }
     await this.prisma.media.delete({ where: { id: media.id } });
     return { publicId, deleted: true };
   }
@@ -430,7 +465,38 @@ export class MediaService {
   async verifyQuizPhoto(caregiverId: string, patientId: string, body: Buffer) {
     if (!patientId) throw new BadRequestException('patientId is required');
     await this.assertCaregiverAccess(caregiverId, patientId);
-    return this.faceVerification.validateQuizPhoto(body);
+    const result = await this.faceVerification.validateQuizPhoto(body);
+    if (!result.accepted) return result;
+
+    const contentHash = createHash('sha256').update(body).digest('hex');
+    const existingExactPhoto = await this.prisma.media.findFirst({
+      where: {
+        patientId,
+        collection: 'QUIZ',
+        kind: 'PHOTO',
+        contentHash,
+        status: { in: ['READY', 'PENDING_UPLOAD'] },
+      },
+      select: { id: true },
+    });
+    if (existingExactPhoto) {
+      return {
+        accepted: false,
+        code: 'DUPLICATE_PHOTO',
+        message: 'This quiz photo has already been used.',
+      };
+    }
+
+    const isDuplicateFace = await this.faceVerification.checkForDuplicateFace(patientId, body);
+    if (isDuplicateFace) {
+      return {
+        accepted: false,
+        code: 'DUPLICATE_PHOTO',
+        message: 'This person already has a quiz photo.',
+      };
+    }
+
+    return result;
   }
 
   private normalizeMetadata(dto: Partial<MediaMetadataFields>) {
@@ -543,6 +609,25 @@ export class MediaService {
       throw new BadRequestException(
         `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
       );
+    }
+  }
+
+  private async assertUniqueContentHash(
+    patientId: string,
+    contentHash: string,
+    excludeMediaId?: string,
+  ): Promise<void> {
+    const existing = await this.prisma.media.findFirst({
+      where: {
+        patientId,
+        contentHash,
+        status: { in: ['READY', 'PENDING_UPLOAD'] },
+        ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException('This photo has already been added.');
     }
   }
 

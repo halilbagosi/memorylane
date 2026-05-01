@@ -1,3 +1,5 @@
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../config/api';
 import { getToken } from '../utils/auth';
 
@@ -62,6 +64,7 @@ export type QuizPhotoVerificationCode =
   | 'LOW_CLARITY'
   | 'NOT_FRONTAL'
   | 'INVALID_IMAGE'
+  | 'DUPLICATE_PHOTO'
   | 'FACE_VERIFICATION_UNAVAILABLE';
 
 export interface QuizPhotoVerificationResult {
@@ -77,6 +80,7 @@ export interface UploadOptions {
   kind: MediaKind;
   contentType: string;
   fileUri: string;
+  hashUri?: string;
   byteSize: number;
   metadata?: MediaMetadataInput;
 }
@@ -150,12 +154,22 @@ export async function getAccessUrl(publicId: string): Promise<AccessUrlResponse>
   return jsonOrThrow(res);
 }
 
+async function computeContentHash(uri: string): Promise<string | undefined> {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, base64);
+  } catch {
+    return undefined;
+  }
+}
+
 async function createUploadIntent(input: {
   patientId: string;
   kind: MediaKind;
   contentType: string;
   byteSize: number;
   metadata?: MediaMetadataInput;
+  contentHash?: string;
 }): Promise<UploadIntentResponse> {
   const res = await fetch(`${API_BASE_URL}/media/upload-intent`, {
     method: 'POST',
@@ -169,6 +183,7 @@ async function createUploadIntent(input: {
       contentType: input.contentType,
       byteSize: input.byteSize,
       ...(input.metadata ?? {}),
+      ...(input.contentHash ? { contentHash: input.contentHash } : {}),
     }),
   });
   return jsonOrThrow(res);
@@ -252,12 +267,17 @@ export async function verifyQuizPhoto(
 export async function uploadPatientMedia(
   options: UploadOptions,
 ): Promise<{ publicId: string; status: MediaStatus }> {
+  const contentHash = options.kind === 'PHOTO'
+    ? await computeContentHash(options.hashUri ?? options.fileUri)
+    : undefined;
+
   const intent = await createUploadIntent({
     patientId: options.patientId,
     kind: options.kind,
     contentType: options.contentType,
     byteSize: options.byteSize,
     metadata: options.metadata,
+    contentHash,
   });
 
   if (options.byteSize > intent.maxByteSize) {
@@ -275,16 +295,24 @@ export async function uploadPatientMedia(
   });
   if (!putRes.ok) {
     let detail: string | undefined;
+    let code: string | undefined;
     try {
       const data = await putRes.json();
       const nested = typeof data?.message === 'object' && data.message !== null ? data.message : null;
+      code = data?.code ?? nested?.code;
       detail = nested?.message ?? data?.message ?? data?.error ?? JSON.stringify(data);
     } catch {
       detail = await putRes.text().catch(() => undefined);
     }
-    throw new Error(
-      `Upload failed (${putRes.status})${detail ? `: ${detail}` : ''}`,
-    );
+    const error = new Error(`Upload failed (${putRes.status})${detail ? `: ${detail}` : ''}`) as Error & {
+      status?: number;
+      code?: string;
+      detail?: string;
+    };
+    error.status = putRes.status;
+    error.code = code;
+    error.detail = detail;
+    throw error;
   }
 
   return completeUpload(intent.publicId);
