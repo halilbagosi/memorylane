@@ -232,18 +232,20 @@ export class FaceVerificationService {
 
   /** Returns true when a face that matches the provided image already exists
    *  in this patient's collection (similarity >= FACE_MATCH_THRESHOLD). */
-  async checkForDuplicateFace(patientId: string, imageBuffer: Buffer): Promise<boolean> {
+  async findDuplicateFaceExternalImageIds(patientId: string, imageBuffer: Buffer): Promise<string[]> {
     try {
       await this.ensureCollection(patientId);
       const response = await this.rekognition.send(
         new SearchFacesByImageCommand({
           CollectionId: this.collectionId(patientId),
           Image: { Bytes: imageBuffer },
-          MaxFaces: 1,
+          MaxFaces: 10,
           FaceMatchThreshold: FACE_MATCH_THRESHOLD,
         }),
       );
-      return (response.FaceMatches?.length ?? 0) > 0;
+      return (response.FaceMatches ?? [])
+        .map((match) => match.Face?.ExternalImageId)
+        .filter((id): id is string => !!id);
     } catch (error) {
       if (
         error &&
@@ -252,11 +254,15 @@ export class FaceVerificationService {
         (error.name === 'InvalidParameterException' ||
           error.name === 'InvalidImageFormatException')
       ) {
-        return false;
+        return [];
       }
       this.logger.error('SearchFacesByImage failed', { patientId, error });
       throw this.toUnavailable(error);
     }
+  }
+
+  async checkForDuplicateFace(patientId: string, imageBuffer: Buffer): Promise<boolean> {
+    return (await this.findDuplicateFaceExternalImageIds(patientId, imageBuffer)).length > 0;
   }
 
   /** Adds the face to the patient's collection. Returns the AWS face ID. */
