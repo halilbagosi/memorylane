@@ -504,7 +504,10 @@ export default function PatientMediaScreen() {
       )}
 
       <ScrollView style={styles.managerPanel} contentContainerStyle={styles.managerContent}>
-        <Text style={styles.managerTitle}>Media Manager</Text>
+        <View style={styles.managerTitleRow}>
+          <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={18} color={colors.secondary} />
+          <Text style={styles.managerTitle}>Media Manager</Text>
+        </View>
         <SegmentedControl
           value={form.mode}
           options={[
@@ -552,12 +555,11 @@ export default function PatientMediaScreen() {
         )}
       </ScrollView>
 
-      <Text style={styles.helpText}>
-        Quiz media stores a person photo or voice with their relationship to the patient. Memory media saves stories, years, and categories with the encrypted file.
-      </Text>
-
       <View style={styles.libraryTabsWrap}>
-        <Text style={styles.libraryTitle}>Library</Text>
+        <View style={styles.libraryTitleRow}>
+          <AppIcon iosName="rectangle.stack.fill" androidFallback="L" size={16} color={colors.secondary} />
+          <Text style={styles.libraryTitle}>Library</Text>
+        </View>
         <SegmentedControl
           value={libraryTab}
           options={[
@@ -585,13 +587,13 @@ export default function PatientMediaScreen() {
       ) : filteredTiles.length === 0 ? (
         <View style={styles.empty}>
           <View style={styles.emptyIconWrap}>
-            <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={36} color={colors.textMuted} />
+            <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={32} color={colors.textMuted} />
           </View>
-          <Text style={styles.emptyTitle}>No memories found</Text>
+          <Text style={styles.emptyTitle}>No memories yet</Text>
           <Text style={styles.emptyBody}>
             {libraryTab === 'MEMORY'
-              ? "Add a memory photo, video, or note to build this patient's story library."
-              : 'Add quiz photos or audio with the person details.'}
+              ? "Tap + to add a memory photo, video, or note."
+              : 'Tap + to add quiz photos or audio with person details.'}
           </Text>
         </View>
       ) : (
@@ -911,6 +913,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 12,
   },
+  managerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   managerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
@@ -919,27 +926,28 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: 'row',
     padding: 3,
-    borderRadius: 12,
-    backgroundColor: colors.neutralLight,
+    borderRadius: isIOS ? 14 : 18,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
+    gap: 4,
   },
   segment: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 9,
-    borderRadius: 9,
+    paddingVertical: 10,
+    borderRadius: isIOS ? 11 : 14,
   },
   segmentActive: {
     backgroundColor: colors.secondary,
   },
   segmentText: {
-    fontFamily: typography.fontFamily.medium,
+    fontFamily: typography.fontFamily.bold,
     fontSize: 13,
     color: colors.textMuted,
   },
   segmentTextActive: {
-    color: colors.textLight,
+    color: '#FFFFFF',
   },
   formBlock: {
     gap: 10,
@@ -1034,19 +1042,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textLight,
   },
-  helpText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: colors.textMuted,
-    paddingHorizontal: GRID_PADDING,
-    paddingTop: 12,
-    paddingBottom: 8,
-    lineHeight: 18,
-  },
   libraryTabsWrap: {
     paddingHorizontal: GRID_PADDING,
+    paddingTop: 8,
     marginBottom: 14,
     gap: 8,
+  },
+  libraryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   libraryTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1102,8 +1107,8 @@ const styles = StyleSheet.create({
   emptyIconWrap: {
     width: 72,
     height: 72,
-    borderRadius: isIOS ? 36 : 24,
-    backgroundColor: isIOS ? 'rgba(180, 174, 232, 0.12)' : 'rgba(180, 174, 232, 0.15)',
+    borderRadius: 36,
+    backgroundColor: 'rgba(0,0,0,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 4,
