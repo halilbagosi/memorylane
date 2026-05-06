@@ -22,7 +22,6 @@ import { M3BottomSheet } from '../../src/components/M3BottomSheet';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { ManageDeletionSheet } from '../../src/components/ManageDeletionSheet';
-import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
 
 const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -705,7 +704,7 @@ function PatientDetailContent({
   showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
   dismissDialog: () => void;
 }) {
-  const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library'>('detail');
+  const [view, setView] = React.useState<'detail' | 'careTeam'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
   const [editName, setEditName] = React.useState('');
   const [editSurname, setEditSurname] = React.useState('');
@@ -806,19 +805,6 @@ function PatientDetailContent({
     options.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert('Patient Photo', undefined, options);
   };
-
-  /* ── Memory Library view ── */
-  if (view === 'memory-library') {
-    return (
-      <MemoryLibrarySheetContent
-        patientId={patient.id}
-        patientName={`${patient.name} ${patient.surname}`.trim()}
-        isPrimary={patient.isPrimary}
-        myId={myId}
-        onBack={() => setView('detail')}
-      />
-    );
-  }
 
   /* ── Care Team view ── */
   if (view === 'careTeam') {
@@ -1036,14 +1022,6 @@ function PatientDetailContent({
 
       {/* Action rows */}
       <View style={styles.actionsList}>
-        <TouchableOpacity style={styles.actionRow} onPress={() => setView('memory-library')}>
-          <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
-            <AppIcon iosName="photo.on.rectangle" androidFallback="🖼" size={18} color={colors.secondary} />
-          </View>
-          <Text style={styles.actionRowLabel}>Memory Library</Text>
-          <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
-        </TouchableOpacity>
-
         {patient.isPrimary && patient.paired && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onUnpair(patient)}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
