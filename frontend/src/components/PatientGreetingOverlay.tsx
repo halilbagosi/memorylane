@@ -16,7 +16,6 @@ const shownForPatientIds = new Set<string>();
 const QUOTES = [
   'You are safe, you are loved, and you are doing great.',
   'Every day is a new opportunity for a smile.',
-  'Today is a wonderful day to see your favorite people.',
   'Take your time. We are right here with you.',
 ];
 

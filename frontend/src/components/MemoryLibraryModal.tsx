@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import type { DimensionValue } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -41,6 +42,7 @@ import {
   type QuizPhotoVerificationCode,
   type QuizMode,
 } from '../services/media';
+import { uniqueIdentityCount } from '../services/quiz';
 
 const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -151,6 +153,12 @@ export function MemoryLibrarySheetContent({
   const [quizModes, setQuizModes] = useState<QuizMode[]>(['NAME', 'AGE', 'RELATIONSHIP']);
   const [savingQuizModes, setSavingQuizModes] = useState(false);
 
+  const quizIdentityCount = useMemo(() => (
+    uniqueIdentityCount(
+      items.filter((m) => m.collection === 'QUIZ' && m.status === 'READY' && !!m.firstName?.trim()),
+    )
+  ), [items]);
+
   const loadMedia = useCallback(async () => {
     if (!patientId) return;
     setError(null);
@@ -188,6 +196,7 @@ export function MemoryLibrarySheetContent({
   }, [patientId]);
 
   const handleToggleQuizMode = async (mode: QuizMode) => {
+    if (quizIdentityCount < 4) return;
     const isActive = quizModes.includes(mode);
     if (isActive && quizModes.length === 1) return; // must keep at least one
     const next = isActive ? quizModes.filter((m) => m !== mode) : [...quizModes, mode];
@@ -368,7 +377,7 @@ export function MemoryLibrarySheetContent({
       LOW_CLARITY: `This photo is a bit hard to see. A brighter, clearer photo will help ${name} recognize them better.`,
       NOT_FRONTAL: `A front-facing photo will help ${name} recognize this person more easily.`,
       INVALID_IMAGE: 'We could not read this image. Please try another photo.',
-      DUPLICATE_PHOTO: 'This photo or person has already been added to the quiz. Please choose a new photo.',
+      DUPLICATE_PHOTO: fallback ?? 'This photo or person has already been added to the quiz. Please choose a new photo.',
       FACE_VERIFICATION_UNAVAILABLE:
         fallback ?? 'Face verification is temporarily unavailable. Please try again in a moment.',
     };
@@ -576,7 +585,7 @@ export function MemoryLibrarySheetContent({
       (item) =>
         item.collection === 'QUIZ' &&
         item.kind === 'PHOTO' &&
-        item.status !== 'FAILED' &&
+        item.status === 'READY' &&
         item.firstName?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === normalizedName,
     );
     if (selectedPhotos.length > 0 && duplicatePhoto) {
@@ -1025,6 +1034,7 @@ export function MemoryLibrarySheetContent({
               <QuizModeSelector
                 patientName={patientName}
                 activeModes={quizModes}
+                identityCount={quizIdentityCount}
                 saving={savingQuizModes}
                 onToggle={handleToggleQuizMode}
               />
@@ -1334,32 +1344,55 @@ const ALL_QUIZ_MODES: { key: QuizMode; label: string }[] = [
 function QuizModeSelector({
   patientName,
   activeModes,
+  identityCount,
   saving,
   onToggle,
 }: {
   patientName: string;
   activeModes: QuizMode[];
+  identityCount: number;
   saving: boolean;
   onToggle: (mode: QuizMode) => void;
 }) {
+  const setupComplete = identityCount >= 4;
+  const progressWidth = `${Math.min(identityCount, 4) * 25}%` as DimensionValue;
+
   return (
     <View style={styles.quizSelectorWrapper}>
       <Text style={styles.quizSelectorLabel} numberOfLines={1}>
         Customize {patientName}'s quiz:
       </Text>
+      <View style={styles.quizProgressBlock}>
+        <View style={styles.quizProgressHeader}>
+          <Text style={styles.quizProgressLabel}>{Math.min(identityCount, 4)}/4 faces verified</Text>
+        </View>
+        <View style={styles.quizProgressTrack}>
+          <View style={[styles.quizProgressFill, { width: progressWidth }]} />
+        </View>
+      </View>
       <View style={styles.quizSelectorPills}>
         {ALL_QUIZ_MODES.map(({ key, label }) => {
           const active = activeModes.includes(key);
           const isLast = active && activeModes.length === 1;
+          const disabled = saving || isLast || !setupComplete;
           return (
             <TouchableOpacity
               key={key}
-              style={[styles.quizPill, active && styles.quizPillActive, isLast && styles.quizPillLast]}
+              style={[
+                styles.quizPill,
+                active && styles.quizPillActive,
+                isLast && styles.quizPillLast,
+                !setupComplete && styles.quizPillDisabled,
+              ]}
               onPress={() => onToggle(key)}
               activeOpacity={0.75}
-              disabled={saving || isLast}
+              disabled={disabled}
             >
-              <Text style={[styles.quizPillText, active && styles.quizPillTextActive]}>
+              <Text style={[
+                styles.quizPillText,
+                active && styles.quizPillTextActive,
+                !setupComplete && styles.quizPillTextDisabled,
+              ]}>
                 {label}
               </Text>
             </TouchableOpacity>
@@ -1367,6 +1400,11 @@ function QuizModeSelector({
         })}
         {saving && <ActivityIndicator size="small" color={colors.secondary} style={{ marginLeft: 6 }} />}
       </View>
+      {!setupComplete && (
+        <Text style={styles.quizSetupWarning}>
+          To start the quiz, please add at least 4 different people to the library. (Current: {identityCount}/4)
+        </Text>
+      )}
     </View>
   );
 }
@@ -2434,6 +2472,30 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: 'wrap',
   },
+  quizProgressBlock: {
+    gap: 6,
+  },
+  quizProgressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  quizProgressLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.primary,
+  },
+  quizProgressTrack: {
+    height: 7,
+    borderRadius: 50,
+    backgroundColor: 'rgba(3, 87, 58, 0.14)',
+    overflow: 'hidden',
+  },
+  quizProgressFill: {
+    height: '100%',
+    borderRadius: 50,
+    backgroundColor: colors.primary,
+  },
   quizPill: {
     paddingHorizontal: 18,
     paddingVertical: 9,
@@ -2449,6 +2511,11 @@ const styles = StyleSheet.create({
   quizPillLast: {
     opacity: 0.5,
   },
+  quizPillDisabled: {
+    backgroundColor: '#E1E1E1',
+    borderColor: '#C7C7C7',
+    opacity: 0.7,
+  },
   quizPillText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
@@ -2456,6 +2523,15 @@ const styles = StyleSheet.create({
   },
   quizPillTextActive: {
     color: '#fff',
+  },
+  quizPillTextDisabled: {
+    color: '#777777',
+  },
+  quizSetupWarning: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.primary,
+    lineHeight: 19,
   },
 
   // Fullscreen memory preview (mirrors relive tab layout)

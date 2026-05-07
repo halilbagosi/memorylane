@@ -93,6 +93,16 @@ export class MediaController {
     return this.mediaService.getPatientTimeline(patientId, this.apiBaseUrl(req));
   }
 
+  /** Public endpoint — no JWT required. Returns the patient's enabled quiz
+   *  modes and all READY QUIZ photos with embedded signed download URLs. */
+  @Get('patient/:patientId/quiz')
+  async getPatientQuizData(
+    @Param('patientId') patientId: string,
+    @Req() req: Request,
+  ) {
+    return this.mediaService.getPatientQuizData(patientId, this.apiBaseUrl(req));
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get(':publicId/access-url')
   async accessUrl(
