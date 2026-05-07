@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Platform, Modal, TextInput, Image, Linking,
+  ActivityIndicator, Platform, Modal, TextInput, Image, Alert, Linking,
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -197,15 +197,15 @@ export default function AccountScreen() {
   // ─── Avatar ────────────────────────────────────────────────────────────────
 
   const showAvatarOptions = () => {
-    const actions: M3DialogAction[] = [
-      { label: 'Take Photo', onPress: () => { dismissDialog(); pickImage('camera'); } },
-      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickImage('library'); } },
+    const options: any[] = [
+      { text: 'Take Photo', onPress: () => pickImage('camera') },
+      { text: 'Choose from Library', onPress: () => pickImage('library') },
     ];
     if (profile?.avatarUrl) {
-      actions.push({ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); removeAvatar(); } });
+      options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
     }
-    actions.push({ label: 'Cancel', onPress: dismissDialog });
-    showDialog('Edit Photo', 'Choose a new profile photo', actions);
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Edit Photo', undefined, options);
   };
 
   const pickImage = async (source: 'camera' | 'library') => {

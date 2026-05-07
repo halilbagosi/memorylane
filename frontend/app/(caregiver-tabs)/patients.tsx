@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
-  Linking, Animated,
+  Alert, Linking, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -819,22 +819,21 @@ function PatientDetailContent({
   };
 
   const showPatientAvatarOptions = () => {
-    const actions: M3DialogAction[] = [
-      { label: 'Take Photo', onPress: () => { dismissDialog(); pickPatientImage('camera'); } },
-      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickPatientImage('library'); } },
+    const options: any[] = [
+      { text: 'Take Photo', onPress: () => pickPatientImage('camera') },
+      { text: 'Choose from Library', onPress: () => pickPatientImage('library') },
     ];
     if (patient.avatarUrl) {
-      actions.push({
-        label: 'Remove Photo', destructive: true, onPress: async () => {
-          dismissDialog();
+      options.push({
+        text: 'Remove Photo', style: 'destructive', onPress: async () => {
           setUploadingAvatar(true);
           await onAvatarChange(patient, null);
           setUploadingAvatar(false);
         },
       });
     }
-    actions.push({ label: 'Cancel', onPress: dismissDialog });
-    showDialog('Patient Photo', 'Choose a photo for this patient', actions);
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Patient Photo', undefined, options);
   };
 
 const addReminderTime = () => {
