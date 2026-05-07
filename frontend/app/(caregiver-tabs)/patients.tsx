@@ -36,6 +36,7 @@ interface PatientItem {
   isPrimary: boolean;
   patientJoinCode: string;
   paired: boolean;
+  quizReminderTimes?: string[];
   primaryCaregiver: { id: string; name: string; surname: string; avatarUrl: string | null } | null;
   secondaryCaregivers: { id: string; name: string; surname: string; avatarUrl: string | null }[];
   hasPendingRoleRequest?: boolean;
@@ -399,6 +400,29 @@ export default function PatientsTab() {
     );
   };
 
+  const handleSaveQuizReminders = async (patient: PatientItem, times: string[]) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/quiz-reminders`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ times }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showDialog('Error', data.message || 'Could not save quiz reminder times', [{ label: 'OK', onPress: dismissDialog }]);
+        return false;
+      }
+      const data = await res.json();
+      const updatedTimes = Array.isArray(data.quizReminderTimes) ? data.quizReminderTimes : times;
+      setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, quizReminderTimes: updatedTimes } : p));
+      setSelectedPatient(prev => prev?.id === patient.id ? { ...prev, quizReminderTimes: updatedTimes } : prev);
+      return true;
+    } catch {
+      showDialog('Error', 'Failed to connect to the backend', [{ label: 'OK', onPress: dismissDialog }]);
+      return false;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
@@ -645,6 +669,7 @@ export default function PatientsTab() {
           onAvatarChange={handlePatientAvatarChange}
           onRemoveCaregiver={handleRemoveCaregiver}
           onRequestPrimary={handleRequestPrimary}
+          onSaveQuizReminders={handleSaveQuizReminders}
           myId={caregiver?.id ?? ''}
           showDialog={showDialog}
           dismissDialog={dismissDialog}
@@ -690,7 +715,7 @@ export default function PatientsTab() {
 }
 
 function PatientDetailContent({
-  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, myId, showDialog, dismissDialog,
+  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, onSaveQuizReminders, myId, showDialog, dismissDialog,
 }: {
   patient: PatientItem | null;
   onClose: () => void;
@@ -701,6 +726,7 @@ function PatientDetailContent({
   onAvatarChange: (patient: PatientItem, avatarUrl: string | null) => Promise<void>;
   onRemoveCaregiver: (patient: PatientItem, caregiverId: string, caregiverName: string) => void;
   onRequestPrimary: (patient: PatientItem) => void;
+  onSaveQuizReminders: (patient: PatientItem, times: string[]) => Promise<boolean>;
   myId: string;
   showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
   dismissDialog: () => void;
@@ -711,6 +737,9 @@ function PatientDetailContent({
   const [editSurname, setEditSurname] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
+  const [reminderModalVisible, setReminderModalVisible] = React.useState(false);
+  const [reminderInput, setReminderInput] = React.useState('');
+  const [reminderTimes, setReminderTimes] = React.useState<string[]>([]);
   const [codeCopied, setCodeCopied] = React.useState(false);
   const codeCopiedOpacity = React.useRef(new Animated.Value(0)).current;
 
@@ -728,6 +757,7 @@ function PatientDetailContent({
   };
 
   React.useEffect(() => { setView('detail'); }, [patient?.id]);
+  React.useEffect(() => { setReminderTimes((patient?.quizReminderTimes ?? []).slice().sort()); }, [patient?.id, patient?.quizReminderTimes]);
 
   if (!patient) return null;
 
@@ -805,6 +835,28 @@ function PatientDetailContent({
     }
     options.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert('Patient Photo', undefined, options);
+  };
+
+  const addReminderTime = () => {
+    const normalized = reminderInput.trim();
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(normalized)) {
+      showDialog('Invalid Time', 'Use 24-hour format HH:MM.', [{ label: 'OK', onPress: dismissDialog }]);
+      return;
+    }
+    if (reminderTimes.includes(normalized)) return;
+    if (reminderTimes.length >= 6) {
+      showDialog('Limit Reached', 'You can set up to 6 reminder times.', [{ label: 'OK', onPress: dismissDialog }]);
+      return;
+    }
+    setReminderTimes(prev => [...prev, normalized].sort());
+    setReminderInput('');
+  };
+
+  const saveReminderTimes = async () => {
+    setSaving(true);
+    const ok = await onSaveQuizReminders(patient, reminderTimes);
+    setSaving(false);
+    if (ok) setReminderModalVisible(false);
   };
 
   /* ── Memory Library view ── */
@@ -953,6 +1005,44 @@ function PatientDetailContent({
         </View>
       </Modal>
 
+      <Modal visible={reminderModalVisible} transparent animationType="fade" onRequestClose={() => setReminderModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Quiz Reminder Times</Text>
+            <TextInput
+              style={styles.editInput}
+              value={reminderInput}
+              onChangeText={setReminderInput}
+              placeholder="HH:MM"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+            />
+            <TouchableOpacity style={[styles.modalSaveBtn, { marginTop: 10 }]} onPress={addReminderTime}>
+              <Text style={styles.modalSaveText}>Add Time</Text>
+            </TouchableOpacity>
+            <View style={{ marginTop: 12, gap: 8 }}>
+              {reminderTimes.map((time) => (
+                <View key={time} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.patientAgeText}>{time}</Text>
+                  <TouchableOpacity onPress={() => setReminderTimes(prev => prev.filter(t => t !== time))}>
+                    <Text style={{ color: '#C0392B', fontFamily: typography.fontFamily.medium }}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setReminderModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={saveReminderTimes} disabled={saving}>
+                <Text style={styles.modalSaveText}>{saving ? 'Saving…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={styles.sheetHeader}>
         <TouchableOpacity
@@ -1043,6 +1133,16 @@ function PatientDetailContent({
           <Text style={styles.actionRowLabel}>Memory Library</Text>
           <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
         </TouchableOpacity>
+
+        {patient.isPrimary && (
+          <TouchableOpacity style={styles.actionRow} onPress={() => setReminderModalVisible(true)}>
+            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(180, 174, 232, 0.2)' }]}>
+              <AppIcon iosName="bell.badge" androidFallback="🔔" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.actionRowLabel}>Quiz Reminder Times ({reminderTimes.length})</Text>
+            <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
 
         {patient.isPrimary && patient.paired && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onUnpair(patient)}>
