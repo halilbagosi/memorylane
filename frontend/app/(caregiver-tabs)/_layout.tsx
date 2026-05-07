@@ -80,6 +80,12 @@ function AndroidTabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

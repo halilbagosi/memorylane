@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -25,6 +24,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from './AppIcon';
+import { M3Dialog, type M3DialogAction } from './M3Dialog';
 import { ZoomableImage } from './ZoomableImage';
 import {
   deleteMedia,
@@ -150,6 +150,18 @@ export function MemoryLibrarySheetContent({
   const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
   const [quizModes, setQuizModes] = useState<QuizMode[]>(['NAME', 'AGE', 'RELATIONSHIP']);
   const [savingQuizModes, setSavingQuizModes] = useState(false);
+
+  const [mlDialog, setMlDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showMlDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setMlDialog({ visible: true, title, body, actions });
+  };
+  const dismissMlDialog = () => setMlDialog((prev) => ({ ...prev, visible: false }));
 
   const loadMedia = useCallback(async () => {
     if (!patientId) return;
@@ -380,32 +392,34 @@ export function MemoryLibrarySheetContent({
       showQuizSourceOptions();
       return;
     }
-    Alert.alert('Add Memory', 'Choose a source', [
-      { text: 'Take Photo', onPress: () => pickAndUpload('camera') },
-      { text: 'Photo/Video Library', onPress: () => pickAndUpload('library') },
-      { text: 'Browse Files', onPress: () => pickAndUpload('document') },
-      { text: 'Cancel', style: 'cancel' },
+    showMlDialog('Add Memory', 'Choose a source', [
+      { label: 'Take Photo', onPress: () => { dismissMlDialog(); pickAndUpload('camera'); } },
+      { label: 'Photo/Video Library', onPress: () => { dismissMlDialog(); pickAndUpload('library'); } },
+      { label: 'Browse Files', onPress: () => { dismissMlDialog(); pickAndUpload('document'); } },
+      { label: 'Cancel', onPress: dismissMlDialog },
     ]);
   };
 
   const showQuizSourceOptions = () => {
-    Alert.alert('Add Quiz Media', 'Choose a source', [
+    showMlDialog('Add Quiz Media', 'Choose a source', [
       {
-        text: 'Take Photo',
+        label: 'Take Photo',
         onPress: () => {
+          dismissMlDialog();
           setPendingQuizPhotoSource('camera');
           setQuizGuidanceVisible(true);
         },
       },
       {
-        text: 'Photo Library',
+        label: 'Photo Library',
         onPress: () => {
+          dismissMlDialog();
           setPendingQuizPhotoSource('library');
           setQuizGuidanceVisible(true);
         },
       },
-      { text: 'Browse Audio Files', onPress: () => pickAndUpload('document') },
-      { text: 'Cancel', style: 'cancel' },
+      { label: 'Browse Audio Files', onPress: () => { dismissMlDialog(); pickAndUpload('document'); } },
+      { label: 'Cancel', onPress: dismissMlDialog },
     ]);
   };
 
@@ -425,9 +439,9 @@ export function MemoryLibrarySheetContent({
         if (source === 'camera') {
           const { status } = await ImagePicker.requestCameraPermissionsAsync();
           if (status !== 'granted') {
-            Alert.alert('Camera Access Required', 'Please enable camera access in Settings.', [
-              { text: 'Cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            showMlDialog('Camera Access Required', 'Please enable camera access in Settings.', [
+              { label: 'Cancel', onPress: dismissMlDialog },
+              { label: 'Open Settings', onPress: () => { dismissMlDialog(); Linking.openSettings(); } },
             ]);
             return;
           }
@@ -435,9 +449,9 @@ export function MemoryLibrarySheetContent({
         } else {
           const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
           if (status !== 'granted') {
-            Alert.alert('Library Access Required', 'Please enable photo library access in Settings.', [
-              { text: 'Cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            showMlDialog('Library Access Required', 'Please enable photo library access in Settings.', [
+              { label: 'Cancel', onPress: dismissMlDialog },
+              { label: 'Open Settings', onPress: () => { dismissMlDialog(); Linking.openSettings(); } },
             ]);
             return;
           }
@@ -452,7 +466,7 @@ export function MemoryLibrarySheetContent({
         assets = result.assets.map((a: any) => ({ uri: a.uri, mimeType: a.mimeType }));
       }
     } catch (e: any) {
-      Alert.alert('Picker Could Not Open', e?.message ?? 'Please try opening the picker again.');
+      showMlDialog('Picker Could Not Open', e?.message ?? 'Please try opening the picker again.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     if (!assets.length) return;
@@ -464,13 +478,13 @@ export function MemoryLibrarySheetContent({
         return !mime.startsWith('image/') && !mime.startsWith('audio/');
       });
       if (unsupported) {
-        Alert.alert('Photo or Audio Required', 'Quiz media can be a clear photo or an audio file of the person talking.');
+        showMlDialog('Photo or Audio Required', 'Quiz media can be a clear photo or an audio file of the person talking.', [{ label: 'OK', onPress: dismissMlDialog }]);
         return;
       }
       try {
         assets = await Promise.all(assets.map(normalizeQuizPhotoAsset));
       } catch {
-        Alert.alert('Could Not Prepare Photo', 'We could not prepare this photo for verification. Please try another image.');
+        showMlDialog('Could Not Prepare Photo', 'We could not prepare this photo for verification. Please try another image.', [{ label: 'OK', onPress: dismissMlDialog }]);
         return;
       }
       const photo = assets.find((asset) => inferMime(asset).startsWith('image/'));
@@ -499,9 +513,10 @@ export function MemoryLibrarySheetContent({
       } catch (e: any) {
         const message = friendlyQuizPhotoMessage(e?.code, e?.detail ?? e?.message);
         resetQuizDraft();
-        Alert.alert(
+        showMlDialog(
           e?.code === 'FACE_VERIFICATION_UNAVAILABLE' ? 'Verification Unavailable' : 'Try Another Photo',
           message,
+          [{ label: 'OK', onPress: dismissMlDialog }],
         );
       } finally {
         setVerifyingQuizPhoto(false);
@@ -541,9 +556,9 @@ export function MemoryLibrarySheetContent({
       const msg = duplicates === 1
         ? (firstDuplicateDetail ?? 'This photo has already been added.')
         : `${duplicates} photos were skipped — they have already been added.`;
-      Alert.alert('Already Added', msg);
+      showMlDialog('Already Added', msg, [{ label: 'OK', onPress: dismissMlDialog }]);
     } else if (failed > 0) {
-      Alert.alert('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`);
+      showMlDialog('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`, [{ label: 'OK', onPress: dismissMlDialog }]);
     }
   };
 
@@ -552,23 +567,24 @@ export function MemoryLibrarySheetContent({
     const birthYear = quizBirthYear.trim() ? parseInt(quizBirthYear.trim(), 10) : NaN;
     const currentYear = new Date().getFullYear();
     if (!firstName || !quizRelationship.trim() || Number.isNaN(birthYear)) {
-      Alert.alert('Missing Details', 'Person name, relationship, and birth year are required for quiz media.');
+      showMlDialog('Missing Details', 'Person name, relationship, and birth year are required for quiz media.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     if (birthYear < 1900 || birthYear > currentYear) {
-      Alert.alert('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`);
+      showMlDialog('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`, [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     const selectedPhotos = pendingQuizAssets.filter((asset) => inferMime(asset).startsWith('image/'));
     if (selectedPhotos.length > 0 && !quizPhotoVerified) {
-      Alert.alert(
+      showMlDialog(
         'Photo Not Verified',
         friendlyQuizPhotoMessage(undefined),
+        [{ label: 'OK', onPress: dismissMlDialog }],
       );
       return;
     }
     if (selectedPhotos.length > 1) {
-      Alert.alert('One Photo Per Person', 'Please upload only one quiz photo for each person.');
+      showMlDialog('One Photo Per Person', 'Please upload only one quiz photo for each person.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     const normalizedName = firstName.replace(/\s+/g, ' ').toLocaleLowerCase();
@@ -580,9 +596,10 @@ export function MemoryLibrarySheetContent({
         item.firstName?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === normalizedName,
     );
     if (selectedPhotos.length > 0 && duplicatePhoto) {
-      Alert.alert(
+      showMlDialog(
         'Photo Already Exists',
         `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
+        [{ label: 'OK', onPress: dismissMlDialog }],
       );
       return;
     }
@@ -604,12 +621,12 @@ export function MemoryLibrarySheetContent({
   const saveMemoryDetailsAndUpload = async () => {
     const note = memoryNote.trim();
     if (!note) {
-      Alert.alert('Missing Note', 'Please add a descriptive note before saving this memory.');
+      showMlDialog('Missing Note', 'Please add a descriptive note before saving this memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     const yearNum = memoryYear.trim() ? parseInt(memoryYear.trim(), 10) : undefined;
     if (memoryYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
-      Alert.alert('Invalid Year', 'Please enter a year between 1900 and 2100.');
+      showMlDialog('Invalid Year', 'Please enter a year between 1900 and 2100.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     setMemoryDetailsVisible(false);
@@ -646,11 +663,11 @@ export function MemoryLibrarySheetContent({
         const birthYear = editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : NaN;
         const currentYear = new Date().getFullYear();
         if (!firstName || !relationshipType || Number.isNaN(birthYear)) {
-          Alert.alert('Missing Details', 'Name, relationship, and birth year are required.');
+          showMlDialog('Missing Details', 'Name, relationship, and birth year are required.', [{ label: 'OK', onPress: dismissMlDialog }]);
           return;
         }
         if (birthYear < 1900 || birthYear > currentYear) {
-          Alert.alert('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`);
+          showMlDialog('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`, [{ label: 'OK', onPress: dismissMlDialog }]);
           return;
         }
         await updateMediaMetadata(editingMedia.publicId, {
@@ -662,12 +679,12 @@ export function MemoryLibrarySheetContent({
       } else {
         const note = editNote.trim();
         if (!note) {
-          Alert.alert('Missing Note', 'Descriptive note is required.');
+          showMlDialog('Missing Note', 'Descriptive note is required.', [{ label: 'OK', onPress: dismissMlDialog }]);
           return;
         }
         const yearNum = editYear.trim() ? parseInt(editYear.trim(), 10) : undefined;
         if (editYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
-          Alert.alert('Invalid Year', 'Please enter a year between 1900 and 2100.');
+          showMlDialog('Invalid Year', 'Please enter a year between 1900 and 2100.', [{ label: 'OK', onPress: dismissMlDialog }]);
           return;
         }
         await updateMediaMetadata(editingMedia.publicId, {
@@ -694,7 +711,7 @@ export function MemoryLibrarySheetContent({
       );
       setEditingMedia(null);
     } catch (e: any) {
-      Alert.alert('Update Failed', e?.message ?? 'Could not update media details.');
+      showMlDialog('Update Failed', e?.message ?? 'Could not update media details.', [{ label: 'OK', onPress: dismissMlDialog }]);
     } finally {
       setSavingEdit(false);
     }
@@ -703,20 +720,21 @@ export function MemoryLibrarySheetContent({
   const confirmDelete = (item: MediaTileVM) => {
     const canDelete = isPrimary || item.caregiverId === myId;
     if (!canDelete) {
-      Alert.alert('Permission Denied', 'Only the primary caregiver or the uploader can delete this memory.');
+      showMlDialog('Permission Denied', 'Only the primary caregiver or the uploader can delete this memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
-    Alert.alert('Delete Memory', 'This permanently removes the file. This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    showMlDialog('Delete Memory', 'This permanently removes the file. This cannot be undone.', [
+      { label: 'Cancel', onPress: dismissMlDialog },
       {
-        text: 'Delete',
-        style: 'destructive',
+        label: 'Delete',
+        destructive: true,
         onPress: async () => {
+          dismissMlDialog();
           try {
             await deleteMedia(item.publicId);
             setItems((prev) => prev.filter((m) => m.publicId !== item.publicId));
           } catch (e: any) {
-            Alert.alert('Delete Failed', e?.message ?? 'Could not delete memory.');
+            showMlDialog('Delete Failed', e?.message ?? 'Could not delete memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
           }
         },
       },
@@ -733,15 +751,16 @@ export function MemoryLibrarySheetContent({
 
   const deleteSelected = () => {
     if (selected.size === 0) return;
-    Alert.alert(
+    showMlDialog(
       'Delete Selected',
       `Permanently delete ${selected.size} memor${selected.size === 1 ? 'y' : 'ies'}? This cannot be undone.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { label: 'Cancel', onPress: dismissMlDialog },
         {
-          text: 'Delete All',
-          style: 'destructive',
+          label: 'Delete All',
+          destructive: true,
           onPress: async () => {
+            dismissMlDialog();
             setBulkDeleting(true);
             const ids = Array.from(selected);
             await Promise.allSettled(ids.map((id) => deleteMedia(id)));
@@ -1318,6 +1337,14 @@ export function MemoryLibrarySheetContent({
         onToggleApproximate={() => setEditIsApproximate((v) => !v)}
         onClose={() => setEditingMedia(null)}
         onSave={saveMetadataEdit}
+      />
+
+      <M3Dialog
+        visible={mlDialog.visible}
+        title={mlDialog.title}
+        body={mlDialog.body}
+        actions={mlDialog.actions}
+        onDismiss={dismissMlDialog}
       />
     </View>
   );
