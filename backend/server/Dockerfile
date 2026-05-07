@@ -41,4 +41,8 @@ USER node
 
 EXPOSE 8080
 
+# LISTEN shows the process is accepting connections (migrate runs before listen).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
+  CMD node -e "require('net').connect(Number(process.env.PORT)||8080,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

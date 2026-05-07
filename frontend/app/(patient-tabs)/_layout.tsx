@@ -8,6 +8,12 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { M3TabBar } from '../../src/components/M3TabBar';
 import { getPatientInfo, deletePatientInfo } from '../../src/utils/auth';
 import { API_BASE_URL } from '../../src/config/api';
+import { PatientGreetingOverlay } from '../../src/components/PatientGreetingOverlay';
+import {
+  isPatientBiometricVerified,
+  markPatientBiometricVerified,
+  unlockPatientWithBiometrics,
+} from '../../src/utils/patientBiometric';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -85,6 +91,19 @@ export default function PatientTabsLayout() {
           navigation.dispatch(
             CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
           );
+          return;
+        }
+
+        const requiresBiometric = data.biometricRecoveryEnabled || patient.biometricRecoveryEnabled;
+        if (requiresBiometric && !isPatientBiometricVerified(patient.id)) {
+          const unlocked = await unlockPatientWithBiometrics();
+          if (!unlocked) {
+            navigation.dispatch(
+              CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
+            );
+            return;
+          }
+          markPatientBiometricVerified(patient.id);
         }
       } catch {
         // Network error — keep the patient in the app
@@ -99,5 +118,10 @@ export default function PatientTabsLayout() {
     };
   }, []);
 
-  return Platform.OS === 'ios' ? <IOSTabLayout /> : <AndroidTabLayout />;
+  return (
+    <>
+      {Platform.OS === 'ios' ? <IOSTabLayout /> : <AndroidTabLayout />}
+      <PatientGreetingOverlay />
+    </>
+  );
 }

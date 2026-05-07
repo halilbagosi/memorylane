@@ -10,3 +10,6 @@ const FALLBACK = Platform.OS === 'android'
   : 'http://localhost:3000';
 
 export const API_BASE_URL: string = envUrl || FALLBACK;
+
+console.log('[api config] EXPO_PUBLIC_API_BASE_URL =', JSON.stringify(envUrl));
+console.log('[api config] API_BASE_URL =', API_BASE_URL);

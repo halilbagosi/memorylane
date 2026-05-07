@@ -9,10 +9,12 @@ async function bootstrap() {
 
   app.useBodyParser('json', { limit: '50mb' });
   app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
+  app.useBodyParser('raw', { type: 'application/octet-stream', limit: '101mb' });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));
   app.enableCors();
   const port = Number(process.env.PORT) || 3000;
-  await app.listen(port);
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen(port, host);
 }
 bootstrap();

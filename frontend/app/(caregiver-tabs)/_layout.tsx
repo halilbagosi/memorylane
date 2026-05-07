@@ -21,6 +21,10 @@ function IOSTabLayout() {
         <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
         <Label>Analytics</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="insights">
+        <Icon sf={{ default: 'lightbulb', selected: 'lightbulb.fill' }} />
+        <Label>Insights</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -58,6 +62,15 @@ function AndroidTabLayout() {
           title: 'Analytics',
           tabBarIcon: ({ color, size }) => (
             <AppIcon iosName="chart.bar.fill" androidFallback="A" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          tabBarIcon: ({ color, size }) => (
+            <AppIcon iosName="lightbulb.fill" androidFallback="!" size={size} color={color} />
           ),
         }}
       />
