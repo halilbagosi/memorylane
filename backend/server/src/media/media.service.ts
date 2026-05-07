@@ -75,6 +75,17 @@ export interface TimelineItem {
   downloadExpiresAt: string;
 }
 
+export interface QuizMediaItem {
+  publicId: string;
+  firstName: string | null;
+  lastName: string | null;
+  relationshipType: string | null;
+  birthYear: number | null;
+  eventYear: number | null;
+  downloadUrl: string;
+  downloadExpiresAt: string;
+}
+
 type MediaMetadataFields = {
   collection?: 'MEMORY' | 'QUIZ';
   firstName?: string | null;
@@ -87,6 +98,10 @@ type MediaMetadataFields = {
   isApproximateYear?: boolean | null;
   memoryCategory?: string | null;
 };
+
+function shouldBlockDuplicateFaces(): boolean {
+  return process.env.QUIZ_BLOCK_DUPLICATE_FACES === 'true';
+}
 
 @Injectable()
 export class MediaService {
@@ -227,7 +242,9 @@ export class MediaService {
       contentType = processed.contentType === 'original' ? media.contentType : processed.contentType;
       byteSize = processed.byteSize;
 
-      const isDuplicate = await this.faceVerification.checkForDuplicateFace(media.patientId, payload);
+      const isDuplicate = shouldBlockDuplicateFaces()
+        ? await this.hasReadyDuplicateQuizFace(media.patientId, payload)
+        : false;
       if (isDuplicate) {
         await this.prisma.media.update({ where: { id: media.id }, data: { status: 'FAILED' } });
         throw new ConflictException('This person has already been added to the quiz.');
@@ -398,6 +415,48 @@ export class MediaService {
     return { publicId, deleted: true };
   }
 
+  /** Returns quiz modes and READY QUIZ PHOTO items for the patient device.
+   *  No caregiver JWT required — the patient ID is the only credential. */
+  async getPatientQuizData(
+    patientId: string,
+    apiBaseUrl: string,
+  ): Promise<{ quizModes: string[]; media: QuizMediaItem[] }> {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { quizModes: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const rows = await this.prisma.media.findMany({
+      where: { patientId, collection: 'QUIZ', status: 'READY', kind: 'PHOTO' },
+      select: {
+        publicId: true,
+        firstName: true,
+        lastName: true,
+        relationshipType: true,
+        birthYear: true,
+        eventYear: true,
+      },
+    });
+
+    const ttl = getSignedUrlTtlSeconds();
+    const media: QuizMediaItem[] = rows.map((r) => {
+      const { token, expiresAt } = this.signedUrls.issue(r.publicId, 'get', ttl);
+      return {
+        publicId: r.publicId,
+        firstName: r.firstName ?? null,
+        lastName: r.lastName ?? null,
+        relationshipType: r.relationshipType ?? null,
+        birthYear: r.birthYear ?? null,
+        eventYear: r.eventYear ?? null,
+        downloadUrl: this.buildSignedUrl(apiBaseUrl, 'download', token),
+        downloadExpiresAt: expiresAt.toISOString(),
+      };
+    });
+
+    return { quizModes: patient.quizModes, media };
+  }
+
   /** Returns READY MEMORY items for a patient, sorted chronologically.
    *  Each item includes a short-lived signed download URL so the patient
    *  device can render photos/videos without a caregiver JWT. */
@@ -475,7 +534,7 @@ export class MediaService {
         collection: 'QUIZ',
         kind: 'PHOTO',
         contentHash,
-        status: { in: ['READY', 'PENDING_UPLOAD'] },
+        status: 'READY',
       },
       select: { id: true },
     });
@@ -487,7 +546,9 @@ export class MediaService {
       };
     }
 
-    const isDuplicateFace = await this.faceVerification.checkForDuplicateFace(patientId, body);
+    const isDuplicateFace = shouldBlockDuplicateFaces()
+      ? await this.hasReadyDuplicateQuizFace(patientId, body)
+      : false;
     if (isDuplicateFace) {
       return {
         accepted: false,
@@ -596,7 +657,7 @@ export class MediaService {
         patientId,
         collection: 'QUIZ',
         kind: 'PHOTO',
-        status: { in: ['READY', 'PENDING_UPLOAD'] },
+        status: 'READY',
         ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
       },
       select: { firstName: true },
@@ -621,7 +682,7 @@ export class MediaService {
       where: {
         patientId,
         contentHash,
-        status: { in: ['READY', 'PENDING_UPLOAD'] },
+        status: 'READY',
         ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
       },
       select: { id: true },
@@ -634,6 +695,26 @@ export class MediaService {
   private normalizePersonName(value?: string | null): string | null {
     const normalized = value?.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
     return normalized || null;
+  }
+
+  private async hasReadyDuplicateQuizFace(patientId: string, imageBuffer: Buffer): Promise<boolean> {
+    const matchingPublicIds = await this.faceVerification.findDuplicateFaceExternalImageIds(
+      patientId,
+      imageBuffer,
+    );
+    if (matchingPublicIds.length === 0) return false;
+
+    const existing = await this.prisma.media.findFirst({
+      where: {
+        patientId,
+        publicId: { in: matchingPublicIds },
+        collection: 'QUIZ',
+        kind: 'PHOTO',
+        status: 'READY',
+      },
+      select: { id: true },
+    });
+    return !!existing;
   }
 
   private buildSignedUrl(apiBaseUrl: string, action: 'upload' | 'download', token: string): string {

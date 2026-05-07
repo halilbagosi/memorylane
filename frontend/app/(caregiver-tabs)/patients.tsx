@@ -1124,13 +1124,6 @@ const addReminderTime = () => {
 
       {/* Action rows */}
       <View style={styles.actionsList}>
-        <TouchableOpacity style={styles.actionRow} onPress={() => setView('memory-library')}>
-          <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
-            <AppIcon iosName="photo.on.rectangle" androidFallback="🖼" size={18} color={colors.secondary} />
-          </View>
-          <Text style={styles.actionRowLabel}>Memory Library</Text>
-          <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
-        </TouchableOpacity>
 
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => setReminderModalVisible(true)}>

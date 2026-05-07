@@ -93,6 +93,16 @@ export class ManagementService {
           data: { status: 'DECLINED', respondedAt: new Date() },
         });
 
+        // Manually cascade delete all related records to satisfy foreign key constraints
+        const sessions = await tx.quizSession.findMany({ where: { patientId }, select: { id: true } });
+        const sessionIds = sessions.map(s => s.id);
+        
+        await tx.quizAttempt.deleteMany({ where: { sessionId: { in: sessionIds } } });
+        await tx.quizSession.deleteMany({ where: { patientId } });
+        await tx.media.deleteMany({ where: { patientId } });
+        await tx.analyticsSnapshot.deleteMany({ where: { patientId } });
+        await tx.delegationRequest.deleteMany({ where: { patientId } });
+        await tx.roleRequest.deleteMany({ where: { patientId } });
         await tx.patientCaregiver.deleteMany({ where: { patientId } });
         await tx.patient.delete({ where: { id: patientId } });
 

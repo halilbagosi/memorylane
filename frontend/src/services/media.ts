@@ -191,6 +191,30 @@ async function createUploadIntent(input: {
 
 export type QuizMode = 'NAME' | 'AGE' | 'RELATIONSHIP';
 
+export interface QuizMediaItem {
+  publicId: string;
+  firstName: string | null;
+  lastName: string | null;
+  relationshipType: string | null;
+  birthYear: number | null;
+  eventYear: number | null;
+  downloadUrl: string;
+  downloadExpiresAt: string;
+}
+
+export interface PatientQuizData {
+  quizModes: QuizMode[];
+  media: QuizMediaItem[];
+}
+
+/** Public — no JWT required. Called from the patient device. */
+export async function getPatientQuizData(patientId: string): Promise<PatientQuizData> {
+  const res = await fetch(
+    `${API_BASE_URL}/media/patient/${encodeURIComponent(patientId)}/quiz`,
+  );
+  return jsonOrThrow(res);
+}
+
 export async function getQuizModes(patientId: string): Promise<QuizMode[]> {
   const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
     headers: await authHeaders(),

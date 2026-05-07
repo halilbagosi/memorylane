@@ -574,8 +574,7 @@ export default function AccountScreen() {
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.ok) {
-                  await clearAuth();
-                  navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+                  scheduleLogoutAfterDeletion();
                 }
               } catch { /* ignore */ }
             } },
