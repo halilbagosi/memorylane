@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -440,11 +439,11 @@ export default function PatientMediaScreen() {
 
   const showAddOptions = () => {
     if (!patientId) return;
-    Alert.alert('Add Memory', 'Choose a source for this memory', [
-      { text: 'Take Photo', onPress: () => handlePickAndUpload('camera') },
-      { text: 'Photo/Video Library', onPress: () => handlePickAndUpload('library') },
-      { text: 'Browse Files (Audio/Docs)', onPress: () => handlePickAndUpload('document') },
-      { text: 'Cancel', style: 'cancel' },
+    showDialog('Add Memory', 'Choose a source for this memory', [
+      { label: 'Take Photo', onPress: () => { dismissDialog(); handlePickAndUpload('camera'); } },
+      { label: 'Photo/Video Library', onPress: () => { dismissDialog(); handlePickAndUpload('library'); } },
+      { label: 'Browse Files (Audio/Docs)', onPress: () => { dismissDialog(); handlePickAndUpload('document'); } },
+      { label: 'Cancel', onPress: dismissDialog },
     ]);
   };
 

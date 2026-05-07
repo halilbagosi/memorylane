@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
+import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
 
 export default function QuizTab() {
@@ -13,17 +14,30 @@ export default function QuizTab() {
   const navigation = useNavigation();
   const [patient, setPatient] = useState<PatientInfo | null>(null);
 
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
+  };
+  const dismissDialog = () => setDialog((prev) => ({ ...prev, visible: false }));
+
   useEffect(() => {
     getPatientInfo().then(setPatient);
   }, []);
 
   const handleLogout = () => {
-    Alert.alert('Log Out (Debug)', 'Return to the welcome screen?', [
-      { text: 'Cancel', style: 'cancel' },
+    showDialog('Log Out (Debug)', 'Return to the welcome screen?', [
+      { label: 'Cancel', onPress: dismissDialog },
       {
-        text: 'Log Out',
-        style: 'destructive',
+        label: 'Log Out',
+        destructive: true,
         onPress: async () => {
+          dismissDialog();
           await deletePatientInfo();
           navigation.dispatch(
             CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }),
@@ -63,6 +77,14 @@ export default function QuizTab() {
         <Text style={styles.title}>Quiz</Text>
         <Text style={styles.subtitle}>Coming soon</Text>
       </View>
+
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
     </View>
   );
 }
