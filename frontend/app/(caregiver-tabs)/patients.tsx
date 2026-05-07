@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
-  Linking, Animated,
+  Linking, Animated, Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -469,27 +469,27 @@ export default function PatientsTab() {
       )}
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity
+        <Pressable
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
           onPress={() => router.push('/add-patient')}
-          activeOpacity={0.85}
+          android_ripple={{ color: 'rgba(45, 79, 62, 0.12)', borderless: false }}
         >
           <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
             <AppIcon iosName="plus" androidFallback="+" size={22} color={colors.secondary} weight="semibold" />
           </View>
           <Text style={styles.actionLabel}>Add Patient</Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <TouchableOpacity
+        <Pressable
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
           onPress={() => router.push('/join-patient')}
-          activeOpacity={0.85}
+          android_ripple={{ color: 'rgba(180, 140, 100, 0.15)', borderless: false }}
         >
           <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>
             <AppIcon iosName="qrcode.viewfinder" androidFallback="QR" size={22} color="#8B7355" />
           </View>
           <Text style={styles.actionLabel}>Link to Patient</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Gradient fade — cards dissolve here instead of clipping */}
@@ -527,10 +527,10 @@ export default function PatientsTab() {
               <>
                 <Text style={styles.sectionLabel}>My Patients</Text>
                 {primaryPatients.map((patient) => (
-                  <TouchableOpacity
+                  <Pressable
                     key={patient.id}
-                    activeOpacity={0.8}
                     onPress={() => setSelectedPatient(patient)}
+                    android_ripple={{ color: 'rgba(45, 79, 62, 0.1)', borderless: false }}
                   >
                     <AdaptiveCard
                       style={styles.primaryPatientCard}
@@ -589,7 +589,7 @@ export default function PatientsTab() {
                         </>
                       )}
                     </AdaptiveCard>
-                  </TouchableOpacity>
+                  </Pressable>
                 ))}
               </>
             )}
@@ -598,10 +598,10 @@ export default function PatientsTab() {
               <>
                 <Text style={[styles.sectionLabel, primaryPatients.length > 0 && { marginTop: 16 }]}>Supporting</Text>
                 {secondaryPatients.map((patient) => (
-                  <TouchableOpacity
+                  <Pressable
                     key={patient.id}
-                    activeOpacity={0.8}
                     onPress={() => setSelectedPatient(patient)}
+                    android_ripple={{ color: 'rgba(123, 115, 192, 0.1)', borderless: false }}
                   >
                     <AdaptiveCard
                       style={styles.secondaryPatientCard}
@@ -645,7 +645,7 @@ export default function PatientsTab() {
                         </View>
                       </View>
                     </AdaptiveCard>
-                  </TouchableOpacity>
+                  </Pressable>
                 ))}
               </>
             )}
@@ -1213,7 +1213,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.neutral,
     zIndex: 5,
-    elevation: 5,
+    elevation: 2,
   },
   headerLeft: { flex: 1 },
   headerTitle: {
@@ -1235,7 +1235,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 10,
     zIndex: 5,
-    elevation: 5,
+    elevation: 2,
   },
   actionCard: {
     flex: 1,
@@ -1258,6 +1258,7 @@ const styles = StyleSheet.create({
     elevation: 1,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.05)',
+    overflow: 'hidden',
   },
   actionIconCircle: {
     width: 42,
@@ -1851,14 +1852,10 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    borderRadius: 20,
+    borderRadius: 28,
     padding: 24,
-    backgroundColor: isIOS ? 'rgba(248,248,248,0.98)' : '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 12,
+    backgroundColor: colors.neutral,
+    elevation: 3,
   },
   modalTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1873,8 +1870,8 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    paddingVertical: 11,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.06)',
     alignItems: 'center',
   },
@@ -1885,8 +1882,8 @@ const styles = StyleSheet.create({
   },
   modalSaveBtn: {
     flex: 1,
-    paddingVertical: 11,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 20,
     backgroundColor: colors.secondary,
     alignItems: 'center',
   },
