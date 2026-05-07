@@ -1,0 +1,41 @@
+import type { RevisionId, default as IncrementalBundler } from "./IncrementalBundler";
+import type { GraphOptions } from "./shared/types";
+import type { ConfigT, RootPerfLogger } from "../metro-config";
+import type { HmrErrorMessage, HmrUpdateMessage } from "../metro-runtime/modules/types";
+export interface Client {
+  optedIntoHMR: boolean;
+  revisionIds: Array<RevisionId>;
+  readonly sendFn: ($$PARAM_0$$: string) => void;
+}
+export interface ClientGroup {
+  readonly clients: Set<Client>;
+  clientUrl: URL;
+  revisionId: RevisionId;
+  readonly unlisten: () => void;
+  readonly graphOptions: GraphOptions;
+}
+declare class HmrServer<TClient extends Client> {
+  _config: ConfigT;
+  _bundler: IncrementalBundler;
+  _createModuleId: (path: string) => number;
+  _clientGroups: Map<RevisionId, ClientGroup>;
+  constructor(bundler: IncrementalBundler, createModuleId: (path: string) => number, config: ConfigT);
+  onClientConnect: (requestUrl: string, sendFn: (data: string) => void) => Promise<Client>;
+  _registerEntryPoint(client: Client, originalRequestUrl: string, sendFn: (data: string) => void): Promise<void>;
+  onClientMessage: (client: TClient, message: string | Buffer | ArrayBuffer | Array<Buffer>, sendFn: (data: string) => void) => Promise<void>;
+  onClientError: (client: TClient, e: Error) => void;
+  onClientDisconnect: (client: TClient) => void;
+  _handleFileChange(group: ClientGroup, options: {
+    isInitialUpdate: boolean;
+  }, changeEvent: null | undefined | {
+    readonly logger?: null | RootPerfLogger;
+    readonly changeId?: string;
+  }): Promise<void>;
+  _prepareMessage(group: ClientGroup, options: {
+    isInitialUpdate: boolean;
+  }, changeEvent: null | undefined | {
+    readonly logger?: null | RootPerfLogger;
+    readonly changeId?: string;
+  }): Promise<HmrUpdateMessage | HmrErrorMessage>;
+}
+export default HmrServer;

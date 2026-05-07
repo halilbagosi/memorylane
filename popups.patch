@@ -1,0 +1,461 @@
+commit 0eddf466ae35239fbd92b1e54ee6e7c86f8937e9
+Author: BESTOFALL11 <duriceka123@gmail.com>
+Date:   Thu May 7 02:08:24 2026 +0200
+
+    Popups-Optimized
+
+diff --git a/frontend/app/(caregiver-tabs)/patients.tsx b/frontend/app/(caregiver-tabs)/patients.tsx
+index 2cb54dd..749bd72 100644
+--- a/frontend/app/(caregiver-tabs)/patients.tsx
++++ b/frontend/app/(caregiver-tabs)/patients.tsx
+@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
+ import {
+   View, Text, StyleSheet, TouchableOpacity, ScrollView,
+   ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
+-  Alert, Linking, Animated,
++  Linking, Animated,
+ } from 'react-native';
+ import { LinearGradient } from 'expo-linear-gradient';
+ import * as Clipboard from 'expo-clipboard';
+@@ -790,21 +790,22 @@ function PatientDetailContent({
+   };
+ 
+   const showPatientAvatarOptions = () => {
+-    const options: any[] = [
+-      { text: 'Take Photo', onPress: () => pickPatientImage('camera') },
+-      { text: 'Choose from Library', onPress: () => pickPatientImage('library') },
++    const actions: M3DialogAction[] = [
++      { label: 'Take Photo', onPress: () => { dismissDialog(); pickPatientImage('camera'); } },
++      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickPatientImage('library'); } },
+     ];
+     if (patient.avatarUrl) {
+-      options.push({
+-        text: 'Remove Photo', style: 'destructive', onPress: async () => {
++      actions.push({
++        label: 'Remove Photo', destructive: true, onPress: async () => {
++          dismissDialog();
+           setUploadingAvatar(true);
+           await onAvatarChange(patient, null);
+           setUploadingAvatar(false);
+         },
+       });
+     }
+-    options.push({ text: 'Cancel', style: 'cancel' });
+-    Alert.alert('Patient Photo', undefined, options);
++    actions.push({ label: 'Cancel', onPress: dismissDialog });
++    showDialog('Patient Photo', 'Choose a photo for this patient', actions);
+   };
+ 
+   /* ── Memory Library view ── */
+diff --git a/frontend/app/add-patient.tsx b/frontend/app/add-patient.tsx
+index 05fd010..039b562 100644
+--- a/frontend/app/add-patient.tsx
++++ b/frontend/app/add-patient.tsx
+@@ -1,7 +1,7 @@
+ import React, { useState, useEffect, useCallback, useRef } from 'react';
+ import {
+   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
+-  TouchableOpacity, Modal, Image, Alert, Linking, Animated, Easing,
++  TouchableOpacity, Modal, Image, Linking, Animated, Easing,
+   TouchableWithoutFeedback,
+ } from 'react-native';
+ import { SafeAreaView } from 'react-native-safe-area-context';
+@@ -140,12 +140,13 @@ export default function AddPatientScreen() {
+   };
+ 
+   const showAvatarOptions = () => {
+-    Alert.alert('Profile Picture', 'Add a photo for this patient', [
+-      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
+-      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
+-      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
+-      { text: 'Skip for Now', style: 'cancel' },
+-    ]);
++    const actions: M3DialogAction[] = [
++      { label: 'Take Photo', onPress: () => { dismissDialog(); pickAvatar('camera'); } },
++      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickAvatar('library'); } },
++      ...(avatarBase64 ? [{ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); setAvatarBase64(null); } }] : []),
++      { label: 'Skip for Now', onPress: dismissDialog },
++    ];
++    showDialog('Profile Picture', 'Add a photo for this patient', actions);
+   };
+ 
+   const handleNameChange = (text: string) => {
+diff --git a/frontend/app/patient-media.tsx b/frontend/app/patient-media.tsx
+index d911418..8c71b13 100644
+--- a/frontend/app/patient-media.tsx
++++ b/frontend/app/patient-media.tsx
+@@ -1,7 +1,6 @@
+ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+ import {
+   ActivityIndicator,
+-  Alert,
+   Dimensions,
+   FlatList,
+   Image,
+@@ -440,11 +439,11 @@ export default function PatientMediaScreen() {
+ 
+   const showAddOptions = () => {
+     if (!patientId) return;
+-    Alert.alert('Add Memory', 'Choose a source for this memory', [
+-      { text: 'Take Photo', onPress: () => handlePickAndUpload('camera') },
+-      { text: 'Photo/Video Library', onPress: () => handlePickAndUpload('library') },
+-      { text: 'Browse Files (Audio/Docs)', onPress: () => handlePickAndUpload('document') },
+-      { text: 'Cancel', style: 'cancel' },
++    showDialog('Add Memory', 'Choose a source for this memory', [
++      { label: 'Take Photo', onPress: () => { dismissDialog(); handlePickAndUpload('camera'); } },
++      { label: 'Photo/Video Library', onPress: () => { dismissDialog(); handlePickAndUpload('library'); } },
++      { label: 'Browse Files (Audio/Docs)', onPress: () => { dismissDialog(); handlePickAndUpload('document'); } },
++      { label: 'Cancel', onPress: dismissDialog },
+     ]);
+   };
+ 
+diff --git a/frontend/app/signup.tsx b/frontend/app/signup.tsx
+index b66c297..3e55992 100644
+--- a/frontend/app/signup.tsx
++++ b/frontend/app/signup.tsx
+@@ -1,7 +1,7 @@
+ import React, { useState, useMemo } from 'react';
+ import {
+   View, Text, StyleSheet, Platform,
+-  ScrollView, TouchableOpacity, Image, Alert, Linking,
++  ScrollView, TouchableOpacity, Image, Linking,
+ } from 'react-native';
+ import * as Device from 'expo-device';
+ import { SafeAreaView } from 'react-native-safe-area-context';
+@@ -131,12 +131,13 @@ export default function SignupScreen() {
+   };
+ 
+   const showAvatarOptions = () => {
+-    Alert.alert('Profile Picture', 'Add a photo so your care team can recognise you', [
+-      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
+-      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
+-      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
+-      { text: 'Skip for Now', style: 'cancel' },
+-    ]);
++    const actions: M3DialogAction[] = [
++      { label: 'Take Photo', onPress: () => { dismissDialog(); pickAvatar('camera'); } },
++      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickAvatar('library'); } },
++      ...(avatarBase64 ? [{ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); setAvatarBase64(null); } }] : []),
++      { label: 'Skip for Now', onPress: dismissDialog },
++    ];
++    showDialog('Profile Picture', 'Add a photo so your care team can recognise you', actions);
+   };
+ 
+   const handleSignup = async () => {
+diff --git a/frontend/src/components/MemoryLibraryModal.tsx b/frontend/src/components/MemoryLibraryModal.tsx
+index f0fc14d..5a4afdc 100644
+--- a/frontend/src/components/MemoryLibraryModal.tsx
++++ b/frontend/src/components/MemoryLibraryModal.tsx
+@@ -1,7 +1,6 @@
+ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import {
+   ActivityIndicator,
+-  Alert,
+   Dimensions,
+   FlatList,
+   Image,
+@@ -25,6 +24,7 @@ import { colors } from '../theme/colors';
+ import { typography } from '../theme/typography';
+ import { LinearGradient } from 'expo-linear-gradient';
+ import { AppIcon } from './AppIcon';
++import { M3Dialog, type M3DialogAction } from './M3Dialog';
+ import { ZoomableImage } from './ZoomableImage';
+ import {
+   deleteMedia,
+@@ -151,6 +151,18 @@ export function MemoryLibrarySheetContent({
+   const [quizModes, setQuizModes] = useState<QuizMode[]>(['NAME', 'AGE', 'RELATIONSHIP']);
+   const [savingQuizModes, setSavingQuizModes] = useState(false);
+ 
++  const [mlDialog, setMlDialog] = useState<{
++    visible: boolean;
++    title: string;
++    body: string;
++    actions: M3DialogAction[];
++  }>({ visible: false, title: '', body: '', actions: [] });
++
++  const showMlDialog = (title: string, body: string, actions: M3DialogAction[]) => {
++    setMlDialog({ visible: true, title, body, actions });
++  };
++  const dismissMlDialog = () => setMlDialog((prev) => ({ ...prev, visible: false }));
++
+   const loadMedia = useCallback(async () => {
+     if (!patientId) return;
+     setError(null);
+@@ -380,32 +392,34 @@ export function MemoryLibrarySheetContent({
+       showQuizSourceOptions();
+       return;
+     }
+-    Alert.alert('Add Memory', 'Choose a source', [
+-      { text: 'Take Photo', onPress: () => pickAndUpload('camera') },
+-      { text: 'Photo/Video Library', onPress: () => pickAndUpload('library') },
+-      { text: 'Browse Files', onPress: () => pickAndUpload('document') },
+-      { text: 'Cancel', style: 'cancel' },
++    showMlDialog('Add Memory', 'Choose a source', [
++      { label: 'Take Photo', onPress: () => { dismissMlDialog(); pickAndUpload('camera'); } },
++      { label: 'Photo/Video Library', onPress: () => { dismissMlDialog(); pickAndUpload('library'); } },
++      { label: 'Browse Files', onPress: () => { dismissMlDialog(); pickAndUpload('document'); } },
++      { label: 'Cancel', onPress: dismissMlDialog },
+     ]);
+   };
+ 
+   const showQuizSourceOptions = () => {
+-    Alert.alert('Add Quiz Media', 'Choose a source', [
++    showMlDialog('Add Quiz Media', 'Choose a source', [
+       {
+-        text: 'Take Photo',
++        label: 'Take Photo',
+         onPress: () => {
++          dismissMlDialog();
+           setPendingQuizPhotoSource('camera');
+           setQuizGuidanceVisible(true);
+         },
+       },
+       {
+-        text: 'Photo Library',
++        label: 'Photo Library',
+         onPress: () => {
++          dismissMlDialog();
+           setPendingQuizPhotoSource('library');
+           setQuizGuidanceVisible(true);
+         },
+       },
+-      { text: 'Browse Audio Files', onPress: () => pickAndUpload('document') },
+-      { text: 'Cancel', style: 'cancel' },
++      { label: 'Browse Audio Files', onPress: () => { dismissMlDialog(); pickAndUpload('document'); } },
++      { label: 'Cancel', onPress: dismissMlDialog },
+     ]);
+   };
+ 
+@@ -425,9 +439,9 @@ export function MemoryLibrarySheetContent({
+         if (source === 'camera') {
+           const { status } = await ImagePicker.requestCameraPermissionsAsync();
+           if (status !== 'granted') {
+-            Alert.alert('Camera Access Required', 'Please enable camera access in Settings.', [
+-              { text: 'Cancel' },
+-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
++            showMlDialog('Camera Access Required', 'Please enable camera access in Settings.', [
++              { label: 'Cancel', onPress: dismissMlDialog },
++              { label: 'Open Settings', onPress: () => { dismissMlDialog(); Linking.openSettings(); } },
+             ]);
+             return;
+           }
+@@ -435,9 +449,9 @@ export function MemoryLibrarySheetContent({
+         } else {
+           const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+           if (status !== 'granted') {
+-            Alert.alert('Library Access Required', 'Please enable photo library access in Settings.', [
+-              { text: 'Cancel' },
+-              { text: 'Open Settings', onPress: () => Linking.openSettings() },
++            showMlDialog('Library Access Required', 'Please enable photo library access in Settings.', [
++              { label: 'Cancel', onPress: dismissMlDialog },
++              { label: 'Open Settings', onPress: () => { dismissMlDialog(); Linking.openSettings(); } },
+             ]);
+             return;
+           }
+@@ -452,7 +466,7 @@ export function MemoryLibrarySheetContent({
+         assets = result.assets.map((a: any) => ({ uri: a.uri, mimeType: a.mimeType }));
+       }
+     } catch (e: any) {
+-      Alert.alert('Picker Could Not Open', e?.message ?? 'Please try opening the picker again.');
++      showMlDialog('Picker Could Not Open', e?.message ?? 'Please try opening the picker again.', [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+     if (!assets.length) return;
+@@ -464,13 +478,13 @@ export function MemoryLibrarySheetContent({
+         return !mime.startsWith('image/') && !mime.startsWith('audio/');
+       });
+       if (unsupported) {
+-        Alert.alert('Photo or Audio Required', 'Quiz media can be a clear photo or an audio file of the person talking.');
++        showMlDialog('Photo or Audio Required', 'Quiz media can be a clear photo or an audio file of the person talking.', [{ label: 'OK', onPress: dismissMlDialog }]);
+         return;
+       }
+       try {
+         assets = await Promise.all(assets.map(normalizeQuizPhotoAsset));
+       } catch {
+-        Alert.alert('Could Not Prepare Photo', 'We could not prepare this photo for verification. Please try another image.');
++        showMlDialog('Could Not Prepare Photo', 'We could not prepare this photo for verification. Please try another image.', [{ label: 'OK', onPress: dismissMlDialog }]);
+         return;
+       }
+       const photo = assets.find((asset) => inferMime(asset).startsWith('image/'));
+@@ -499,9 +513,10 @@ export function MemoryLibrarySheetContent({
+       } catch (e: any) {
+         const message = friendlyQuizPhotoMessage(e?.code, e?.detail ?? e?.message);
+         resetQuizDraft();
+-        Alert.alert(
++        showMlDialog(
+           e?.code === 'FACE_VERIFICATION_UNAVAILABLE' ? 'Verification Unavailable' : 'Try Another Photo',
+           message,
++          [{ label: 'OK', onPress: dismissMlDialog }],
+         );
+       } finally {
+         setVerifyingQuizPhoto(false);
+@@ -541,9 +556,9 @@ export function MemoryLibrarySheetContent({
+       const msg = duplicates === 1
+         ? (firstDuplicateDetail ?? 'This photo has already been added.')
+         : `${duplicates} photos were skipped — they have already been added.`;
+-      Alert.alert('Already Added', msg);
++      showMlDialog('Already Added', msg, [{ label: 'OK', onPress: dismissMlDialog }]);
+     } else if (failed > 0) {
+-      Alert.alert('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`);
++      showMlDialog('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`, [{ label: 'OK', onPress: dismissMlDialog }]);
+     }
+   };
+ 
+@@ -552,23 +567,24 @@ export function MemoryLibrarySheetContent({
+     const birthYear = quizBirthYear.trim() ? parseInt(quizBirthYear.trim(), 10) : NaN;
+     const currentYear = new Date().getFullYear();
+     if (!firstName || !quizRelationship.trim() || Number.isNaN(birthYear)) {
+-      Alert.alert('Missing Details', 'Person name, relationship, and birth year are required for quiz media.');
++      showMlDialog('Missing Details', 'Person name, relationship, and birth year are required for quiz media.', [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+     if (birthYear < 1900 || birthYear > currentYear) {
+-      Alert.alert('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`);
++      showMlDialog('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`, [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+     const selectedPhotos = pendingQuizAssets.filter((asset) => inferMime(asset).startsWith('image/'));
+     if (selectedPhotos.length > 0 && !quizPhotoVerified) {
+-      Alert.alert(
++      showMlDialog(
+         'Photo Not Verified',
+         friendlyQuizPhotoMessage(undefined),
++        [{ label: 'OK', onPress: dismissMlDialog }],
+       );
+       return;
+     }
+     if (selectedPhotos.length > 1) {
+-      Alert.alert('One Photo Per Person', 'Please upload only one quiz photo for each person.');
++      showMlDialog('One Photo Per Person', 'Please upload only one quiz photo for each person.', [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+     const normalizedName = firstName.replace(/\s+/g, ' ').toLocaleLowerCase();
+@@ -580,9 +596,10 @@ export function MemoryLibrarySheetContent({
+         item.firstName?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === normalizedName,
+     );
+     if (selectedPhotos.length > 0 && duplicatePhoto) {
+-      Alert.alert(
++      showMlDialog(
+         'Photo Already Exists',
+         `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
++        [{ label: 'OK', onPress: dismissMlDialog }],
+       );
+       return;
+     }
+@@ -604,12 +621,12 @@ export function MemoryLibrarySheetContent({
+   const saveMemoryDetailsAndUpload = async () => {
+     const note = memoryNote.trim();
+     if (!note) {
+-      Alert.alert('Missing Note', 'Please add a descriptive note before saving this memory.');
++      showMlDialog('Missing Note', 'Please add a descriptive note before saving this memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+     const yearNum = memoryYear.trim() ? parseInt(memoryYear.trim(), 10) : undefined;
+     if (memoryYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
+-      Alert.alert('Invalid Year', 'Please enter a year between 1900 and 2100.');
++      showMlDialog('Invalid Year', 'Please enter a year between 1900 and 2100.', [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+     setMemoryDetailsVisible(false);
+@@ -646,11 +663,11 @@ export function MemoryLibrarySheetContent({
+         const birthYear = editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : NaN;
+         const currentYear = new Date().getFullYear();
+         if (!firstName || !relationshipType || Number.isNaN(birthYear)) {
+-          Alert.alert('Missing Details', 'Name, relationship, and birth year are required.');
++          showMlDialog('Missing Details', 'Name, relationship, and birth year are required.', [{ label: 'OK', onPress: dismissMlDialog }]);
+           return;
+         }
+         if (birthYear < 1900 || birthYear > currentYear) {
+-          Alert.alert('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`);
++          showMlDialog('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`, [{ label: 'OK', onPress: dismissMlDialog }]);
+           return;
+         }
+         await updateMediaMetadata(editingMedia.publicId, {
+@@ -662,12 +679,12 @@ export function MemoryLibrarySheetContent({
+       } else {
+         const note = editNote.trim();
+         if (!note) {
+-          Alert.alert('Missing Note', 'Descriptive note is required.');
++          showMlDialog('Missing Note', 'Descriptive note is required.', [{ label: 'OK', onPress: dismissMlDialog }]);
+           return;
+         }
+         const yearNum = editYear.trim() ? parseInt(editYear.trim(), 10) : undefined;
+         if (editYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
+-          Alert.alert('Invalid Year', 'Please enter a year between 1900 and 2100.');
++          showMlDialog('Invalid Year', 'Please enter a year between 1900 and 2100.', [{ label: 'OK', onPress: dismissMlDialog }]);
+           return;
+         }
+         await updateMediaMetadata(editingMedia.publicId, {
+@@ -694,7 +711,7 @@ export function MemoryLibrarySheetContent({
+       );
+       setEditingMedia(null);
+     } catch (e: any) {
+-      Alert.alert('Update Failed', e?.message ?? 'Could not update media details.');
++      showMlDialog('Update Failed', e?.message ?? 'Could not update media details.', [{ label: 'OK', onPress: dismissMlDialog }]);
+     } finally {
+       setSavingEdit(false);
+     }
+@@ -703,20 +720,21 @@ export function MemoryLibrarySheetContent({
+   const confirmDelete = (item: MediaTileVM) => {
+     const canDelete = isPrimary || item.caregiverId === myId;
+     if (!canDelete) {
+-      Alert.alert('Permission Denied', 'Only the primary caregiver or the uploader can delete this memory.');
++      showMlDialog('Permission Denied', 'Only the primary caregiver or the uploader can delete this memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
+       return;
+     }
+-    Alert.alert('Delete Memory', 'This permanently removes the file. This cannot be undone.', [
+-      { text: 'Cancel', style: 'cancel' },
++    showMlDialog('Delete Memory', 'This permanently removes the file. This cannot be undone.', [
++      { label: 'Cancel', onPress: dismissMlDialog },
+       {
+-        text: 'Delete',
+-        style: 'destructive',
++        label: 'Delete',
++        destructive: true,
+         onPress: async () => {
++          dismissMlDialog();
+           try {
+             await deleteMedia(item.publicId);
+             setItems((prev) => prev.filter((m) => m.publicId !== item.publicId));
+           } catch (e: any) {
+-            Alert.alert('Delete Failed', e?.message ?? 'Could not delete memory.');
++            showMlDialog('Delete Failed', e?.message ?? 'Could not delete memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
+           }
+         },
+       },
+@@ -733,15 +751,16 @@ export function MemoryLibrarySheetContent({
+ 
+   const deleteSelected = () => {
+     if (selected.size === 0) return;
+-    Alert.alert(
++    showMlDialog(
+       'Delete Selected',
+       `Permanently delete ${selected.size} memor${selected.size === 1 ? 'y' : 'ies'}? This cannot be undone.`,
+       [
+-        { text: 'Cancel', style: 'cancel' },
++        { label: 'Cancel', onPress: dismissMlDialog },
+         {
+-          text: 'Delete All',
+-          style: 'destructive',
++          label: 'Delete All',
++          destructive: true,
+           onPress: async () => {
++            dismissMlDialog();
+             setBulkDeleting(true);
+             const ids = Array.from(selected);
+             await Promise.allSettled(ids.map((id) => deleteMedia(id)));
+@@ -1319,6 +1338,14 @@ export function MemoryLibrarySheetContent({
+         onClose={() => setEditingMedia(null)}
+         onSave={saveMetadataEdit}
+       />
++
++      <M3Dialog
++        visible={mlDialog.visible}
++        title={mlDialog.title}
++        body={mlDialog.body}
++        actions={mlDialog.actions}
++        onDismiss={dismissMlDialog}
++      />
+     </View>
+   );
+ }
