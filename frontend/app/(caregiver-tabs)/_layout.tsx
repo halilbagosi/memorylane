@@ -18,11 +18,11 @@ function IOSTabLayout() {
         <Label>Inbox</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="create">
-        <Icon sf={{ default: 'plus.circle', selected: 'plus.circle.fill' }} />
+        <Icon sf={{ default: 'plus.app', selected: 'plus.app.fill' }} />
         <Label>Create</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="progress">
-        <Icon sf={{ default: 'chart.line.uptrend.xyaxis', selected: 'chart.line.uptrend.xyaxis.circle.fill' }} />
+      <NativeTabs.Trigger name="analytics">
+        <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
         <Label>Progress</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
@@ -61,6 +61,15 @@ function AndroidTabLayout() {
         options={{
           title: 'Create',
           tabBarIcon: ({ color, size }) => (
+            <AppIcon iosName="plus.app.fill" androidFallback="+" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: 'Progress',
+          tabBarIcon: ({ color, size }) => (
             <AppIcon iosName="plus.circle.fill" androidFallback="+" size={size} color={color} />
           ),
         }}
@@ -68,10 +77,7 @@ function AndroidTabLayout() {
       <Tabs.Screen
         name="progress"
         options={{
-          title: 'Progress',
-          tabBarIcon: ({ color, size }) => (
-            <AppIcon iosName="chart.line.uptrend.xyaxis" androidFallback="P" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

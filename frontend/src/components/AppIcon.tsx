@@ -19,7 +19,6 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'person': 'account-outline',
   'person.crop.circle': 'account-circle-outline',
   'heart.text.clipboard': 'clipboard-pulse-outline',
-  'heart.fill': 'heart',
   'plus': 'plus',
   'arrow.right': 'arrow-right',
   'arrow.left': 'arrow-left',
@@ -49,6 +48,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'clock.badge.exclamationmark': 'clock-alert-outline',
   'lightbulb': 'lightbulb-outline',
   'lightbulb.fill': 'lightbulb-on',
+  'plus.app': 'plus-box-outline',
+  'plus.app.fill': 'plus-box',
 };
 
 interface AppIconProps {
