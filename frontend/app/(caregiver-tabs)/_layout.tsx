@@ -17,13 +17,13 @@ function IOSTabLayout() {
         <Icon sf={{ default: 'tray', selected: 'tray.fill' }} />
         <Label>Inbox</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="create">
+        <Icon sf={{ default: 'plus.app', selected: 'plus.app.fill' }} />
+        <Label>Create</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="analytics">
         <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
-        <Label>Analytics</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="insights">
-        <Icon sf={{ default: 'lightbulb', selected: 'lightbulb.fill' }} />
-        <Label>Insights</Label>
+        <Label>Progress</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -57,9 +57,18 @@ function AndroidTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="create"
+        options={{
+          title: 'Create',
+          tabBarIcon: ({ color, size }) => (
+            <AppIcon iosName="plus.app.fill" androidFallback="+" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="analytics"
         options={{
-          title: 'Analytics',
+          title: 'Progress',
           tabBarIcon: ({ color, size }) => (
             <AppIcon iosName="chart.bar.fill" androidFallback="A" size={size} color={color} />
           ),
@@ -68,10 +77,7 @@ function AndroidTabLayout() {
       <Tabs.Screen
         name="insights"
         options={{
-          title: 'Insights',
-          tabBarIcon: ({ color, size }) => (
-            <AppIcon iosName="lightbulb.fill" androidFallback="!" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

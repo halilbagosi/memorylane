@@ -48,6 +48,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'clock.badge.exclamationmark': 'clock-alert-outline',
   'lightbulb': 'lightbulb-outline',
   'lightbulb.fill': 'lightbulb-on',
+  'plus.app': 'plus-box-outline',
+  'plus.app.fill': 'plus-box',
 };
 
 interface AppIconProps {
