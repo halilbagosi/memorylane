@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  TouchableOpacity, Modal, Image, Alert, Linking, Animated, Easing,
+  TouchableOpacity, Modal, Image, Linking, Animated, Easing,
   TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -140,12 +140,13 @@ export default function AddPatientScreen() {
   };
 
   const showAvatarOptions = () => {
-    Alert.alert('Profile Picture', 'Add a photo for this patient', [
-      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
-      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
-      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
-      { text: 'Skip for Now', style: 'cancel' },
-    ]);
+    const actions: M3DialogAction[] = [
+      { label: 'Take Photo', onPress: () => { dismissDialog(); pickAvatar('camera'); } },
+      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickAvatar('library'); } },
+      ...(avatarBase64 ? [{ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); setAvatarBase64(null); } }] : []),
+      { label: 'Skip for Now', onPress: dismissDialog },
+    ];
+    showDialog('Profile Picture', 'Add a photo for this patient', actions);
   };
 
   const handleNameChange = (text: string) => {
