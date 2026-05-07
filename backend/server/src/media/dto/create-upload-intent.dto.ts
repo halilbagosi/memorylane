@@ -59,6 +59,12 @@ export class CreateUploadIntentDto {
   relationshipType?: string;
 
   @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(2100)
+  birthYear?: number;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(3)
   @IsString({ each: true })
@@ -83,4 +89,9 @@ export class CreateUploadIntentDto {
   @IsString()
   @MaxLength(80)
   memoryCategory?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  contentHash?: string;
 }

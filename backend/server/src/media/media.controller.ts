@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -25,6 +26,35 @@ interface AuthenticatedRequest extends Request {
 @Controller('media')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Post('quiz-photo/verify-base64')
+  async verifyQuizPhotoBase64(
+    @Body() dto: { patientId?: string; imageBase64?: string },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (!dto?.imageBase64) {
+      throw new BadRequestException('imageBase64 is required');
+    }
+    return this.mediaService.verifyQuizPhoto(
+      req.user.userId,
+      dto.patientId,
+      Buffer.from(dto.imageBase64, 'base64'),
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('quiz-photo/verify')
+  async verifyQuizPhoto(
+    @Query('patientId') patientId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const body = (req as Request & { body: Buffer | undefined }).body;
+    if (!Buffer.isBuffer(body)) {
+      throw new BadRequestException('Expected raw image body');
+    }
+    return this.mediaService.verifyQuizPhoto(req.user.userId, patientId, body);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('upload-intent')

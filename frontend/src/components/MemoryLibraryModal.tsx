@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
   Image,
+  InteractionManager,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -16,19 +18,28 @@ import {
   View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from './AppIcon';
+import { ZoomableImage } from './ZoomableImage';
 import {
   deleteMedia,
   getAccessUrl,
+  getQuizModes,
   listPatientMedia,
   updateMediaMetadata,
+  updateQuizModes,
   uploadPatientMedia,
+  verifyQuizPhoto,
   type MediaCollection,
   type MediaListItem,
   type MediaMetadataInput,
+  type QuizPhotoVerificationCode,
+  type QuizMode,
 } from '../services/media';
 
 const isIOS = Platform.OS === 'ios';
@@ -69,6 +80,23 @@ function inferMime(asset: { uri: string; mimeType?: string }): string {
   return c || 'application/octet-stream';
 }
 
+async function normalizeQuizPhotoAsset(asset: { uri: string; mimeType?: string }) {
+  const mime = inferMime(asset);
+  if (!mime.startsWith('image/')) return asset;
+
+  const originalUri = asset.uri;
+  const converted = await ImageManipulator.manipulateAsync(
+    asset.uri,
+    [{ resize: { width: 1600 } }],
+    { compress: 0.88, format: ImageManipulator.SaveFormat.JPEG },
+  );
+  return { uri: converted.uri, mimeType: 'image/jpeg', originalUri };
+}
+
+async function readAssetBase64(uri: string) {
+  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+}
+
 export interface MemoryLibrarySheetContentProps {
   patientId: string;
   patientName: string;
@@ -95,9 +123,16 @@ export function MemoryLibrarySheetContent({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [pendingQuizAssets, setPendingQuizAssets] = useState<{ uri: string; mimeType?: string }[]>([]);
+  const [quizGuidanceVisible, setQuizGuidanceVisible] = useState(false);
+  const [pendingQuizPhotoSource, setPendingQuizPhotoSource] = useState<'camera' | 'library' | null>(null);
+  const queuedPickerSourceRef = useRef<'camera' | 'library' | null>(null);
   const [quizDetailsVisible, setQuizDetailsVisible] = useState(false);
   const [quizFirstName, setQuizFirstName] = useState('');
   const [quizRelationship, setQuizRelationship] = useState('');
+  const [quizBirthYear, setQuizBirthYear] = useState('');
+  const [verifyingQuizPhoto, setVerifyingQuizPhoto] = useState(false);
+  const [quizPhotoVerified, setQuizPhotoVerified] = useState(false);
+  const [quizVerificationMessage, setQuizVerificationMessage] = useState<string | null>(null);
   const [pendingMemoryAssets, setPendingMemoryAssets] = useState<{ uri: string; mimeType?: string }[]>([]);
   const [memoryDetailsVisible, setMemoryDetailsVisible] = useState(false);
   const [memoryNote, setMemoryNote] = useState('');
@@ -107,11 +142,14 @@ export function MemoryLibrarySheetContent({
   const [editingMedia, setEditingMedia] = useState<MediaTileVM | null>(null);
   const [editFirstName, setEditFirstName] = useState('');
   const [editRelationship, setEditRelationship] = useState('');
+  const [editBirthYear, setEditBirthYear] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editYear, setEditYear] = useState('');
   const [editIsApproximate, setEditIsApproximate] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
+  const [quizModes, setQuizModes] = useState<QuizMode[]>(['NAME', 'AGE', 'RELATIONSHIP']);
+  const [savingQuizModes, setSavingQuizModes] = useState(false);
 
   const loadMedia = useCallback(async () => {
     if (!patientId) return;
@@ -143,8 +181,27 @@ export function MemoryLibrarySheetContent({
     setSelected(new Set());
     setLibraryTab('QUIZ');
     setKindFilter('ALL');
-    loadMedia().finally(() => setLoading(false));
+    Promise.all([
+      loadMedia(),
+      getQuizModes(patientId).then(setQuizModes).catch(() => undefined),
+    ]).finally(() => setLoading(false));
   }, [patientId]);
+
+  const handleToggleQuizMode = async (mode: QuizMode) => {
+    const isActive = quizModes.includes(mode);
+    if (isActive && quizModes.length === 1) return; // must keep at least one
+    const next = isActive ? quizModes.filter((m) => m !== mode) : [...quizModes, mode];
+    setQuizModes(next);
+    setSavingQuizModes(true);
+    try {
+      const saved = await updateQuizModes(patientId, next);
+      setQuizModes(saved);
+    } catch {
+      setQuizModes(quizModes); // revert on error
+    } finally {
+      setSavingQuizModes(false);
+    }
+  };
 
   const ensureSignedUrl = useCallback(
     async (publicId: string, forceRefresh = false) => {
@@ -179,6 +236,15 @@ export function MemoryLibrarySheetContent({
     },
     [items],
   );
+
+  const launchQueuedQuizPhotoPicker = () => {
+    const source = queuedPickerSourceRef.current;
+    if (!source) return;
+    queuedPickerSourceRef.current = null;
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => pickAndUpload(source), 100);
+    });
+  };
 
   const handleImageLoadError = useCallback(
     (publicId: string) => {
@@ -255,10 +321,12 @@ export function MemoryLibrarySheetContent({
   }, [filteredItems, libraryTab]);
 
   const uploadSingleAsset = async (
-    asset: { uri: string; mimeType?: string },
+    asset: { uri: string; mimeType?: string; originalUri?: string },
     metadata: MediaMetadataInput,
   ) => {
-    const blobResp = await fetch(asset.uri);
+    const blobResp = await fetch(asset.uri).catch((error) => {
+      throw new Error(`Could not read selected file: ${error?.message ?? 'unknown error'}`);
+    });
     const blob = await blobResp.blob();
     const byteSize = (blob as any).size as number;
     if (!byteSize || byteSize <= 0) throw new Error('Could not determine file size.');
@@ -270,62 +338,127 @@ export function MemoryLibrarySheetContent({
     if (metadata.collection === 'QUIZ' && kind !== 'PHOTO' && kind !== 'AUDIO') {
       throw new Error('Quiz media must be a photo or audio file.');
     }
-    await uploadPatientMedia({ patientId, kind, contentType, fileUri: asset.uri, byteSize, metadata });
+    await uploadPatientMedia({
+      patientId,
+      kind,
+      contentType,
+      fileUri: asset.uri,
+      hashUri: asset.originalUri,
+      byteSize,
+      metadata,
+    });
+  };
+
+  const resetQuizDraft = () => {
+    setPendingQuizAssets([]);
+    setQuizFirstName('');
+    setQuizRelationship('');
+    setQuizBirthYear('');
+    setQuizPhotoVerified(false);
+    setQuizVerificationMessage(null);
+    setVerifyingQuizPhoto(false);
+  };
+
+  const friendlyQuizPhotoMessage = (code?: string, fallback?: string) => {
+    const name = patientName?.trim() || 'the patient';
+    const messages: Partial<Record<QuizPhotoVerificationCode, string>> = {
+      TOO_MANY_FACES: `${name} might get confused with multiple people. Please use a photo of just one person.`,
+      NO_FACE_DETECTED: "We couldn't find a face. Please make sure the person is looking forward.",
+      LOW_CONFIDENCE: `This photo is a bit blurry. Try a clearer one to help ${name} recognize them.`,
+      LOW_CLARITY: `This photo is a bit hard to see. A brighter, clearer photo will help ${name} recognize them better.`,
+      NOT_FRONTAL: `A front-facing photo will help ${name} recognize this person more easily.`,
+      INVALID_IMAGE: 'We could not read this image. Please try another photo.',
+      DUPLICATE_PHOTO: 'This photo or person has already been added to the quiz. Please choose a new photo.',
+      FACE_VERIFICATION_UNAVAILABLE:
+        fallback ?? 'Face verification is temporarily unavailable. Please try again in a moment.',
+    };
+    return messages[code as QuizPhotoVerificationCode] ?? fallback ?? `To help ${name} recognize this person, please use a clear, close-up photo of just one face.`;
   };
 
   const showAddOptions = () => {
-    Alert.alert(libraryTab === 'QUIZ' ? 'Add Quiz Media' : 'Add Memory', 'Choose a source', [
+    if (libraryTab === 'QUIZ') {
+      showQuizSourceOptions();
+      return;
+    }
+    Alert.alert('Add Memory', 'Choose a source', [
       { text: 'Take Photo', onPress: () => pickAndUpload('camera') },
       { text: 'Photo/Video Library', onPress: () => pickAndUpload('library') },
-      { text: libraryTab === 'QUIZ' ? 'Browse Audio Files' : 'Browse Files', onPress: () => pickAndUpload('document') },
+      { text: 'Browse Files', onPress: () => pickAndUpload('document') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const showQuizSourceOptions = () => {
+    Alert.alert('Add Quiz Media', 'Choose a source', [
+      {
+        text: 'Take Photo',
+        onPress: () => {
+          setPendingQuizPhotoSource('camera');
+          setQuizGuidanceVisible(true);
+        },
+      },
+      {
+        text: 'Photo Library',
+        onPress: () => {
+          setPendingQuizPhotoSource('library');
+          setQuizGuidanceVisible(true);
+        },
+      },
+      { text: 'Browse Audio Files', onPress: () => pickAndUpload('document') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
   const pickAndUpload = async (source: 'camera' | 'library' | 'document') => {
     let assets: { uri: string; mimeType?: string }[] = [];
-    if (source === 'document') {
-      const r = await DocumentPicker.getDocumentAsync({
-        type: libraryTab === 'QUIZ' ? 'audio/*' : '*/*',
-        copyToCacheDirectory: true,
-        multiple: true,
-      });
-      if (r.canceled) return;
-      assets = r.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType }));
-    } else {
-      let result: ImagePicker.ImagePickerResult;
-      if (source === 'camera') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Camera Access Required', 'Please enable camera access in Settings.', [
-            { text: 'Cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]);
-          return;
-        }
-        result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Library Access Required', 'Please enable photo library access in Settings.', [
-            { text: 'Cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]);
-          return;
-        }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.All,
-          allowsMultipleSelection: true,
-          selectionLimit: 20,
-          quality: 0.8,
+    try {
+      if (source === 'document') {
+        const r = await DocumentPicker.getDocumentAsync({
+          type: libraryTab === 'QUIZ' ? 'audio/*' : '*/*',
+          copyToCacheDirectory: true,
+          multiple: true,
         });
+        if (r.canceled) return;
+        assets = r.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType }));
+      } else {
+        let result: ImagePicker.ImagePickerResult;
+        if (source === 'camera') {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Camera Access Required', 'Please enable camera access in Settings.', [
+              { text: 'Cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]);
+            return;
+          }
+          result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+        } else {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Library Access Required', 'Please enable photo library access in Settings.', [
+              { text: 'Cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]);
+            return;
+          }
+          result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: libraryTab === 'QUIZ' ? ['images'] : ImagePicker.MediaTypeOptions.All,
+            allowsMultipleSelection: true,
+            selectionLimit: 20,
+            quality: 0.8,
+          });
+        }
+        if (result.canceled || !result.assets?.length) return;
+        assets = result.assets.map((a: any) => ({ uri: a.uri, mimeType: a.mimeType }));
       }
-      if (result.canceled || !result.assets?.length) return;
-      assets = result.assets.map((a: any) => ({ uri: a.uri, mimeType: a.mimeType }));
+    } catch (e: any) {
+      Alert.alert('Picker Could Not Open', e?.message ?? 'Please try opening the picker again.');
+      return;
     }
     if (!assets.length) return;
 
     if (libraryTab === 'QUIZ') {
+      resetQuizDraft();
       const unsupported = assets.find((asset) => {
         const mime = inferMime(asset);
         return !mime.startsWith('image/') && !mime.startsWith('audio/');
@@ -334,8 +467,45 @@ export function MemoryLibrarySheetContent({
         Alert.alert('Photo or Audio Required', 'Quiz media can be a clear photo or an audio file of the person talking.');
         return;
       }
-      setPendingQuizAssets(assets);
-      setQuizDetailsVisible(true);
+      try {
+        assets = await Promise.all(assets.map(normalizeQuizPhotoAsset));
+      } catch {
+        Alert.alert('Could Not Prepare Photo', 'We could not prepare this photo for verification. Please try another image.');
+        return;
+      }
+      const photo = assets.find((asset) => inferMime(asset).startsWith('image/'));
+      if (!photo) {
+        setPendingQuizAssets(assets);
+        setQuizPhotoVerified(false);
+        setQuizVerificationMessage(null);
+        setQuizDetailsVisible(true);
+        return;
+      }
+
+      setVerifyingQuizPhoto(true);
+      setQuizVerificationMessage(null);
+      try {
+        const verification = await verifyQuizPhoto(patientId, await readAssetBase64(photo.uri));
+        if (!verification.accepted) {
+          throw {
+            code: verification.code,
+            detail: verification.message,
+          };
+        }
+        setPendingQuizAssets(assets);
+        setQuizPhotoVerified(true);
+        setQuizVerificationMessage('Face Verified');
+        setQuizDetailsVisible(true);
+      } catch (e: any) {
+        const message = friendlyQuizPhotoMessage(e?.code, e?.detail ?? e?.message);
+        resetQuizDraft();
+        Alert.alert(
+          e?.code === 'FACE_VERIFICATION_UNAVAILABLE' ? 'Verification Unavailable' : 'Try Another Photo',
+          message,
+        );
+      } finally {
+        setVerifyingQuizPhoto(false);
+      }
       return;
     }
 
@@ -347,29 +517,56 @@ export function MemoryLibrarySheetContent({
     setUploading(true);
     const total = assets.length;
     let failed = 0;
+    let duplicates = 0;
+    let firstDuplicateDetail: string | null = null;
     let firstError: string | null = null;
     for (let i = 0; i < assets.length; i++) {
       setUploadProgress({ current: i + 1, total });
       try {
         await uploadSingleAsset(assets[i], metadata);
       } catch (e: any) {
-        failed++;
-        firstError ||= e?.message ?? 'Upload failed';
+        if ((e as any).status === 409) {
+          duplicates++;
+          firstDuplicateDetail ||= (e as any).detail ?? (e as any).message ?? null;
+        } else {
+          failed++;
+          firstError ||= e?.message ?? 'Upload failed';
+        }
       }
     }
     await loadMedia();
     setUploading(false);
     setUploadProgress(null);
-    if (failed > 0) Alert.alert('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`);
+    if (duplicates > 0 && failed === 0) {
+      const msg = duplicates === 1
+        ? (firstDuplicateDetail ?? 'This photo has already been added.')
+        : `${duplicates} photos were skipped — they have already been added.`;
+      Alert.alert('Already Added', msg);
+    } else if (failed > 0) {
+      Alert.alert('Partial Upload', `${failed} of ${total} items could not be uploaded.${firstError ? `\n\n${firstError}` : ''}`);
+    }
   };
 
   const saveQuizDetailsAndUpload = async () => {
     const firstName = quizFirstName.trim();
-    if (!firstName || !quizRelationship.trim()) {
-      Alert.alert('Missing Details', 'Person name and relationship are required for quiz media.');
+    const birthYear = quizBirthYear.trim() ? parseInt(quizBirthYear.trim(), 10) : NaN;
+    const currentYear = new Date().getFullYear();
+    if (!firstName || !quizRelationship.trim() || Number.isNaN(birthYear)) {
+      Alert.alert('Missing Details', 'Person name, relationship, and birth year are required for quiz media.');
+      return;
+    }
+    if (birthYear < 1900 || birthYear > currentYear) {
+      Alert.alert('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`);
       return;
     }
     const selectedPhotos = pendingQuizAssets.filter((asset) => inferMime(asset).startsWith('image/'));
+    if (selectedPhotos.length > 0 && !quizPhotoVerified) {
+      Alert.alert(
+        'Photo Not Verified',
+        friendlyQuizPhotoMessage(undefined),
+      );
+      return;
+    }
     if (selectedPhotos.length > 1) {
       Alert.alert('One Photo Per Person', 'Please upload only one quiz photo for each person.');
       return;
@@ -394,10 +591,14 @@ export function MemoryLibrarySheetContent({
       collection: 'QUIZ',
       firstName,
       relationshipType: quizRelationship,
+      birthYear,
     });
     setPendingQuizAssets([]);
     setQuizFirstName('');
     setQuizRelationship('');
+    setQuizBirthYear('');
+    setQuizPhotoVerified(false);
+    setQuizVerificationMessage(null);
   };
 
   const saveMemoryDetailsAndUpload = async () => {
@@ -427,6 +628,7 @@ export function MemoryLibrarySheetContent({
   const openMetadataEdit = (item: MediaTileVM) => {
     setEditFirstName(item.firstName ?? '');
     setEditRelationship(item.relationshipType ?? '');
+    setEditBirthYear(item.birthYear !== null ? String(item.birthYear) : '');
     setEditNote(item.note ?? '');
     setEditYear(item.eventYear !== null ? String(item.eventYear) : '');
     setEditIsApproximate(item.isApproximateYear ?? false);
@@ -441,14 +643,21 @@ export function MemoryLibrarySheetContent({
       if (editingMedia.collection === 'QUIZ') {
         const firstName = editFirstName.trim();
         const relationshipType = editRelationship.trim();
-        if (!firstName || !relationshipType) {
-          Alert.alert('Missing Details', 'Name and relationship are required.');
+        const birthYear = editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : NaN;
+        const currentYear = new Date().getFullYear();
+        if (!firstName || !relationshipType || Number.isNaN(birthYear)) {
+          Alert.alert('Missing Details', 'Name, relationship, and birth year are required.');
+          return;
+        }
+        if (birthYear < 1900 || birthYear > currentYear) {
+          Alert.alert('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`);
           return;
         }
         await updateMediaMetadata(editingMedia.publicId, {
           collection: 'QUIZ',
           firstName,
           relationshipType,
+          birthYear,
         });
       } else {
         const note = editNote.trim();
@@ -476,6 +685,7 @@ export function MemoryLibrarySheetContent({
               firstName: editFirstName.trim() || prev.firstName,
               lastName: prev.lastName,
               relationshipType: editRelationship.trim() || prev.relationshipType,
+              birthYear: editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : prev.birthYear,
               note: editNote.trim() || prev.note,
               eventYear: editYear.trim() ? parseInt(editYear.trim(), 10) : prev.eventYear,
               isApproximateYear: editIsApproximate,
@@ -602,7 +812,7 @@ export function MemoryLibrarySheetContent({
           onPress={() => setEditMode(true)}
           activeOpacity={0.7}
         >
-          <Text style={styles.navActionText}>Edit</Text>
+          <Text style={styles.navActionText}>Select</Text>
         </TouchableOpacity>
       ) : (
         <View style={{ width: 60 }} />
@@ -617,7 +827,15 @@ export function MemoryLibrarySheetContent({
         Uploading {uploadProgress.current} of {uploadProgress.total}…
       </Text>
     </View>
+  ) : verifyingQuizPhoto ? (
+    <View style={styles.uploadBanner}>
+      <ActivityIndicator size="small" color="#fff" />
+      <Text style={styles.uploadBannerText}>Verifying clarity...</Text>
+    </View>
   ) : null;
+
+  const quizDraftHasPhoto = pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/'));
+  const quizSaveDisabled = uploading || verifyingQuizPhoto || (quizDraftHasPhoto && !quizPhotoVerified);
 
   const libraryTabs = (
     <View style={styles.libraryTabs}>
@@ -675,14 +893,16 @@ export function MemoryLibrarySheetContent({
       style={styles.addRowBtn}
       onPress={showAddOptions}
       activeOpacity={0.7}
-      disabled={uploading}
+      disabled={uploading || verifyingQuizPhoto}
     >
-      {uploading ? (
+      {uploading || verifyingQuizPhoto ? (
         <ActivityIndicator size="small" color={colors.secondary} />
       ) : (
         <AppIcon iosName="plus.circle.fill" androidFallback="+" size={18} color={colors.secondary} />
       )}
-      <Text style={styles.addRowBtnText}>{uploading ? 'Uploading...' : libraryTab === 'QUIZ' ? 'Add Quiz Media' : 'Add Memory'}</Text>
+      <Text style={styles.addRowBtnText}>
+        {verifyingQuizPhoto ? 'Verifying...' : uploading ? 'Uploading...' : libraryTab === 'QUIZ' ? 'Add Quiz Media' : 'Add Memory'}
+      </Text>
     </TouchableOpacity>
   ) : null;
 
@@ -695,7 +915,7 @@ export function MemoryLibrarySheetContent({
         {navHeader}
         {uploadBanner}
         {libraryTabs}
-        {mediaFilters}
+        {libraryTab === 'MEMORY' && mediaFilters}
         {addRowButton}
       </View>
 
@@ -800,6 +1020,17 @@ export function MemoryLibrarySheetContent({
           scrollEnabled={isIOS}
           nestedScrollEnabled={true}
           style={isIOS ? styles.flatListIOS : undefined}
+          ListHeaderComponent={
+            <View>
+              <QuizModeSelector
+                patientName={patientName}
+                activeModes={quizModes}
+                saving={savingQuizModes}
+                onToggle={handleToggleQuizMode}
+              />
+              {mediaFilters}
+            </View>
+          }
           renderItem={({ item }) => {
             const isSelected = selected.has(item.publicId);
             const canDelete = isPrimary || item.caregiverId === myId;
@@ -836,12 +1067,12 @@ export function MemoryLibrarySheetContent({
       {/* Floating action button — iOS only (Android uses inline button) */}
       {isIOS && !editMode && (
         <TouchableOpacity
-          style={[styles.fab, uploading && styles.fabDisabled]}
+          style={[styles.fab, (uploading || verifyingQuizPhoto) && styles.fabDisabled]}
           onPress={showAddOptions}
           activeOpacity={0.8}
-          disabled={uploading}
+          disabled={uploading || verifyingQuizPhoto}
         >
-          {uploading ? (
+          {uploading || verifyingQuizPhoto ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <AppIcon iosName="plus" androidFallback="+" size={24} color="#fff" weight="medium" />
@@ -850,12 +1081,91 @@ export function MemoryLibrarySheetContent({
       )}
 
       <Modal
+        visible={quizGuidanceVisible && !previewItem}
+        transparent
+        animationType="fade"
+        onDismiss={launchQueuedQuizPhotoPicker}
+        onRequestClose={() => {
+          queuedPickerSourceRef.current = null;
+          setPendingQuizPhotoSource(null);
+          setQuizGuidanceVisible(false);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.guidanceModal}>
+            <Text style={styles.quizModalTitle}>Tips for a Great Quiz</Text>
+            <View style={styles.guidanceTips}>
+              <View style={styles.guidanceTip}>
+                <View style={styles.guidanceIcon}>
+                  <AppIcon iosName="person.fill" androidFallback="1" size={18} color={colors.secondary} />
+                </View>
+                <Text style={styles.guidanceTipText}>One person only</Text>
+              </View>
+              <View style={styles.guidanceTip}>
+                <View style={styles.guidanceIcon}>
+                  <AppIcon iosName="sun.max.fill" androidFallback="*" size={18} color={colors.secondary} />
+                </View>
+                <Text style={styles.guidanceTipText}>Clear and bright</Text>
+              </View>
+              <View style={styles.guidanceTip}>
+                <View style={styles.guidanceIcon}>
+                  <AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={colors.secondary} />
+                </View>
+                <Text style={styles.guidanceTipText}>Looking at the camera</Text>
+              </View>
+              <View style={styles.guidanceTip}>
+                <View style={[styles.guidanceIcon, styles.guidanceIconError]}>
+                  <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color="#C0392B" />
+                </View>
+                <Text style={styles.guidanceTipText}>Same photo not allowed</Text>
+              </View>
+            </View>
+            <View style={styles.quizModalActions}>
+              <TouchableOpacity
+                style={styles.quizCancelBtn}
+                onPress={() => {
+                  queuedPickerSourceRef.current = null;
+                  setQuizGuidanceVisible(false);
+                  setPendingQuizPhotoSource(null);
+                }}
+              >
+                <Text style={styles.quizCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quizSaveBtn}
+                onPress={() => {
+                  const source = pendingQuizPhotoSource ?? 'library';
+                  queuedPickerSourceRef.current = source;
+                  setQuizGuidanceVisible(false);
+                  setPendingQuizPhotoSource(null);
+                  if (!isIOS) {
+                    setTimeout(launchQueuedQuizPhotoPicker, 350);
+                  }
+                }}
+              >
+                <Text style={styles.quizSaveText}>Pick a Photo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={quizDetailsVisible && !previewItem}
         transparent
         animationType="fade"
         onRequestClose={() => setQuizDetailsVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={isIOS ? 'padding' : 'height'}
+          keyboardVerticalOffset={24}
+        >
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           <View style={styles.quizModal}>
             <Text style={styles.quizModalTitle}>Add Quiz Info</Text>
             <Text style={styles.quizModalBody}>Add who is in the photo or speaking in the audio before saving this quiz media.</Text>
@@ -873,22 +1183,57 @@ export function MemoryLibrarySheetContent({
               placeholder="Relationship with patient"
               placeholderTextColor={colors.textMuted}
             />
+            <TextInput
+              style={styles.detailInput}
+              value={quizBirthYear}
+              onChangeText={setQuizBirthYear}
+              placeholder="Birth year"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              maxLength={4}
+            />
+            {quizDraftHasPhoto && (
+              <View style={[styles.verificationBox, quizPhotoVerified && styles.verificationBoxSuccess]}>
+                {verifyingQuizPhoto ? (
+                  <ActivityIndicator size="small" color={colors.secondary} />
+                ) : (
+                  <AppIcon
+                    iosName={quizPhotoVerified ? 'checkmark.circle.fill' : 'info.circle.fill'}
+                    androidFallback={quizPhotoVerified ? '✓' : 'i'}
+                    size={18}
+                    color={colors.secondary}
+                  />
+                )}
+                <Text style={styles.verificationText}>
+                  {verifyingQuizPhoto
+                    ? 'Verifying clarity...'
+                    : quizVerificationMessage ?? 'To help recognition, this photo needs one clear, front-facing face.'}
+                </Text>
+              </View>
+            )}
             <View style={styles.quizModalActions}>
               <TouchableOpacity
                 style={styles.quizCancelBtn}
                 onPress={() => {
                   setQuizDetailsVisible(false);
-                  setPendingQuizAssets([]);
+                  resetQuizDraft();
                 }}
               >
                 <Text style={styles.quizCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.quizSaveBtn} onPress={saveQuizDetailsAndUpload}>
-                <Text style={styles.quizSaveText}>Save Quiz Media</Text>
+              <TouchableOpacity
+                style={[styles.quizSaveBtn, quizSaveDisabled && styles.fabDisabled]}
+                onPress={saveQuizDetailsAndUpload}
+                disabled={quizSaveDisabled}
+              >
+                <Text style={styles.quizSaveText}>
+                  {verifyingQuizPhoto ? 'Verifying...' : 'Save Quiz Media'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={memoryDetailsVisible} transparent animationType="fade" onRequestClose={() => setMemoryDetailsVisible(false)}>
@@ -945,7 +1290,13 @@ export function MemoryLibrarySheetContent({
       </Modal>
 
       <MediaDetailsModal
-        item={previewItem}
+        item={previewItem?.kind !== 'PHOTO' && previewItem?.kind !== 'VIDEO' ? previewItem : null}
+        onClose={() => setPreviewItem(null)}
+        onEdit={openMetadataEdit}
+      />
+
+      <MemoryFullscreenPreviewModal
+        item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null}
         onClose={() => setPreviewItem(null)}
         onEdit={openMetadataEdit}
       />
@@ -954,18 +1305,68 @@ export function MemoryLibrarySheetContent({
         item={editingMedia}
         firstName={editFirstName}
         relationship={editRelationship}
+        birthYear={editBirthYear}
         note={editNote}
         year={editYear}
         isApproximate={editIsApproximate}
         saving={savingEdit}
         onChangeFirstName={setEditFirstName}
         onChangeRelationship={setEditRelationship}
+        onChangeBirthYear={setEditBirthYear}
         onChangeNote={setEditNote}
         onChangeYear={setEditYear}
         onToggleApproximate={() => setEditIsApproximate((v) => !v)}
         onClose={() => setEditingMedia(null)}
         onSave={saveMetadataEdit}
       />
+    </View>
+  );
+}
+
+// ── QuizModeSelector ─────────────────────────────────────────────────────────
+
+const ALL_QUIZ_MODES: { key: QuizMode; label: string }[] = [
+  { key: 'NAME', label: 'Name' },
+  { key: 'AGE', label: 'Age' },
+  { key: 'RELATIONSHIP', label: 'Relationship' },
+];
+
+function QuizModeSelector({
+  patientName,
+  activeModes,
+  saving,
+  onToggle,
+}: {
+  patientName: string;
+  activeModes: QuizMode[];
+  saving: boolean;
+  onToggle: (mode: QuizMode) => void;
+}) {
+  return (
+    <View style={styles.quizSelectorWrapper}>
+      <Text style={styles.quizSelectorLabel} numberOfLines={1}>
+        Customize {patientName}'s quiz:
+      </Text>
+      <View style={styles.quizSelectorPills}>
+        {ALL_QUIZ_MODES.map(({ key, label }) => {
+          const active = activeModes.includes(key);
+          const isLast = active && activeModes.length === 1;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[styles.quizPill, active && styles.quizPillActive, isLast && styles.quizPillLast]}
+              onPress={() => onToggle(key)}
+              activeOpacity={0.75}
+              disabled={saving || isLast}
+            >
+              <Text style={[styles.quizPillText, active && styles.quizPillTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        {saving && <ActivityIndicator size="small" color={colors.secondary} style={{ marginLeft: 6 }} />}
+      </View>
     </View>
   );
 }
@@ -1173,16 +1574,124 @@ function MediaDetailsModal({
   );
 }
 
+// ── MemoryFullscreenPreviewModal ──────────────────────────────────────────────
+
+function MemoryFullscreenPreviewModal({
+  item,
+  onClose,
+  onEdit,
+}: {
+  item: MediaTileVM | null;
+  onClose: () => void;
+  onEdit: (item: MediaTileVM) => void;
+}) {
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setImageLoading(true);
+      setImageFailed(false);
+    }
+  }, [item?.publicId, item?.signedUrl]);
+
+  if (!item) return null;
+
+  const isPhoto = item.kind === 'PHOTO';
+  const isVideo = item.kind === 'VIDEO';
+  const yearLabel =
+    item.eventYear != null
+      ? item.isApproximateYear
+        ? `~${item.eventYear}`
+        : String(item.eventYear)
+      : null;
+
+  return (
+    <Modal visible animationType="fade" onRequestClose={onClose}>
+      <View style={styles.fsPreviewScreen}>
+        {(isPhoto || isVideo) && item.signedUrl && !imageFailed ? (
+          <>
+            <ZoomableImage
+              uri={item.signedUrl}
+              onLoad={() => setImageLoading(false)}
+              onError={() => { setImageLoading(false); setImageFailed(true); }}
+            />
+            {imageLoading && (
+              <View style={styles.fsPreviewLoadingOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.fsPreviewFallback}>
+            <AppIcon
+              iosName={
+                imageFailed
+                  ? 'exclamationmark.triangle'
+                  : item.kind === 'AUDIO'
+                  ? 'waveform'
+                  : item.kind === 'VIDEO'
+                  ? 'video.fill'
+                  : 'doc.fill'
+              }
+              androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'}
+              size={56}
+              color={colors.secondary}
+            />
+            <Text style={styles.fsPreviewKindLabel}>
+              {imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close">
+          <AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={colors.textDark} />
+        </TouchableOpacity>
+
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.72)']}
+          style={styles.fsPreviewDetails}
+        >
+          {item.collection === 'QUIZ' ? (
+            <>
+              {!!item.firstName && <Text style={styles.fsPreviewName}>{item.firstName}</Text>}
+              {!!item.relationshipType && (
+                <Text style={styles.fsPreviewRelationship}>{item.relationshipType}</Text>
+              )}
+              {!!item.birthYear && (
+                <Text style={styles.fsPreviewRelationship}>Born {item.birthYear}</Text>
+              )}
+            </>
+          ) : (
+            <>
+              {!!yearLabel && <Text style={styles.fsPreviewYear}>{yearLabel}</Text>}
+              {!!(item as any).memoryCategory && (
+                <Text style={styles.fsPreviewCategory}>{(item as any).memoryCategory}</Text>
+              )}
+              {!!item.note && <Text style={styles.fsPreviewNote}>{item.note}</Text>}
+            </>
+          )}
+          <TouchableOpacity style={styles.fsPreviewEditBtn} onPress={() => onEdit(item)}>
+            <Text style={styles.fsPreviewEditText}>Edit Details</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+      </View>
+    </Modal>
+  );
+}
+
 function EditMetadataModal({
   item,
   firstName,
   relationship,
+  birthYear,
   note,
   year,
   isApproximate,
   saving,
   onChangeFirstName,
   onChangeRelationship,
+  onChangeBirthYear,
   onChangeNote,
   onChangeYear,
   onToggleApproximate,
@@ -1192,12 +1701,14 @@ function EditMetadataModal({
   item: MediaTileVM | null;
   firstName: string;
   relationship: string;
+  birthYear: string;
   note: string;
   year: string;
   isApproximate: boolean;
   saving: boolean;
   onChangeFirstName: (value: string) => void;
   onChangeRelationship: (value: string) => void;
+  onChangeBirthYear: (value: string) => void;
   onChangeNote: (value: string) => void;
   onChangeYear: (value: string) => void;
   onToggleApproximate: () => void;
@@ -1213,6 +1724,15 @@ function EditMetadataModal({
             <>
               <TextInput style={styles.detailInput} value={firstName} onChangeText={onChangeFirstName} placeholder="Name" placeholderTextColor={colors.textMuted} />
               <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={colors.textMuted} />
+              <TextInput
+                style={styles.detailInput}
+                value={birthYear}
+                onChangeText={onChangeBirthYear}
+                placeholder="Birth year"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={4}
+              />
             </>
           ) : (
             <>
@@ -1547,12 +2067,54 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+  modalScroll: {
+    width: '100%',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
   quizModal: {
     width: '100%',
+    maxHeight: '86%',
     borderRadius: 18,
     backgroundColor: colors.neutral,
     padding: 18,
     gap: 10,
+  },
+  guidanceModal: {
+    width: '100%',
+    borderRadius: 18,
+    backgroundColor: colors.neutral,
+    padding: 18,
+    gap: 14,
+  },
+  guidanceTips: {
+    gap: 10,
+  },
+  guidanceTip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 42,
+  },
+  guidanceIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(3,87,58,0.1)',
+  },
+  guidanceIconError: {
+    backgroundColor: 'rgba(192,57,43,0.1)',
+  },
+  guidanceTipText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: colors.textDark,
   },
   quizModalTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1580,6 +2142,27 @@ const styles = StyleSheet.create({
     minHeight: 96,
     paddingTop: 12,
     textAlignVertical: 'top',
+  },
+  verificationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(3,87,58,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  verificationBoxSuccess: {
+    backgroundColor: 'rgba(167,215,197,0.32)',
+  },
+  verificationText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.secondary,
   },
   previewModal: {
     width: '100%',
@@ -1828,6 +2411,141 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
     color: colors.textMuted,
+  },
+
+  // Quiz mode selector
+  quizSelectorWrapper: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 16,
+    marginBottom: 12,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  quizSelectorLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  quizSelectorPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  quizPill: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 50,
+    backgroundColor: colors.neutral,
+    borderWidth: 1.5,
+    borderColor: colors.secondary,
+  },
+  quizPillActive: {
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
+  },
+  quizPillLast: {
+    opacity: 0.5,
+  },
+  quizPillText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: colors.secondary,
+  },
+  quizPillTextActive: {
+    color: '#fff',
+  },
+
+  // Fullscreen memory preview (mirrors relive tab layout)
+  fsPreviewScreen: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fsPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  fsPreviewLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000',
+  },
+  fsPreviewFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: colors.neutral,
+  },
+  fsPreviewKindLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  fsPreviewBackBtn: {
+    position: 'absolute',
+    top: isIOS ? 56 : 20,
+    left: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fsPreviewDetails: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 56,
+    paddingBottom: isIOS ? 44 : 28,
+    gap: 5,
+  },
+  fsPreviewName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 22,
+    color: '#fff',
+  },
+  fsPreviewRelationship: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  fsPreviewYear: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: '#fff',
+  },
+  fsPreviewCategory: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  fsPreviewNote: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 22,
+    marginTop: 2,
+  },
+  fsPreviewEditBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  fsPreviewEditText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: '#fff',
   },
 });
 

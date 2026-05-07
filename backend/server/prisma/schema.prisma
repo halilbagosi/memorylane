@@ -139,6 +139,7 @@ model Patient {
   paired             Boolean             @default(false)
   biometricRecoveryEnabled Boolean       @default(false) @map("biometric_recovery_enabled")
   quizReminderTimes  String[]            @default([]) @map("quiz_reminder_times")
+  quizModes          String[]            @default(["NAME", "AGE", "RELATIONSHIP"]) @map("quiz_modes")
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
 
@@ -198,6 +199,7 @@ model Media {
   firstName        String?  @map("first_name")
   lastName         String?  @map("last_name")
   relationshipType String?  @map("relationship_type")
+  birthYear        Int?     @map("birth_year")
   decoyNames       String[] @default([]) @map("decoy_names")
 
   // Memory story data. Used by the caregiver Media Manager.
@@ -206,6 +208,8 @@ model Media {
   isApproximateYear  Boolean  @default(false) @map("is_approximate_year")
   memoryCategory     String?  @map("memory_category")
   isActive           Boolean  @default(true) @map("is_active")
+  contentHash        String?  @map("content_hash")
+  awsFaceId          String?  @map("aws_face_id")
 
   // Object storage reference (random, non-guessable).
   // Never returned to clients.
@@ -234,6 +238,7 @@ model Media {
   quizAttempts QuizAttempt[]
 
   @@index([patientId, createdAt])
+  @@index([patientId, contentHash])
   @@map("media")
 }
 

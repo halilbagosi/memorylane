@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
@@ -291,6 +291,37 @@ export class PatientService {
     });
 
     return { message: 'Device unpaired successfully' };
+  }
+
+  async getQuizModes(patientId: string, caregiverId: string): Promise<{ quizModes: string[] }> {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { quizModes: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+    return { quizModes: patient.quizModes };
+  }
+
+  async updateQuizModes(patientId: string, caregiverId: string, modes: string[]): Promise<{ quizModes: string[] }> {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    const VALID = ['NAME', 'AGE', 'RELATIONSHIP'];
+    const sanitized = [...new Set(modes.filter((m) => VALID.includes(m)))];
+    if (sanitized.length === 0) throw new BadRequestException('At least one quiz mode must remain active');
+
+    const patient = await this.prisma.patient.update({
+      where: { id: patientId },
+      data: { quizModes: sanitized },
+      select: { quizModes: true },
+    });
+    return { quizModes: patient.quizModes };
   }
 
   async setBiometricRecovery(patientId: string, enabled: boolean) {

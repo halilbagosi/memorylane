@@ -15,7 +15,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
+import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '../../src/components/AppIcon';
+import { ZoomableImage } from '../../src/components/ZoomableImage';
 import { getPatientInfo, PatientInfo } from '../../src/utils/auth';
 import { getPatientTimeline, type TimelineItem } from '../../src/services/media';
 
@@ -344,10 +346,8 @@ function MemoryPreviewModal({
       <View style={styles.previewScreen}>
           {(isPhoto || isVideo) && !imageFailed && (
             <>
-              <Image
-                source={{ uri: item.downloadUrl }}
-                style={styles.previewFullscreenImage}
-                resizeMode="contain"
+              <ZoomableImage
+                uri={item.downloadUrl}
                 onLoad={() => setImageLoading(false)}
                 onError={() => { setImageLoading(false); onImageError?.(); }}
               />
@@ -375,13 +375,16 @@ function MemoryPreviewModal({
           <AppIcon iosName="chevron.left" androidFallback="Back" size={28} color={colors.textDark} />
         </TouchableOpacity>
 
-          <View style={styles.previewSheerDetails}>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.72)']}
+            style={styles.previewSheerDetails}
+          >
             {yearLabel && <Text style={styles.previewYear}>{yearLabel}</Text>}
             {!!item.memoryCategory && (
               <Text style={styles.previewCategory}>{item.memoryCategory}</Text>
             )}
             {!!item.note && <Text style={styles.previewNote}>{item.note}</Text>}
-          </View>
+          </LinearGradient>
           <TouchableOpacity style={styles.previewCloseBtn} onPress={onClose}>
             <AppIcon iosName="xmark" androidFallback="✕" size={14} color={colors.textDark} />
           </TouchableOpacity>
@@ -602,14 +605,13 @@ const styles = StyleSheet.create({
   },
   previewSheerDetails: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 28,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    gap: 6,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 56,
+    paddingBottom: 28,
+    gap: 5,
   },
   previewBackdrop: {
     flex: 1,
@@ -649,21 +651,21 @@ const styles = StyleSheet.create({
   previewYear: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.primary,
+    color: '#fff',
   },
   previewCategory: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.textMuted,
+    color: 'rgba(255,255,255,0.65)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   previewNote: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textDark,
+    color: 'rgba(255,255,255,0.9)',
     lineHeight: 22,
-    marginTop: 4,
+    marginTop: 2,
   },
   previewCloseBtn: {
     display: 'none',
