@@ -46,6 +46,7 @@ describe('MediaService', () => {
     | 'validateAndProcessQuizPhoto'
     | 'validateQuizPhoto'
     | 'checkForDuplicateFace'
+    | 'findDuplicateFaceExternalImageIds'
     | 'indexFaceInCollection'
     | 'removeFaceFromCollection'
   >;
@@ -72,6 +73,7 @@ describe('MediaService', () => {
       })),
       validateQuizPhoto: jest.fn(async () => ({ accepted: true })),
       checkForDuplicateFace: jest.fn(async () => false),
+      findDuplicateFaceExternalImageIds: jest.fn(async () => []),
       indexFaceInCollection: jest.fn(async () => 'aws-face-1'),
       removeFaceFromCollection: jest.fn(async () => undefined),
     };
@@ -394,7 +396,7 @@ describe('MediaService', () => {
       await service.storeUploadedPayload(token, plaintext);
 
       expect(faceVerification.validateAndProcessQuizPhoto).toHaveBeenCalledWith(plaintext);
-      expect(faceVerification.checkForDuplicateFace).toHaveBeenCalled();
+      expect(faceVerification.findDuplicateFaceExternalImageIds).not.toHaveBeenCalled();
       expect(faceVerification.indexFaceInCollection).toHaveBeenCalled();
       expect(fakeRow.awsFaceId).toBe('aws-face-1');
       expect(fakeRow.birthYear).toBe(2004);
@@ -404,10 +406,26 @@ describe('MediaService', () => {
   });
 
   describe('verifyQuizPhoto', () => {
-    it('rejects a quiz photo that already matches an indexed face', async () => {
+    it('allows a quiz photo that matches an indexed face when face duplicate blocking is disabled', async () => {
       prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
-      prisma.media.findFirst.mockResolvedValueOnce(null);
-      (faceVerification.checkForDuplicateFace as jest.Mock).mockResolvedValueOnce(true);
+      prisma.media.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'ready-match' });
+      (faceVerification.findDuplicateFaceExternalImageIds as jest.Mock).mockResolvedValueOnce(['quiz-pub-1']);
+
+      const result = await service.verifyQuizPhoto(
+        'cg-1',
+        '00000000-0000-0000-0000-000000000001',
+        Buffer.from('used-before'),
+      );
+
+      expect(result).toEqual({ accepted: true });
+      expect(faceVerification.findDuplicateFaceExternalImageIds).not.toHaveBeenCalled();
+    });
+
+    it('rejects a quiz photo that already matches an indexed face when face duplicate blocking is enabled', async () => {
+      process.env.QUIZ_BLOCK_DUPLICATE_FACES = 'true';
+      prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
+      prisma.media.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'ready-match' });
+      (faceVerification.findDuplicateFaceExternalImageIds as jest.Mock).mockResolvedValueOnce(['quiz-pub-1']);
 
       const result = await service.verifyQuizPhoto(
         'cg-1',
@@ -420,6 +438,7 @@ describe('MediaService', () => {
         code: 'DUPLICATE_PHOTO',
         message: 'This person already has a quiz photo.',
       });
+      delete process.env.QUIZ_BLOCK_DUPLICATE_FACES;
     });
 
     it('rejects a quiz photo whose exact content hash was already uploaded', async () => {
@@ -437,7 +456,7 @@ describe('MediaService', () => {
         code: 'DUPLICATE_PHOTO',
         message: 'This quiz photo has already been used.',
       });
-      expect(faceVerification.checkForDuplicateFace).not.toHaveBeenCalled();
+      expect(faceVerification.findDuplicateFaceExternalImageIds).not.toHaveBeenCalled();
     });
   });
 });
