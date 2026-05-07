@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity, Pressable
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -473,15 +473,19 @@ export default function LoginScreen() {
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity
-              style={styles.googleButton}
+            <Pressable
+              style={({ pressed }) => [
+                styles.googleButton,
+                !isIOS && pressed && { opacity: 0.92 },
+                isIOS && pressed && { opacity: 0.7 },
+              ]}
               onPress={handleGoogleSignIn}
-              activeOpacity={0.8}
               disabled={isSocialLoading}
+              android_ripple={{ color: 'rgba(0,0,0,0.1)', borderless: false }}
             >
               <MaterialCommunityIcons name="google" size={24} color="#333" />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           <View style={styles.linkRow}>

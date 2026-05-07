@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   View,
   ScrollView,
 } from 'react-native';
@@ -602,6 +603,10 @@ export default function PatientMediaScreen() {
           columnWrapperStyle={styles.gridRow}
           refreshing={refreshing}
           onRefresh={onRefresh}
+          removeClippedSubviews
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
           renderItem={({ item }) => (
             <MediaTile item={item} onPress={() => setSelectedItem(item)} onLongPress={() => handleDelete(item)} />
           )}
@@ -609,18 +614,18 @@ export default function PatientMediaScreen() {
       )}
 
       {/* Floating Action Button */}
-      <TouchableOpacity 
+      <Pressable 
         style={[styles.fab, (!patientId || uploading) && styles.fabDisabled]} 
         onPress={() => showAddOptionsRef.current()}
-        activeOpacity={0.8}
         disabled={!patientId || uploading}
+        android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: true }}
       >
         {uploading ? (
           <ActivityIndicator size="small" color={colors.textLight} />
         ) : (
           <AppIcon iosName="plus" androidFallback="+" size={24} color={colors.textLight} weight="medium" />
         )}
-      </TouchableOpacity>
+      </Pressable>
 
       <M3Dialog
         visible={dialog.visible}
@@ -1154,7 +1159,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
-    elevation: 8,
+    elevation: 3,
   },
   fabDisabled: {
     opacity: 0.6,
