@@ -19,6 +19,7 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'person': 'account-outline',
   'person.crop.circle': 'account-circle-outline',
   'heart.text.clipboard': 'clipboard-pulse-outline',
+  'heart.fill': 'heart',
   'plus': 'plus',
   'arrow.right': 'arrow-right',
   'arrow.left': 'arrow-left',
