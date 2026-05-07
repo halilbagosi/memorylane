@@ -1,3 +1,5 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +23,7 @@ import type { SFSymbol } from 'expo-symbols';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
+import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
 import { getPatientQuizData, QuizMode } from '../../src/services/media';
@@ -140,6 +143,18 @@ export default function QuizTab() {
   useEffect(() => { patientRef.current = patient; }, [patient]);
   useEffect(() => { activeModeRef.current = activeMode; }, [activeMode]);
   useEffect(() => { questionIdsRef.current = questionIds; }, [questionIds]);
+
+  const [dialog, setDialog] = useState<{
+    visible: boolean;
+    title: string;
+    body: string;
+    actions: M3DialogAction[];
+  }>({ visible: false, title: '', body: '', actions: [] });
+
+  const showDialog = (title: string, body: string, actions: M3DialogAction[]) => {
+    setDialog({ visible: true, title, body, actions });
+  };
+  const dismissDialog = () => setDialog((prev) => ({ ...prev, visible: false }));
 
   useEffect(() => {
     if (phase.type !== 'quiz') return;
@@ -314,12 +329,27 @@ export default function QuizTab() {
   }, [clearCurrentSession]);
 
   const handleLogout = () => {
+// We keep the safety check from alpha
     if (!['intro', 'mode_select', 'no_media', 'insufficient_identities'].includes(phase.type)) return;
-    deletePatientInfo().then(() =>
-      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })),
-    );
-  };
 
+    // We keep your awesome popup dialog from popup-omptimization
+    showDialog('Log Out (Debug)', 'Return to the welcome screen?', [
+      { label: 'Cancel', onPress: dismissDialog },
+      {
+        label: 'Log Out',
+        destructive: true,
+        onPress: async () => {
+          dismissDialog();
+          await deletePatientInfo();
+          navigation.dispatch(
+            CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
+          ); // <-- Note: I closed the parentheses here for you!
+        }
+      }
+    ]);
+  }; // <-- Closes the logout function
+
+  // We keep ALL the new UI screens that were added in alpha
   const renderLoading = () => (
     <View style={styles.centerFill}>
       <ActivityIndicator size="large" color={FOREST_GREEN} />
@@ -405,6 +435,11 @@ export default function QuizTab() {
               />
               <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
             </TouchableOpacity>
+          ); // <-- make sure this maps correctly based on your file
+        })}
+      </View>
+    </ScrollView>
+  );
           );
         })}
       </View>
@@ -531,6 +566,7 @@ export default function QuizTab() {
         </View>
       )}
 
+{/* We keep all the new dynamic screens from the alpha branch */}
       {phase.type === 'loading' && renderLoading()}
       {phase.type === 'error' && renderError(phase.message)}
       {phase.type === 'no_media' && renderNoMedia()}
@@ -544,6 +580,15 @@ export default function QuizTab() {
           {phase.type === 'quiz' && renderQuestion()}
         </Modal>
       )}
+
+      {/* We keep your new Dialog component from popup-omptimization */}
+      <M3Dialog
+        visible={dialog.visible}
+        title={dialog.title}
+        body={dialog.body}
+        actions={dialog.actions}
+        onDismiss={dismissDialog}
+      />
     </View>
   );
 }
