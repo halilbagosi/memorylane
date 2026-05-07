@@ -190,6 +190,7 @@ async function createUploadIntent(input: {
 }
 
 export type QuizMode = 'NAME' | 'AGE' | 'RELATIONSHIP';
+export type QuizDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 export interface QuizMediaItem {
   publicId: string;
@@ -204,6 +205,7 @@ export interface QuizMediaItem {
 
 export interface PatientQuizData {
   quizModes: QuizMode[];
+  quizDifficulty: QuizDifficulty;
   media: QuizMediaItem[];
 }
 
@@ -223,11 +225,26 @@ export async function getQuizModes(patientId: string): Promise<QuizMode[]> {
   return data.quizModes;
 }
 
-export async function updateQuizModes(patientId: string, modes: QuizMode[]): Promise<QuizMode[]> {
+export async function getQuizConfiguration(patientId: string): Promise<{ quizModes: QuizMode[]; quizDifficulty: QuizDifficulty }> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
+    headers: await authHeaders(),
+  });
+  const data = await jsonOrThrow(res);
+  return {
+    quizModes: data.quizModes,
+    quizDifficulty: data.quizDifficulty ?? 'MEDIUM',
+  };
+}
+
+export async function updateQuizModes(
+  patientId: string,
+  modes: QuizMode[],
+  difficulty?: QuizDifficulty,
+): Promise<QuizMode[]> {
   const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify({ modes }),
+    body: JSON.stringify({ modes, ...(difficulty ? { difficulty } : {}) }),
   });
   const data = await jsonOrThrow(res);
   return data.quizModes;

@@ -420,10 +420,10 @@ export class MediaService {
   async getPatientQuizData(
     patientId: string,
     apiBaseUrl: string,
-  ): Promise<{ quizModes: string[]; media: QuizMediaItem[] }> {
+  ): Promise<{ quizModes: string[]; quizDifficulty: string; media: QuizMediaItem[] }> {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
-      select: { quizModes: true },
+      select: { quizModes: true, quizDifficulty: true },
     });
     if (!patient) throw new NotFoundException('Patient not found');
 
@@ -454,7 +454,7 @@ export class MediaService {
       };
     });
 
-    return { quizModes: patient.quizModes, media };
+    return { quizModes: patient.quizModes, quizDifficulty: patient.quizDifficulty, media };
   }
 
   /** Returns READY MEMORY items for a patient, sorted chronologically.

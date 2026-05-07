@@ -23,7 +23,7 @@ import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientQuizData, QuizMode } from '../../src/services/media';
+import { getPatientQuizData, QuizDifficulty, QuizMode } from '../../src/services/media';
 import {
   buildQuizPool,
   buildQuizSet,
@@ -39,7 +39,6 @@ type Phase =
   | { type: 'insufficient_identities'; count: number }
   | { type: 'resume_prompt' }
   | { type: 'intro' }
-  | { type: 'mode_select' }
   | { type: 'quiz' }
   | { type: 'summary' };
 
@@ -112,6 +111,7 @@ export default function QuizTab() {
   const [patient, setPatient] = useState<PatientInfo | null>(null);
   const [phase, setPhase] = useState<Phase>({ type: 'loading' });
   const [enabledModes, setEnabledModes] = useState<QuizMode[]>([]);
+  const [quizDifficulty, setQuizDifficulty] = useState<QuizDifficulty>('MEDIUM');
   const [mediaPool, setMediaPool] = useState<ReturnType<typeof buildQuizPool>>([]);
   const [activeMode, setActiveMode] = useState<QuizMode | null>(null);
   const [questionIds, setQuestionIds] = useState<string[]>([]);
@@ -122,6 +122,7 @@ export default function QuizTab() {
   const [wrongTaps, setWrongTaps] = useState<Set<string>>(new Set());
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastWrong, setLastWrong] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(true);
 
   const wrongShake = useRef(new Animated.Value(0)).current;
   const questionFade = useRef(new Animated.Value(1)).current;
@@ -143,6 +144,7 @@ export default function QuizTab() {
 
   useEffect(() => {
     if (phase.type !== 'quiz') return;
+    setImageLoading(true);
     questionFade.setValue(0);
     Animated.timing(questionFade, {
       toValue: 1,
@@ -150,6 +152,12 @@ export default function QuizTab() {
       useNativeDriver: true,
     }).start();
   }, [phase.type, questionFade, questionIndex]);
+
+  useEffect(() => {
+    if (phase.type !== 'quiz') return;
+    const next = questions[questionIndex + 1];
+    if (next?.imageUrl) Image.prefetch(next.imageUrl).catch(() => undefined);
+  }, [phase.type, questionIndex, questions]);
 
   const saveCurrentSession = useCallback(async (indexOverride?: number) => {
     const p = patientRef.current;
@@ -194,11 +202,12 @@ export default function QuizTab() {
       }
       setPatient(p);
 
-      const { quizModes, media } = await getPatientQuizData(p.id);
+      const { quizModes, quizDifficulty: savedDifficulty, media } = await getPatientQuizData(p.id);
       const pool = buildQuizPool(media);
       const identityCount = uniqueIdentityCount(media);
       setMediaPool(pool);
       setEnabledModes(quizModes);
+      setQuizDifficulty(savedDifficulty ?? 'MEDIUM');
 
       if (pool.length === 0) {
         setPhase({ type: 'no_media' });
@@ -211,7 +220,7 @@ export default function QuizTab() {
 
       const saved = await readSavedSession(p.id);
       if (saved && quizModes.includes(saved.mode)) {
-        const restoredQuestions = buildQuizSetFromIds(pool, saved.mode, saved.questionIds);
+        const restoredQuestions = buildQuizSetFromIds(pool, saved.mode, saved.questionIds, savedDifficulty ?? 'MEDIUM');
         const currentIndex = Math.max(0, saved.currentIndex);
         if (restoredQuestions.length > currentIndex) {
           setResumeSession({ mode: saved.mode, questions: restoredQuestions, currentIndex });
@@ -231,7 +240,7 @@ export default function QuizTab() {
   }, [initialise]);
 
   const startSet = useCallback((mode: QuizMode) => {
-    const qs = buildQuizSet(mediaPool, mode);
+    const qs = buildQuizSet(mediaPool, mode, undefined, quizDifficulty);
     if (qs.length === 0) return;
     setQuestions(qs);
     setActiveMode(mode);
@@ -242,7 +251,7 @@ export default function QuizTab() {
     setLastWrong(null);
     setShowSuccess(false);
     setPhase({ type: 'quiz' });
-  }, [mediaPool]);
+  }, [mediaPool, quizDifficulty]);
 
   const continueSavedSession = useCallback(() => {
     if (!resumeSession) return;
@@ -272,9 +281,12 @@ export default function QuizTab() {
   }, [clearCurrentSession]);
 
   const handleIntroStart = useCallback(() => {
-    const preferredMode = enabledModes.includes('NAME') ? 'NAME' : enabledModes[0];
+    const priorityModes: QuizMode[] = ['NAME', 'AGE', 'RELATIONSHIP'];
+    const preferredMode = priorityModes.find(
+      (mode) => enabledModes.includes(mode) && buildQuizSet(mediaPool, mode, 1, quizDifficulty).length > 0,
+    );
     if (preferredMode) startSet(preferredMode);
-  }, [enabledModes, startSet]);
+  }, [enabledModes, mediaPool, quizDifficulty, startSet]);
 
   const handleChoice = useCallback((choice: string) => {
     if (showSuccess) return;
@@ -314,7 +326,7 @@ export default function QuizTab() {
   }, [clearCurrentSession]);
 
   const handleLogout = () => {
-    if (!['intro', 'mode_select', 'no_media', 'insufficient_identities'].includes(phase.type)) return;
+    if (!['intro', 'no_media', 'insufficient_identities'].includes(phase.type)) return;
     deletePatientInfo().then(() =>
       navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })),
     );
@@ -383,92 +395,76 @@ export default function QuizTab() {
     </View>
   );
 
-  const renderModeSelect = () => (
-    <ScrollView contentContainerStyle={styles.modeSelectContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
-      <View style={styles.modeButtonsCol}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, 1).length > 0;
-          return (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
-            >
-              <AppIcon
-                iosName={cfg.icon}
-                androidFallback={cfg.androidFallback}
-                size={24}
-                color={hasMedia ? CREAM : '#888888'}
-              />
-              <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </ScrollView>
-  );
-
   const renderQuestion = () => {
     const q = questions[questionIndex];
     if (!q) return null;
 
     return (
-      <Animated.View
+      <View
         style={[
           styles.quizScreen,
           {
             paddingTop: insets.top + 18,
             paddingBottom: insets.bottom + 22,
-            opacity: questionFade,
           },
         ]}
       >
-        <View style={styles.progressDashRow}>
-          {questions.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.progressDash, index <= questionIndex && styles.progressDashActive]}
-            />
-          ))}
-        </View>
-
-        <Text style={styles.questionText}>{q.questionText}</Text>
-
-        <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
-          <View style={styles.photoClip}>
-            <Image source={{ uri: q.imageUrl }} style={styles.photo} resizeMode="cover" />
+        <Animated.View style={[styles.questionContent, { opacity: questionFade }]}>
+          <View style={styles.progressDashRow}>
+            {questions.map((_, index) => (
+              <View
+                key={index}
+                style={[styles.progressDash, index <= questionIndex && styles.progressDashActive]}
+              />
+            ))}
           </View>
-        </View>
 
-        <View style={styles.choiceGrid}>
-          {q.choices.map((choice) => {
-            const isWrong = wrongTaps.has(choice);
-            const isLastWrong = choice === lastWrong;
-            return (
-              <Animated.View
-                key={choice}
-                style={[styles.choiceCell, isLastWrong && { transform: [{ translateX: wrongShake }] }]}
-              >
-                <TouchableOpacity
-                  style={[styles.choiceBtn, isWrong && styles.choiceBtnWrong]}
-                  onPress={() => handleChoice(choice)}
-                  activeOpacity={0.85}
-                  disabled={isWrong}
+          <Text style={styles.questionText}>{q.questionText}</Text>
+
+          <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
+            <View style={styles.photoClip}>
+              {imageLoading && (
+                <View style={styles.photoLoading}>
+                  <ActivityIndicator size="small" color={FOREST_GREEN} />
+                </View>
+              )}
+              <Image
+                key={q.imageUrl}
+                source={{ uri: q.imageUrl }}
+                style={[styles.photo, imageLoading && styles.photoHidden]}
+                resizeMode="cover"
+                onLoadEnd={() => setImageLoading(false)}
+              />
+            </View>
+          </View>
+
+          <View style={styles.choiceGrid}>
+            {q.choices.map((choice) => {
+              const isWrong = wrongTaps.has(choice);
+              const isLastWrong = choice === lastWrong;
+              return (
+                <Animated.View
+                  key={choice}
+                  style={[styles.choiceCell, isLastWrong && { transform: [{ translateX: wrongShake }] }]}
                 >
-                  <Text style={[styles.choiceBtnText, isWrong && styles.choiceBtnTextWrong]} numberOfLines={2}>
-                    {choice}
-                  </Text>
-                </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
-        </View>
+                  <TouchableOpacity
+                    style={[styles.choiceBtn, isWrong && styles.choiceBtnWrong]}
+                    onPress={() => handleChoice(choice)}
+                    activeOpacity={0.85}
+                    disabled={isWrong}
+                  >
+                    <Text style={[styles.choiceBtnText, isWrong && styles.choiceBtnTextWrong]} numberOfLines={2}>
+                      {choice}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })}
+          </View>
+        </Animated.View>
 
         <QuizSuccessOverlay visible={showSuccess} onDismiss={handleSuccessDismiss} />
-      </Animated.View>
+      </View>
     );
   };
 
@@ -492,7 +488,7 @@ export default function QuizTab() {
       <View style={styles.practiceChoiceGrid}>
         {enabledModes.map((mode) => {
           const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, 1).length > 0;
+          const hasMedia = buildQuizSet(mediaPool, mode, 1, quizDifficulty).length > 0;
           return (
             <TouchableOpacity
               key={mode}
@@ -516,7 +512,7 @@ export default function QuizTab() {
       {showTopBar && patient && (
         <View style={styles.topRow}>
           <Text style={styles.greeting}>Hi, {patient.name}</Text>
-          {['mode_select', 'no_media', 'insufficient_identities'].includes(phase.type) && (
+          {['no_media', 'insufficient_identities'].includes(phase.type) && (
             <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7}>
               <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color="#C0392B" />
             </TouchableOpacity>
@@ -536,7 +532,6 @@ export default function QuizTab() {
       {phase.type === 'no_media' && renderNoMedia()}
       {phase.type === 'insufficient_identities' && renderInsufficientIdentities(phase.count)}
       {phase.type === 'intro' && renderIntro()}
-      {phase.type === 'mode_select' && renderModeSelect()}
       {phase.type === 'summary' && renderSummary()}
       {showFocusModal && (
         <Modal visible animationType="none" statusBarTranslucent presentationStyle="fullScreen">
@@ -724,44 +719,8 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: FOREST_GREEN,
   },
-  modeSelectContent: {
-    flexGrow: 1,
-    paddingTop: 48,
-    paddingBottom: 32,
-    alignItems: 'center',
-  },
-  modeSelectTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 28,
-    color: FOREST_GREEN,
-    textAlign: 'center',
-    lineHeight: 36,
-    marginBottom: 36,
-  },
-  modeButtonsCol: {
-    width: '100%',
-    gap: 16,
-    alignItems: 'center',
-  },
-  modePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: FOREST_GREEN,
-    borderRadius: 50,
-    paddingVertical: 18,
-    paddingHorizontal: 32,
-    width: '100%',
-    gap: 12,
-  },
   modePillDisabled: {
     backgroundColor: '#D1D8D0',
-  },
-  modePillText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
-    color: CREAM,
-    flex: 1,
-    textAlign: 'center',
   },
   modePillTextDisabled: {
     color: '#888888',
@@ -771,6 +730,11 @@ const styles = StyleSheet.create({
     backgroundColor: QUIZ_BACKGROUND,
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  questionContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
   },
   progressDashRow: {
     flexDirection: 'row',
@@ -819,6 +783,15 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     height: '100%',
+  },
+  photoHidden: {
+    opacity: 0,
+  },
+  photoLoading: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: CREAM,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   choiceGrid: {
     width: '100%',
