@@ -13,6 +13,7 @@
     "@expo-google-fonts/gothic-a1": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-community/datetimepicker": "8.4.4",
+    "@react-native-community/slider": "^5.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
     "expo": "~54.0.33",
     "expo-apple-authentication": "~8.0.8",
