@@ -50,6 +50,15 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'lightbulb.fill': 'lightbulb-on',
   'plus.app': 'plus-box-outline',
   'plus.app.fill': 'plus-box',
+  'plus.circle.fill': 'plus-circle',
+  'bell.badge': 'bell-badge-outline',
+  'tray': 'tray-arrow-down',
+  'tray.fill': 'tray-full',
+  'info.circle.fill': 'information',
+  'sparkles': 'auto-fix',
+  'gauge.with.dots.needle.50percent': 'speedometer-medium',
+  'flame.fill': 'fire',
+  'face.smiling': 'emoticon-happy-outline',
 };
 
 interface AppIconProps {

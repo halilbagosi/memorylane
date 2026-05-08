@@ -1802,10 +1802,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     borderRadius: isIOS ? 16 : 20,
     overflow: 'hidden',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.03)',
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.45)' : '#FFFFFF',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0,0,0,0.07)',
-    ...(isIOS ? {} : { elevation: 1 }),
   },
   actionRow: {
     flexDirection: 'row',

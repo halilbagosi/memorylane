@@ -197,15 +197,27 @@ export default function AccountScreen() {
   // ─── Avatar ────────────────────────────────────────────────────────────────
 
   const showAvatarOptions = () => {
-    const options: any[] = [
-      { text: 'Take Photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from Library', onPress: () => pickImage('library') },
-    ];
-    if (profile?.avatarUrl) {
-      options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
+    if (isIOS) {
+      const options: any[] = [
+        { text: 'Take Photo', onPress: () => pickImage('camera') },
+        { text: 'Choose from Library', onPress: () => pickImage('library') },
+      ];
+      if (profile?.avatarUrl) {
+        options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
+      }
+      options.push({ text: 'Cancel', style: 'cancel' });
+      Alert.alert('Edit Photo', undefined, options);
+    } else {
+      const actions: M3DialogAction[] = [
+        { label: 'Take Photo', onPress: () => { dismissDialog(); pickImage('camera'); } },
+        { label: 'Choose from Library', onPress: () => { dismissDialog(); pickImage('library'); } },
+      ];
+      if (profile?.avatarUrl) {
+        actions.push({ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); removeAvatar(); } });
+      }
+      actions.push({ label: 'Cancel', onPress: dismissDialog });
+      showDialog('Edit Photo', 'Update your profile picture.', actions);
     }
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Edit Photo', undefined, options);
   };
 
   const pickImage = async (source: 'camera' | 'library') => {

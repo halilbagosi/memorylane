@@ -9,7 +9,6 @@ import {
   RefreshControl,
   Switch,
   ActionSheetIOS,
-  Alert,
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -164,7 +163,7 @@ export default function CreateTab() {
     await loadQuizModesForPatient(patientId);
   };
 
-  // Native patient picker using ActionSheet (iOS) / Alert (Android)
+  // Native patient picker using ActionSheet (iOS) / M3Dialog (Android)
   const showPatientPicker = () => {
     if (patients.length === 0) return;
 
@@ -184,17 +183,17 @@ export default function CreateTab() {
         },
       );
     } else {
-      Alert.alert(
-        'Select Patient',
-        undefined,
-        [
-          ...patients.map((patient) => ({
-            text: `${patient.name} ${patient.surname}`,
-            onPress: () => selectPatient(patient.id),
-          })),
-          { text: 'Cancel', style: 'cancel' as const },
-        ],
-      );
+      // Use M3Dialog instead of default Android Alert
+      showDialog('Select Patient', 'Choose a patient for this quiz configuration.', [
+        ...patients.map((patient) => ({
+          label: `${patient.name} ${patient.surname}`,
+          onPress: () => {
+            dismissDialog();
+            selectPatient(patient.id);
+          },
+        })),
+        { label: 'Cancel', onPress: dismissDialog },
+      ]);
     }
   };
 

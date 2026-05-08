@@ -70,7 +70,7 @@ function AndroidTabLayout() {
         options={{
           title: 'Progress',
           tabBarIcon: ({ color, size }) => (
-            <AppIcon iosName="plus.circle.fill" androidFallback="+" size={size} color={color} />
+            <AppIcon iosName="chart.bar.fill" androidFallback="📊" size={size} color={color} />
           ),
         }}
       />
