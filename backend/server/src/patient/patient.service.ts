@@ -21,6 +21,7 @@ export class PatientService {
           avatarUrl: createPatientDto.avatarUrl ?? null,
           patientJoinCode: patientJoinCode,
           createdBy: caregiverId,
+          ...(createPatientDto.dementiaLevel ? { dementiaLevel: createPatientDto.dementiaLevel } : {}),
         },
       });
 
