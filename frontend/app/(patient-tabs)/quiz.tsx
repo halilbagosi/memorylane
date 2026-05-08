@@ -25,8 +25,17 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientQuizData, QuizMode } from '../../src/services/media';
 import {
+  CareLevel,
+  getPatientQuizData,
+  QuizDifficulty,
+  QuizMode,
+  QuizResultAttempt,
+  submitQuizResults,
+} from '../../src/services/media';
+import {
+  buildAdaptiveQuizSet,
+  buildAdaptiveQuizSetFromIds,
   buildQuizPool,
   buildQuizSet,
   buildQuizSetFromIds,
@@ -47,20 +56,23 @@ type Phase =
 
 interface SavedQuizSession {
   patientId: string;
-  mode: QuizMode;
+  mode: QuizMode | 'MIXED';
+  modes: QuizMode[];
+  careLevel: CareLevel;
+  difficulty: QuizDifficulty;
   questionIds: string[];
   currentIndex: number;
   savedAt: number;
 }
 
 interface ResumeSession {
-  mode: QuizMode;
+  mode: QuizMode | 'MIXED';
   questions: QuizQuestion[];
   currentIndex: number;
 }
 
 const MIN_IDENTITIES = 4;
-const QUIZ_BACKGROUND = colors.neutral;
+const QUIZ_BACKGROUND = '#E8F5EC';
 const CREAM = '#FCFEF9';
 const FOREST_GREEN = '#1E4D30';
 const SESSION_KEY_PREFIX = 'memorylane_patient_quiz_session';
@@ -114,8 +126,11 @@ export default function QuizTab() {
   const [patient, setPatient] = useState<PatientInfo | null>(null);
   const [phase, setPhase] = useState<Phase>({ type: 'loading' });
   const [enabledModes, setEnabledModes] = useState<QuizMode[]>([]);
+  const [quizDifficulty, setQuizDifficulty] = useState<QuizDifficulty>('MEDIUM');
+  const [careLevel, setCareLevel] = useState<CareLevel>('DEMENTIA');
+  const [aiAdaptiveEnabled, setAiAdaptiveEnabled] = useState(false);
   const [mediaPool, setMediaPool] = useState<ReturnType<typeof buildQuizPool>>([]);
-  const [activeMode, setActiveMode] = useState<QuizMode | null>(null);
+  const [activeMode, setActiveMode] = useState<QuizMode | 'MIXED' | null>(null);
   const [questionIds, setQuestionIds] = useState<string[]>([]);
   const [resumeSession, setResumeSession] = useState<ResumeSession | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -123,16 +138,25 @@ export default function QuizTab() {
   const [score, setScore] = useState(0);
   const [wrongTaps, setWrongTaps] = useState<Set<string>>(new Set());
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('Well done.');
+  const [hintVisible, setHintVisible] = useState(false);
   const [lastWrong, setLastWrong] = useState<string | null>(null);
 
   const wrongShake = useRef(new Animated.Value(0)).current;
   const questionFade = useRef(new Animated.Value(1)).current;
+  const photoFade = useRef(new Animated.Value(0)).current;
+  const hintOpacity = useRef(new Animated.Value(0)).current;
   const questionIndexRef = useRef(questionIndex);
   const questionsLenRef = useRef(questions.length);
   const phaseRef = useRef<Phase>(phase);
   const patientRef = useRef<PatientInfo | null>(patient);
-  const activeModeRef = useRef<QuizMode | null>(activeMode);
+  const activeModeRef = useRef<QuizMode | 'MIXED' | null>(activeMode);
   const questionIdsRef = useRef<string[]>(questionIds);
+  const enabledModesRef = useRef<QuizMode[]>(enabledModes);
+  const careLevelRef = useRef<CareLevel>(careLevel);
+  const quizDifficultyRef = useRef<QuizDifficulty>(quizDifficulty);
+  const questionStartTimeRef = useRef(Date.now());
+  const attemptResultsRef = useRef<QuizResultAttempt[]>([]);
 
   const photoSize = useMemo(() => Math.min(width - 56, height * 0.38, 360), [height, width]);
 
@@ -142,6 +166,9 @@ export default function QuizTab() {
   useEffect(() => { patientRef.current = patient; }, [patient]);
   useEffect(() => { activeModeRef.current = activeMode; }, [activeMode]);
   useEffect(() => { questionIdsRef.current = questionIds; }, [questionIds]);
+  useEffect(() => { enabledModesRef.current = enabledModes; }, [enabledModes]);
+  useEffect(() => { careLevelRef.current = careLevel; }, [careLevel]);
+  useEffect(() => { quizDifficultyRef.current = quizDifficulty; }, [quizDifficulty]);
 
   const [dialog, setDialog] = useState<{
     visible: boolean;
@@ -165,6 +192,17 @@ export default function QuizTab() {
     }).start();
   }, [phase.type, questionFade, questionIndex]);
 
+  useEffect(() => {
+    if (phase.type !== 'quiz') return;
+    const current = questions[questionIndex];
+    photoFade.setValue(0);
+    if (current?.imageUrl) {
+      Image.prefetch(current.imageUrl).catch(() => undefined);
+      const next = questions[questionIndex + 1];
+      if (next?.imageUrl) Image.prefetch(next.imageUrl).catch(() => undefined);
+    }
+  }, [phase.type, photoFade, questionIndex, questions]);
+
   const saveCurrentSession = useCallback(async (indexOverride?: number) => {
     const p = patientRef.current;
     const mode = activeModeRef.current;
@@ -178,6 +216,9 @@ export default function QuizTab() {
     await writeSavedSession({
       patientId: p.id,
       mode,
+      modes: enabledModesRef.current,
+      careLevel: careLevelRef.current,
+      difficulty: quizDifficultyRef.current,
       questionIds: ids,
       currentIndex,
       savedAt: Date.now(),
@@ -208,11 +249,22 @@ export default function QuizTab() {
       }
       setPatient(p);
 
-      const { quizModes, media } = await getPatientQuizData(p.id);
+      const {
+        quizModes,
+        quizDifficulty: manualDifficulty,
+        predictedDifficulty,
+        careLevel: nextCareLevel,
+        aiAdaptiveEnabled: nextAiAdaptiveEnabled,
+        media,
+      } = await getPatientQuizData(p.id);
+      const difficulty = nextAiAdaptiveEnabled ? (predictedDifficulty ?? manualDifficulty) : manualDifficulty;
       const pool = buildQuizPool(media);
       const identityCount = uniqueIdentityCount(media);
       setMediaPool(pool);
       setEnabledModes(quizModes);
+      setQuizDifficulty(difficulty ?? 'MEDIUM');
+      setCareLevel(nextCareLevel ?? 'DEMENTIA');
+      setAiAdaptiveEnabled(nextAiAdaptiveEnabled === true);
 
       if (pool.length === 0) {
         setPhase({ type: 'no_media' });
@@ -224,8 +276,10 @@ export default function QuizTab() {
       }
 
       const saved = await readSavedSession(p.id);
-      if (saved && quizModes.includes(saved.mode)) {
-        const restoredQuestions = buildQuizSetFromIds(pool, saved.mode, saved.questionIds);
+      if (saved && (saved.mode === 'MIXED' || quizModes.includes(saved.mode))) {
+        const restoredQuestions = saved.mode === 'MIXED'
+          ? buildAdaptiveQuizSetFromIds(pool, quizModes, nextCareLevel ?? 'DEMENTIA', saved.questionIds, difficulty ?? 'MEDIUM')
+          : buildQuizSetFromIds(pool, saved.mode, saved.questionIds, difficulty ?? 'MEDIUM');
         const currentIndex = Math.max(0, saved.currentIndex);
         if (restoredQuestions.length > currentIndex) {
           setResumeSession({ mode: saved.mode, questions: restoredQuestions, currentIndex });
@@ -245,7 +299,7 @@ export default function QuizTab() {
   }, [initialise]);
 
   const startSet = useCallback((mode: QuizMode) => {
-    const qs = buildQuizSet(mediaPool, mode);
+    const qs = buildQuizSet(mediaPool, mode, quizDifficulty);
     if (qs.length === 0) return;
     setQuestions(qs);
     setActiveMode(mode);
@@ -254,9 +308,31 @@ export default function QuizTab() {
     setScore(0);
     setWrongTaps(new Set());
     setLastWrong(null);
+    setHintVisible(false);
+    hintOpacity.setValue(0);
     setShowSuccess(false);
+    attemptResultsRef.current = [];
+    questionStartTimeRef.current = Date.now();
     setPhase({ type: 'quiz' });
-  }, [mediaPool]);
+  }, [hintOpacity, mediaPool, quizDifficulty]);
+
+  const startAdaptiveSet = useCallback(() => {
+    const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty);
+    if (qs.length === 0) return;
+    setQuestions(qs);
+    setActiveMode(careLevel === 'PREVENTATIVE' ? 'MIXED' : qs[0].mode);
+    setQuestionIds(qs.map((q) => q.media.publicId));
+    setQuestionIndex(0);
+    setScore(0);
+    setWrongTaps(new Set());
+    setLastWrong(null);
+    setHintVisible(false);
+    hintOpacity.setValue(0);
+    setShowSuccess(false);
+    attemptResultsRef.current = [];
+    questionStartTimeRef.current = Date.now();
+    setPhase({ type: 'quiz' });
+  }, [careLevel, enabledModes, hintOpacity, mediaPool, quizDifficulty]);
 
   const continueSavedSession = useCallback(() => {
     if (!resumeSession) return;
@@ -267,7 +343,11 @@ export default function QuizTab() {
     setScore(0);
     setWrongTaps(new Set());
     setLastWrong(null);
+    setHintVisible(false);
+    hintOpacity.setValue(0);
     setShowSuccess(false);
+    attemptResultsRef.current = [];
+    questionStartTimeRef.current = Date.now();
     setResumeSession(null);
     setPhase({ type: 'quiz' });
   }, [resumeSession]);
@@ -281,14 +361,55 @@ export default function QuizTab() {
     setQuestionIndex(0);
     setWrongTaps(new Set());
     setLastWrong(null);
+    setHintVisible(false);
+    hintOpacity.setValue(0);
     setShowSuccess(false);
     setPhase({ type: 'intro' });
   }, [clearCurrentSession]);
 
   const handleIntroStart = useCallback(() => {
+    if (careLevel === 'PREVENTATIVE') {
+      startAdaptiveSet();
+      return;
+    }
     const preferredMode = enabledModes.includes('NAME') ? 'NAME' : enabledModes[0];
     if (preferredMode) startSet(preferredMode);
-  }, [enabledModes, startSet]);
+  }, [careLevel, enabledModes, startAdaptiveSet, startSet]);
+
+  const showHint = useCallback(() => {
+    const current = questions[questionIndexRef.current];
+    if (!current?.media.hint) return;
+    setHintVisible(true);
+    Animated.timing(hintOpacity, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [hintOpacity, questions]);
+
+  useEffect(() => {
+    if (phase.type !== 'quiz') return;
+    questionStartTimeRef.current = Date.now();
+    setWrongTaps(new Set());
+    setLastWrong(null);
+    setHintVisible(false);
+    hintOpacity.setValue(0);
+    if (quizDifficulty === 'EASY') {
+      requestAnimationFrame(() => showHint());
+    }
+  }, [hintOpacity, phase.type, questionIndex, quizDifficulty, showHint]);
+
+  const buildSuccessMessage = useCallback((question: QuizQuestion) => {
+    const nickname = question.media.nickname?.trim();
+    const fallback = 'Well done, Filan!';
+    if (!nickname) return fallback;
+    const options = [
+      `${nickname} says: Well done!`,
+      `That's right! It's ${nickname}.`,
+      `${nickname} is so proud of you!`,
+    ];
+    return options[Math.floor(Math.random() * options.length)];
+  }, []);
 
   const handleChoice = useCallback((choice: string) => {
     if (showSuccess) return;
@@ -297,11 +418,24 @@ export default function QuizTab() {
 
     if (choice === current.correctAnswer) {
       if (wrongTaps.size === 0) setScore((s) => s + 1);
+      attemptResultsRef.current.push({
+        publicId: current.media.publicId,
+        mode: current.mode,
+        difficulty: quizDifficulty,
+        firstTapCorrect: wrongTaps.size === 0,
+        totalTaps: wrongTaps.size + 1,
+        timeToCorrectMs: Date.now() - questionStartTimeRef.current,
+        hadHint: hintVisible || quizDifficulty === 'EASY',
+      });
       saveCurrentSession(questionIndex + 1).catch(() => undefined);
+      setSuccessMessage(buildSuccessMessage(current));
       setShowSuccess(true);
       return;
     }
 
+    if (wrongTaps.size === 0) {
+      showHint();
+    }
     setLastWrong(choice);
     setWrongTaps((prev) => new Set([...prev, choice]));
     wrongShake.setValue(0);
@@ -311,21 +445,32 @@ export default function QuizTab() {
       Animated.timing(wrongShake, { toValue: 5, duration: 50, useNativeDriver: true }),
       Animated.timing(wrongShake, { toValue: 0, duration: 50, useNativeDriver: true }),
     ]).start(() => setLastWrong(null));
-  }, [questionIndex, questions, saveCurrentSession, showSuccess, wrongShake, wrongTaps.size]);
+  }, [buildSuccessMessage, hintVisible, questionIndex, questions, quizDifficulty, saveCurrentSession, showHint, showSuccess, wrongShake, wrongTaps.size]);
 
   const handleSuccessDismiss = useCallback(() => {
     setShowSuccess(false);
     setWrongTaps(new Set());
     setLastWrong(null);
+    setHintVisible(false);
+    hintOpacity.setValue(0);
 
     const nextIndex = questionIndexRef.current + 1;
     if (nextIndex >= questionsLenRef.current) {
       clearCurrentSession().catch(() => undefined);
+      const p = patientRef.current;
+      const attempts = attemptResultsRef.current;
+      if (p && attempts.length > 0) {
+        submitQuizResults(p.id, attempts).catch(() => undefined);
+      }
       setPhase({ type: 'summary' });
     } else {
-      setQuestionIndex(nextIndex);
+      Animated.timing(questionFade, {
+        toValue: 0,
+        duration: 140,
+        useNativeDriver: true,
+      }).start(() => setQuestionIndex(nextIndex));
     }
-  }, [clearCurrentSession]);
+  }, [clearCurrentSession, hintOpacity, questionFade]);
 
   const handleLogout = () => {
 // We keep the safety check from alpha
@@ -418,7 +563,7 @@ export default function QuizTab() {
       <View style={styles.modeButtonsCol}>
         {enabledModes.map((mode) => {
           const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, 1).length > 0;
+          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
           return (
             <TouchableOpacity
               key={mode}
@@ -467,9 +612,38 @@ export default function QuizTab() {
 
         <Text style={styles.questionText}>{q.questionText}</Text>
 
+        {!!q.media.hint && (
+          <View style={styles.hintArea}>
+            {hintVisible ? (
+              <Animated.View style={[styles.hintBubble, { opacity: hintOpacity }]}>
+                <Text style={styles.hintText}>{q.media.hint}</Text>
+              </Animated.View>
+            ) : (
+              <TouchableOpacity style={styles.hintButton} onPress={showHint} activeOpacity={0.75}>
+                <Text style={styles.hintButtonText}>Need a hint?</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
           <View style={styles.photoClip}>
-            <Image source={{ uri: q.imageUrl }} style={styles.photo} resizeMode="cover" />
+            <View style={styles.photoLoading}>
+              <ActivityIndicator size="small" color={FOREST_GREEN} />
+            </View>
+            <Animated.Image
+              key={`${q.media.publicId}-${q.imageUrl}`}
+              source={{ uri: q.imageUrl }}
+              style={[styles.photo, { opacity: photoFade }]}
+              resizeMode="cover"
+              onLoad={() => {
+                Animated.timing(photoFade, {
+                  toValue: 1,
+                  duration: 220,
+                  useNativeDriver: true,
+                }).start();
+              }}
+            />
           </View>
         </View>
 
@@ -497,7 +671,7 @@ export default function QuizTab() {
           })}
         </View>
 
-        <QuizSuccessOverlay visible={showSuccess} onDismiss={handleSuccessDismiss} />
+        <QuizSuccessOverlay visible={showSuccess} message={successMessage} onDismiss={handleSuccessDismiss} />
       </Animated.View>
     );
   };
@@ -522,7 +696,7 @@ export default function QuizTab() {
       <View style={styles.practiceChoiceGrid}>
         {enabledModes.map((mode) => {
           const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, 1).length > 0;
+          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
           return (
             <TouchableOpacity
               key={mode}
@@ -840,7 +1014,7 @@ const styles = StyleSheet.create({
   photoShadow: {
     borderRadius: 30,
     backgroundColor: CREAM,
-    marginBottom: 32,
+    marginBottom: 16,
     ...Platform.select({
       ios: {
         shadowColor: '#24442F',
@@ -855,10 +1029,53 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 30,
     overflow: 'hidden',
+    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+  },
+  photoLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   photo: {
     width: '100%',
     height: '100%',
+  },
+  hintArea: {
+    width: '100%',
+    alignItems: 'center',
+    minHeight: 74,
+    marginBottom: 12,
+  },
+  hintButton: {
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(252, 254, 249, 0.58)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(30, 77, 48, 0.18)',
+  },
+  hintButtonText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: FOREST_GREEN,
+    textDecorationLine: 'underline',
+  },
+  hintBubble: {
+    marginTop: 10,
+    maxWidth: 320,
+    borderRadius: 18,
+    backgroundColor: CREAM,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(30, 77, 48, 0.18)',
+  },
+  hintText: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 15,
+    lineHeight: 21,
+    color: FOREST_GREEN,
+    textAlign: 'center',
   },
   choiceGrid: {
     width: '100%',

@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
@@ -94,7 +94,7 @@ async function normalizeQuizPhotoAsset(asset: { uri: string; mimeType?: string }
 }
 
 async function readAssetBase64(uri: string) {
-  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  return new File(uri).base64();
 }
 
 export interface MemoryLibrarySheetContentProps {
@@ -130,6 +130,8 @@ export function MemoryLibrarySheetContent({
   const [quizFirstName, setQuizFirstName] = useState('');
   const [quizRelationship, setQuizRelationship] = useState('');
   const [quizBirthYear, setQuizBirthYear] = useState('');
+  const [quizHint, setQuizHint] = useState('');
+  const [quizNickname, setQuizNickname] = useState('');
   const [verifyingQuizPhoto, setVerifyingQuizPhoto] = useState(false);
   const [quizPhotoVerified, setQuizPhotoVerified] = useState(false);
   const [quizVerificationMessage, setQuizVerificationMessage] = useState<string | null>(null);
@@ -143,6 +145,8 @@ export function MemoryLibrarySheetContent({
   const [editFirstName, setEditFirstName] = useState('');
   const [editRelationship, setEditRelationship] = useState('');
   const [editBirthYear, setEditBirthYear] = useState('');
+  const [editHint, setEditHint] = useState('');
+  const [editNickname, setEditNickname] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editYear, setEditYear] = useState('');
   const [editIsApproximate, setEditIsApproximate] = useState(false);
@@ -207,7 +211,7 @@ export function MemoryLibrarySheetContent({
     setSavingQuizModes(true);
     try {
       const saved = await updateQuizModes(patientId, next);
-      setQuizModes(saved);
+      setQuizModes(saved.quizModes);
     } catch {
       setQuizModes(quizModes); // revert on error
     } finally {
@@ -363,10 +367,12 @@ export function MemoryLibrarySheetContent({
 
   const resetQuizDraft = () => {
     setPendingQuizAssets([]);
-    setQuizFirstName('');
-    setQuizRelationship('');
-    setQuizBirthYear('');
-    setQuizPhotoVerified(false);
+                  setQuizFirstName('');
+                  setQuizRelationship('');
+                  setQuizBirthYear('');
+                  setQuizHint('');
+                  setQuizNickname('');
+                  setQuizPhotoVerified(false);
     setQuizVerificationMessage(null);
     setVerifyingQuizPhoto(false);
   };
@@ -609,11 +615,15 @@ export function MemoryLibrarySheetContent({
       firstName,
       relationshipType: quizRelationship,
       birthYear,
+      hint: quizHint.trim(),
+      nickname: quizNickname.trim(),
     });
     setPendingQuizAssets([]);
     setQuizFirstName('');
     setQuizRelationship('');
     setQuizBirthYear('');
+    setQuizHint('');
+    setQuizNickname('');
     setQuizPhotoVerified(false);
     setQuizVerificationMessage(null);
   };
@@ -646,6 +656,8 @@ export function MemoryLibrarySheetContent({
     setEditFirstName(item.firstName ?? '');
     setEditRelationship(item.relationshipType ?? '');
     setEditBirthYear(item.birthYear !== null ? String(item.birthYear) : '');
+    setEditHint(item.hint ?? '');
+    setEditNickname(item.nickname ?? '');
     setEditNote(item.note ?? '');
     setEditYear(item.eventYear !== null ? String(item.eventYear) : '');
     setEditIsApproximate(item.isApproximateYear ?? false);
@@ -675,6 +687,8 @@ export function MemoryLibrarySheetContent({
           firstName,
           relationshipType,
           birthYear,
+          hint: editHint.trim(),
+          nickname: editNickname.trim(),
         });
       } else {
         const note = editNote.trim();
@@ -703,6 +717,8 @@ export function MemoryLibrarySheetContent({
               lastName: prev.lastName,
               relationshipType: editRelationship.trim() || prev.relationshipType,
               birthYear: editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : prev.birthYear,
+              hint: editHint.trim() || prev.hint,
+              nickname: editNickname.trim() || prev.nickname,
               note: editNote.trim() || prev.note,
               eventYear: editYear.trim() ? parseInt(editYear.trim(), 10) : prev.eventYear,
               isApproximateYear: editIsApproximate,
@@ -1211,6 +1227,21 @@ export function MemoryLibrarySheetContent({
               keyboardType="number-pad"
               maxLength={4}
             />
+            <TextInput
+              style={[styles.detailInput, styles.noteInput]}
+              value={quizHint}
+              onChangeText={setQuizHint}
+              placeholder="Patient Hint (optional)"
+              placeholderTextColor={colors.textMuted}
+              multiline
+            />
+            <TextInput
+              style={styles.detailInput}
+              value={quizNickname}
+              onChangeText={setQuizNickname}
+              placeholder="Personal nickname (optional)"
+              placeholderTextColor={colors.textMuted}
+            />
             {quizDraftHasPhoto && (
               <View style={[styles.verificationBox, quizPhotoVerified && styles.verificationBoxSuccess]}>
                 {verifyingQuizPhoto ? (
@@ -1325,6 +1356,8 @@ export function MemoryLibrarySheetContent({
         firstName={editFirstName}
         relationship={editRelationship}
         birthYear={editBirthYear}
+        hint={editHint}
+        nickname={editNickname}
         note={editNote}
         year={editYear}
         isApproximate={editIsApproximate}
@@ -1332,6 +1365,8 @@ export function MemoryLibrarySheetContent({
         onChangeFirstName={setEditFirstName}
         onChangeRelationship={setEditRelationship}
         onChangeBirthYear={setEditBirthYear}
+        onChangeHint={setEditHint}
+        onChangeNickname={setEditNickname}
         onChangeNote={setEditNote}
         onChangeYear={setEditYear}
         onToggleApproximate={() => setEditIsApproximate((v) => !v)}
@@ -1587,6 +1622,12 @@ function MediaDetailsModal({
 
           <View style={styles.detailsList}>
             {!!primaryDetail && <Text style={styles.detailLine}>{primaryDetail}</Text>}
+            {item.collection === 'QUIZ' && !!item.nickname && (
+              <Text style={styles.detailLine}>Nickname: {item.nickname}</Text>
+            )}
+            {item.collection === 'QUIZ' && !!item.hint && (
+              <Text style={styles.detailMeta}>Hint: {item.hint}</Text>
+            )}
             <Text style={styles.detailMeta}>
               {item.kind.charAt(0) + item.kind.slice(1).toLowerCase()} · {new Date(item.createdAt).toLocaleDateString()}
             </Text>
@@ -1688,6 +1729,12 @@ function MemoryFullscreenPreviewModal({
               {!!item.birthYear && (
                 <Text style={styles.fsPreviewRelationship}>Born {item.birthYear}</Text>
               )}
+              {!!item.nickname && (
+                <Text style={styles.fsPreviewRelationship}>Nickname: {item.nickname}</Text>
+              )}
+              {!!item.hint && (
+                <Text style={styles.fsPreviewRelationship}>Hint: {item.hint}</Text>
+              )}
             </>
           ) : (
             <>
@@ -1712,6 +1759,8 @@ function EditMetadataModal({
   firstName,
   relationship,
   birthYear,
+  hint,
+  nickname,
   note,
   year,
   isApproximate,
@@ -1719,6 +1768,8 @@ function EditMetadataModal({
   onChangeFirstName,
   onChangeRelationship,
   onChangeBirthYear,
+  onChangeHint,
+  onChangeNickname,
   onChangeNote,
   onChangeYear,
   onToggleApproximate,
@@ -1729,6 +1780,8 @@ function EditMetadataModal({
   firstName: string;
   relationship: string;
   birthYear: string;
+  hint: string;
+  nickname: string;
   note: string;
   year: string;
   isApproximate: boolean;
@@ -1736,6 +1789,8 @@ function EditMetadataModal({
   onChangeFirstName: (value: string) => void;
   onChangeRelationship: (value: string) => void;
   onChangeBirthYear: (value: string) => void;
+  onChangeHint: (value: string) => void;
+  onChangeNickname: (value: string) => void;
   onChangeNote: (value: string) => void;
   onChangeYear: (value: string) => void;
   onToggleApproximate: () => void;
@@ -1759,6 +1814,21 @@ function EditMetadataModal({
                 placeholderTextColor={colors.textMuted}
                 keyboardType="number-pad"
                 maxLength={4}
+              />
+              <TextInput
+                style={[styles.detailInput, styles.noteInput]}
+                value={hint}
+                onChangeText={onChangeHint}
+                placeholder="Patient Hint (optional)"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+              <TextInput
+                style={styles.detailInput}
+                value={nickname}
+                onChangeText={onChangeNickname}
+                placeholder="Personal nickname (optional)"
+                placeholderTextColor={colors.textMuted}
               />
             </>
           ) : (

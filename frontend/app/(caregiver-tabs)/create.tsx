@@ -23,7 +23,7 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
-import { getQuizModes, QuizMode, updateQuizModes } from '../../src/services/media';
+import { CareLevel, getQuizSettings, QuizDifficulty, QuizMode, updateQuizModes } from '../../src/services/media';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -34,7 +34,7 @@ interface PatientItem {
   isPrimary: boolean;
 }
 
-type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+type Difficulty = QuizDifficulty;
 
 const MODE_OPTIONS: { key: QuizMode; label: string; icon: string; subtitle: string }[] = [
   { key: 'NAME', label: 'Name', icon: 'person.fill', subtitle: 'Patient guesses each person\'s name' },
@@ -43,9 +43,14 @@ const MODE_OPTIONS: { key: QuizMode; label: string; icon: string; subtitle: stri
 ];
 
 const DIFFICULTY_OPTIONS: { key: Difficulty; label: string; helper: string; icon: string }[] = [
-  { key: 'EASY', label: 'Easy', helper: 'Fewer decoys, more forgiving', icon: 'face.smiling' },
-  { key: 'MEDIUM', label: 'Medium', helper: 'Balanced challenge', icon: 'gauge.with.dots.needle.50percent' },
-  { key: 'HARD', label: 'Hard', helper: 'More decoys, greater challenge', icon: 'flame.fill' },
+  { key: 'EASY', label: 'Easy', helper: '2 decoys (3 total choices) + hints active', icon: 'face.smiling' },
+  { key: 'MEDIUM', label: 'Medium', helper: '3 decoys (4 total choices)', icon: 'gauge.with.dots.needle.50percent' },
+  { key: 'HARD', label: 'Hard', helper: '4 decoys (5 total choices)', icon: 'flame.fill' },
+];
+
+const CARE_LEVEL_OPTIONS: { key: CareLevel; label: string; helper: string; icon: string }[] = [
+  { key: 'PREVENTATIVE', label: 'Preventative', helper: 'Higher challenge with mixed name, age, and relationship questions.', icon: 'brain.head.profile' },
+  { key: 'DEMENTIA', label: 'Dementia', helper: 'Gentler practice with question types kept separate.', icon: 'heart.fill' },
 ];
 
 export default function CreateTab() {
@@ -55,7 +60,8 @@ export default function CreateTab() {
   const [activeSection, setActiveSection] = useState<'builder' | 'library'>('builder');
   const [selectedModes, setSelectedModes] = useState<QuizMode[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
-  const [premiumEnabled, setPremiumEnabled] = useState(false);
+  const [careLevel, setCareLevel] = useState<CareLevel>('DEMENTIA');
+  const [aiAdaptiveEnabled, setAiAdaptiveEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,8 +116,11 @@ export default function CreateTab() {
 
       if (fallbackId) {
         try {
-          const modes = await getQuizModes(fallbackId);
-          setSelectedModes(modes);
+          const settings = await getQuizSettings(fallbackId);
+          setSelectedModes(settings.quizModes);
+          setDifficulty(settings.quizDifficulty);
+          setCareLevel(settings.careLevel);
+          setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
         } catch {
           setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
         }
@@ -132,8 +141,11 @@ export default function CreateTab() {
       return;
     }
     try {
-      const modes = await getQuizModes(patientId);
-      setSelectedModes(modes);
+      const settings = await getQuizSettings(patientId);
+      setSelectedModes(settings.quizModes);
+      setDifficulty(settings.quizDifficulty);
+      setCareLevel(settings.careLevel);
+      setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
     } catch {
       showDialog('Error', 'Unable to load existing quiz modes.', [{ label: 'OK', onPress: dismissDialog }]);
       setSelectedModes([]);
@@ -213,10 +225,10 @@ export default function CreateTab() {
 
     setSaving(true);
     try {
-      await updateQuizModes(selectedPatientId, selectedModes);
+      await updateQuizModes(selectedPatientId, selectedModes, difficulty, { careLevel, aiAdaptiveEnabled });
       showDialog(
         'Quiz Created',
-        `Saved for ${selectedPatient?.name ?? 'patient'} with ${difficulty.toLowerCase()} difficulty${premiumEnabled ? ' and Premium adaptive mode enabled.' : '.'}`,
+        `Saved for ${selectedPatient?.name ?? 'patient'} with ${aiAdaptiveEnabled ? 'AI adaptive difficulty' : `${difficulty.toLowerCase()} difficulty`}.`,
         [{ label: 'Done', onPress: dismissDialog }],
       );
     } catch {
@@ -381,43 +393,46 @@ export default function CreateTab() {
           </View>
         </AdaptiveCard>
 
-        {/* Difficulty */}
+        {/* Care Level */}
         <AdaptiveCard style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionIconWrap}>
-              <AppIcon iosName="chart.bar.fill" androidFallback="D" size={16} color={colors.secondary} />
+              <AppIcon iosName="person.crop.circle.badge.checkmark" androidFallback="C" size={16} color={colors.secondary} />
             </View>
-            <Text style={styles.sectionTitle}>Difficulty</Text>
+            <View style={styles.sectionHeaderText}>
+              <Text style={styles.sectionTitle}>Care Level</Text>
+              <Text style={styles.helperTextInline}>Therapeutic pacing</Text>
+            </View>
           </View>
-          <View style={styles.difficultyRow}>
-            {DIFFICULTY_OPTIONS.map((option) => {
-              const active = difficulty === option.key;
+          <View style={styles.careLevelList}>
+            {CARE_LEVEL_OPTIONS.map((option) => {
+              const active = careLevel === option.key;
               return (
                 <TouchableOpacity
                   key={option.key}
-                  style={[styles.difficultyPill, active && styles.difficultyPillActive]}
-                  onPress={() => setDifficulty(option.key)}
-                  activeOpacity={0.75}
+                  style={[styles.careLevelCard, active && styles.careLevelCardActive]}
+                  onPress={() => setCareLevel(option.key)}
+                  activeOpacity={0.78}
                 >
-                  <AppIcon
-                    iosName={option.icon as any}
-                    androidFallback={option.label[0]}
-                    size={18}
-                    color={active ? '#FFFFFF' : colors.textMuted}
-                  />
-                  <Text style={[styles.difficultyLabel, active && styles.difficultyLabelActive]}>
-                    {option.label}
-                  </Text>
+                  <View style={[styles.modeIconWrap, active && styles.modeIconWrapActive]}>
+                    <AppIcon
+                      iosName={option.icon as any}
+                      androidFallback={option.label[0]}
+                      size={16}
+                      color={active ? '#FFFFFF' : colors.secondary}
+                    />
+                  </View>
+                  <View style={styles.modeTextWrap}>
+                    <Text style={[styles.modeTitle, active && styles.modeTitleActive]}>{option.label}</Text>
+                    <Text style={styles.modeSubtitle}>{option.helper}</Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
-          <Text style={styles.difficultyHelper}>
-            {DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.helper}
-          </Text>
         </AdaptiveCard>
 
-        {/* Premium Adaptive Mode */}
+        {/* AI Adaptive Mode */}
         <AdaptiveCard style={styles.sectionCard}>
           <View style={styles.premiumRow}>
             <View style={styles.premiumLeft}>
@@ -425,20 +440,66 @@ export default function CreateTab() {
                 <AppIcon iosName="sparkles" androidFallback="AI" size={16} color="#D4A843" />
               </View>
               <View style={styles.premiumTextWrap}>
-                <Text style={styles.premiumTitle}>Premium Adaptive</Text>
+                <Text style={styles.premiumTitle}>AI Adaptive Difficulty</Text>
                 <Text style={styles.premiumSubtitle}>
-                  AI-powered dynamic difficulty (upcoming)
+                  Brain.js adjusts decoys and hints using accuracy, response time, and time of day.
                 </Text>
               </View>
             </View>
             <Switch
-              value={premiumEnabled}
-              onValueChange={setPremiumEnabled}
+              value={aiAdaptiveEnabled}
+              onValueChange={setAiAdaptiveEnabled}
               trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
-              thumbColor={premiumEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
+              thumbColor={aiAdaptiveEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
               ios_backgroundColor="rgba(0,0,0,0.12)"
             />
           </View>
+        </AdaptiveCard>
+
+        {/* Difficulty */}
+        <AdaptiveCard style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconWrap}>
+              <AppIcon iosName="chart.bar.fill" androidFallback="D" size={16} color={colors.secondary} />
+            </View>
+            <View style={styles.sectionHeaderText}>
+              <Text style={styles.sectionTitle}>Manual Difficulty</Text>
+              <Text style={styles.helperTextInline}>{aiAdaptiveEnabled ? 'AI manages this' : 'Caregiver selected'}</Text>
+            </View>
+          </View>
+          <View style={styles.difficultyRow}>
+            {DIFFICULTY_OPTIONS.map((option) => {
+              const active = difficulty === option.key;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.difficultyPill,
+                    active && styles.difficultyPillActive,
+                    aiAdaptiveEnabled && styles.difficultyPillDisabled,
+                  ]}
+                  onPress={() => setDifficulty(option.key)}
+                  activeOpacity={aiAdaptiveEnabled ? 1 : 0.75}
+                  disabled={aiAdaptiveEnabled}
+                >
+                  <AppIcon
+                    iosName={option.icon as any}
+                    androidFallback={option.label[0]}
+                    size={18}
+                    color={active && !aiAdaptiveEnabled ? '#FFFFFF' : colors.textMuted}
+                  />
+                  <Text style={[styles.difficultyLabel, active && !aiAdaptiveEnabled && styles.difficultyLabelActive]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.difficultyHelper}>
+            {aiAdaptiveEnabled
+              ? 'Safety fallback still uses Easy below 70%, Medium from 70-90%, and Hard above 90%.'
+              : DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.helper}
+          </Text>
         </AdaptiveCard>
 
         {/* Create Button */}
@@ -688,6 +749,23 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
+  careLevelList: {
+    gap: 8,
+  },
+  careLevelCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: isIOS ? 14 : 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    padding: 12,
+  },
+  careLevelCardActive: {
+    borderColor: 'rgba(45,79,62,0.3)',
+    backgroundColor: 'rgba(45,79,62,0.08)',
+  },
 
   // Difficulty pills
   difficultyRow: {
@@ -707,6 +785,10 @@ const styles = StyleSheet.create({
   difficultyPillActive: {
     borderColor: 'rgba(45,79,62,0.3)',
     backgroundColor: colors.secondary,
+  },
+  difficultyPillDisabled: {
+    opacity: 0.58,
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   difficultyLabel: {
     fontFamily: typography.fontFamily.bold,

@@ -1,10 +1,4 @@
-import {
-  deleteAsync,
-  documentDirectory,
-  getInfoAsync,
-  readAsStringAsync,
-  writeAsStringAsync,
-} from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -43,9 +37,7 @@ async function writeProfileFile(fileName: string, webKey: string, json: string):
     if (typeof localStorage !== 'undefined') localStorage.setItem(webKey, json);
     return;
   }
-  const dir = documentDirectory;
-  if (!dir) return;
-  await writeAsStringAsync(`${dir}${fileName}`, json);
+  new File(Paths.document, fileName).write(json);
 }
 
 async function readProfileFile(fileName: string, webKey: string): Promise<string | null> {
@@ -53,12 +45,9 @@ async function readProfileFile(fileName: string, webKey: string): Promise<string
     if (typeof localStorage === 'undefined') return null;
     return localStorage.getItem(webKey);
   }
-  const dir = documentDirectory;
-  if (!dir) return null;
-  const uri = `${dir}${fileName}`;
-  const info = await getInfoAsync(uri);
-  if (!info.exists) return null;
-  return readAsStringAsync(uri);
+  const file = new File(Paths.document, fileName);
+  if (!file.exists) return null;
+  return file.text();
 }
 
 async function deleteProfileFile(fileName: string, webKey: string): Promise<void> {
@@ -66,9 +55,8 @@ async function deleteProfileFile(fileName: string, webKey: string): Promise<void
     if (typeof localStorage !== 'undefined') localStorage.removeItem(webKey);
     return;
   }
-  const dir = documentDirectory;
-  if (!dir) return;
-  await deleteAsync(`${dir}${fileName}`, { idempotent: true }).catch(() => undefined);
+  const file = new File(Paths.document, fileName);
+  if (file.exists) file.delete();
 }
 
 // ─── Token ───

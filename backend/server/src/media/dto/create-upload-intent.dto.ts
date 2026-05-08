@@ -66,10 +66,20 @@ export class CreateUploadIntentDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(3)
+  @ArrayMaxSize(4)
   @IsString({ each: true })
   @MaxLength(80, { each: true })
   decoyNames?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  hint?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  nickname?: string;
 
   @IsOptional()
   @IsString()

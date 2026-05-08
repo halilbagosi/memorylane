@@ -22,6 +22,7 @@ import { M3BottomSheet } from '../../src/components/M3BottomSheet';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { ManageDeletionSheet } from '../../src/components/ManageDeletionSheet';
+import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
 
 const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -730,7 +731,7 @@ function PatientDetailContent({
   showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
   dismissDialog: () => void;
 }) {
-  const [view, setView] = React.useState<'detail' | 'careTeam'>('detail');
+  const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
   const [editName, setEditName] = React.useState('');
   const [editSurname, setEditSurname] = React.useState('');
