@@ -4,6 +4,12 @@ import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
 import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
 
+const QUIZ_MODE_LABELS: Record<string, { label: string; description: string }> = {
+  NAME: { label: 'Type A', description: 'Name recognition' },
+  AGE: { label: 'Type B', description: 'Age recognition' },
+  RELATIONSHIP: { label: 'Type C', description: 'Relationship recognition' },
+};
+
 @Injectable()
 export class PatientService {
   constructor(private prisma: PrismaService) {}
@@ -323,6 +329,228 @@ export class PatientService {
       select: { quizModes: true },
     });
     return { quizModes: patient.quizModes };
+  }
+
+  async recordQuizSession(patientId: string, body: any) {
+    const mode = typeof body?.mode === 'string' ? body.mode : '';
+    const attempts = Array.isArray(body?.attempts) ? body.attempts : [];
+    const validModes = Object.keys(QUIZ_MODE_LABELS);
+    if (!validModes.includes(mode)) throw new BadRequestException('Invalid quiz mode');
+    if (attempts.length === 0) throw new BadRequestException('At least one quiz attempt is required');
+
+    const mediaPublicIds = [...new Set(
+      attempts
+        .map((attempt: any) => typeof attempt?.mediaPublicId === 'string' ? attempt.mediaPublicId : null)
+        .filter(Boolean),
+    )] as string[];
+    if (mediaPublicIds.length === 0) throw new BadRequestException('Quiz attempts need mediaPublicId values');
+
+    const mediaRows = await this.prisma.media.findMany({
+      where: {
+        patientId,
+        publicId: { in: mediaPublicIds },
+        collection: 'QUIZ',
+        status: 'READY',
+        isActive: true,
+      },
+      select: { id: true, publicId: true },
+    });
+    const mediaByPublicId = new Map(mediaRows.map((media) => [media.publicId, media.id]));
+    const now = new Date();
+
+    const sanitized = attempts.flatMap((attempt: any) => {
+      const mediaId = mediaByPublicId.get(attempt?.mediaPublicId);
+      if (!mediaId) return [];
+      const attemptedAt = attempt?.attemptedAt ? new Date(attempt.attemptedAt) : now;
+      const timeToCorrectMs = Number.isFinite(Number(attempt?.timeToCorrectMs))
+        ? Math.max(0, Math.round(Number(attempt.timeToCorrectMs)))
+        : 0;
+      const totalTaps = Number.isFinite(Number(attempt?.totalTaps))
+        ? Math.max(1, Math.round(Number(attempt.totalTaps)))
+        : 1;
+      return [{
+        mediaId,
+        mode,
+        firstTapCorrect: attempt?.firstTapCorrect === true,
+        totalTaps,
+        timeToCorrectMs,
+        attemptedAt: Number.isNaN(attemptedAt.getTime()) ? now : attemptedAt,
+        endAttemptAt: now,
+      }];
+    });
+
+    if (sanitized.length === 0) throw new BadRequestException('No valid quiz attempts were provided');
+
+    const startedAt = sanitized.reduce(
+      (earliest, attempt) => attempt.attemptedAt < earliest ? attempt.attemptedAt : earliest,
+      sanitized[0].attemptedAt,
+    );
+    const correct = sanitized.filter((attempt) => attempt.firstTapCorrect).length;
+    const averageTimeMs = Math.round(
+      sanitized.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / sanitized.length,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      const session = await tx.quizSession.create({
+        data: { patientId, startedAt, endedAt: now },
+      });
+      await tx.quizAttempt.createMany({
+        data: sanitized.map((attempt) => ({
+          sessionId: session.id,
+          mediaId: attempt.mediaId,
+          mode: attempt.mode,
+          firstTapCorrect: attempt.firstTapCorrect,
+          totalTaps: attempt.totalTaps,
+          timeToCorrectMs: attempt.timeToCorrectMs,
+          attemptedAt: attempt.attemptedAt,
+          endAttemptAt: attempt.endAttemptAt,
+        } as any)),
+      });
+      await tx.analyticsSnapshot.create({
+        data: {
+          patientId,
+          date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+          totalCorrect: correct,
+          totalIncorrect: sanitized.length - correct,
+          totalAttempts: sanitized.length,
+          accuracyPercentage: sanitized.length > 0 ? (correct / sanitized.length) * 100 : 0,
+          averageTimeMs,
+        },
+      });
+    });
+
+    return {
+      recorded: sanitized.length,
+      totalCorrect: correct,
+      totalAttempts: sanitized.length,
+      accuracyPercentage: Math.round((correct / sanitized.length) * 100),
+    };
+  }
+
+  async getQuizProgress(patientId: string, caregiverId: string) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { quizModes: true, createdAt: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const [mediaRows, attemptRows] = await Promise.all([
+      this.prisma.media.findMany({
+        where: {
+          patientId,
+          collection: 'QUIZ',
+          status: 'READY',
+          isActive: true,
+        },
+        select: {
+          id: true,
+          publicId: true,
+          firstName: true,
+          lastName: true,
+          relationshipType: true,
+          birthYear: true,
+          eventYear: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.quizAttempt.findMany({
+        where: { session: { patientId } },
+        select: {
+          id: true,
+          mediaId: true,
+          mode: true,
+          firstTapCorrect: true,
+          totalTaps: true,
+          timeToCorrectMs: true,
+          attemptedAt: true,
+          endAttemptAt: true,
+        } as any,
+        orderBy: { attemptedAt: 'desc' },
+      }),
+    ]);
+
+    const attemptsByKey = new Map<string, typeof attemptRows>();
+    for (const attempt of attemptRows as any[]) {
+      const key = `${attempt.mode ?? 'NAME'}:${attempt.mediaId}`;
+      const list = attemptsByKey.get(key) ?? [];
+      list.push(attempt);
+      attemptsByKey.set(key, list);
+    }
+
+    const modeEligible = (mode: string, media: typeof mediaRows[number]) => {
+      if (mode === 'NAME') return Boolean(media.firstName);
+      if (mode === 'AGE') return Boolean(media.birthYear && media.eventYear);
+      if (mode === 'RELATIONSHIP') return Boolean(media.relationshipType);
+      return false;
+    };
+    const displayName = (media: typeof mediaRows[number]) => {
+      const fullName = [media.firstName, media.lastName].filter(Boolean).join(' ').trim();
+      return fullName || media.relationshipType || 'Quiz item';
+    };
+    const formatDuration = (ms: number) => {
+      const totalSeconds = Math.max(0, Math.round(ms / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    };
+
+    const modes = patient.quizModes.filter((mode) => QUIZ_MODE_LABELS[mode]);
+    const quizTypes = modes.map((mode) => {
+      const config = QUIZ_MODE_LABELS[mode];
+      const quizzes = mediaRows.filter((media) => modeEligible(mode, media)).map((media) => {
+        const attempts = (attemptsByKey.get(`${mode}:${media.id}`) ?? []) as any[];
+        const correct = attempts.filter((attempt) => attempt.firstTapCorrect).length;
+        const averageMs = attempts.length > 0
+          ? Math.round(attempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / attempts.length)
+          : 0;
+        const averagePercent = attempts.length > 0 ? Math.round((correct / attempts.length) * 100) : 0;
+
+        return {
+          id: `${mode}:${media.publicId}`,
+          mode,
+          mediaPublicId: media.publicId,
+          name: displayName(media),
+          attempts: attempts.length,
+          averagePercent,
+          pointsEarned: correct,
+          pointsTotal: attempts.length,
+          completed: attempts.length,
+          averageTimeMs: averageMs,
+          createdAt: media.createdAt.toISOString(),
+          questionOutcomes: attempts.map((attempt, index) => ({
+            id: attempt.id,
+            prompt: `${config.description}: ${displayName(media)}`,
+            status: attempt.firstTapCorrect ? 'Correct' : 'Wrong',
+            attemptsUntilResult: attempt.totalTaps,
+            duration: formatDuration(attempt.timeToCorrectMs),
+            takenAt: attempt.attemptedAt.toISOString(),
+            takenAtLabel: attempt.attemptedAt.toISOString(),
+            skipped: false,
+            sequence: attempts.length - index,
+          })),
+        };
+      });
+
+      return {
+        id: mode,
+        mode,
+        label: config.label,
+        description: config.description,
+        quizzes,
+      };
+    });
+
+    return {
+      patientId,
+      registeredAt: patient.createdAt.toISOString(),
+      quizTypes,
+    };
   }
 
   async setBiometricRecovery(patientId: string, enabled: boolean) {

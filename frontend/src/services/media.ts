@@ -207,12 +207,33 @@ export interface PatientQuizData {
   media: QuizMediaItem[];
 }
 
+export interface QuizAttemptInput {
+  mediaPublicId: string;
+  firstTapCorrect: boolean;
+  totalTaps: number;
+  timeToCorrectMs: number;
+  attemptedAt: string;
+}
+
 /** Public — no JWT required. Called from the patient device. */
 export async function getPatientQuizData(patientId: string): Promise<PatientQuizData> {
   const res = await fetch(
     `${API_BASE_URL}/media/patient/${encodeURIComponent(patientId)}/quiz`,
   );
   return jsonOrThrow(res);
+}
+
+export async function recordPatientQuizSession(
+  patientId: string,
+  mode: QuizMode,
+  attempts: QuizAttemptInput[],
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, attempts }),
+  });
+  await jsonOrThrow(res);
 }
 
 export async function getQuizModes(patientId: string): Promise<QuizMode[]> {

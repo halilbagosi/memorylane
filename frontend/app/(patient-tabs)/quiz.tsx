@@ -25,7 +25,7 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientQuizData, QuizMode } from '../../src/services/media';
+import { getPatientQuizData, QuizMode, recordPatientQuizSession, type QuizAttemptInput } from '../../src/services/media';
 import {
   buildQuizPool,
   buildQuizSet,
@@ -133,6 +133,8 @@ export default function QuizTab() {
   const patientRef = useRef<PatientInfo | null>(patient);
   const activeModeRef = useRef<QuizMode | null>(activeMode);
   const questionIdsRef = useRef<string[]>(questionIds);
+  const questionStartedAtRef = useRef<number>(Date.now());
+  const quizAttemptRecordsRef = useRef<QuizAttemptInput[]>([]);
 
   const photoSize = useMemo(() => Math.min(width - 56, height * 0.38, 360), [height, width]);
 
@@ -142,6 +144,9 @@ export default function QuizTab() {
   useEffect(() => { patientRef.current = patient; }, [patient]);
   useEffect(() => { activeModeRef.current = activeMode; }, [activeMode]);
   useEffect(() => { questionIdsRef.current = questionIds; }, [questionIds]);
+  useEffect(() => {
+    if (phase.type === 'quiz') questionStartedAtRef.current = Date.now();
+  }, [phase.type, questionIndex]);
 
   const [dialog, setDialog] = useState<{
     visible: boolean;
@@ -187,6 +192,15 @@ export default function QuizTab() {
   const clearCurrentSession = useCallback(async () => {
     const p = patientRef.current;
     if (p) await deleteSavedSession(p.id);
+  }, []);
+
+  const submitQuizAttempts = useCallback(async () => {
+    const p = patientRef.current;
+    const mode = activeModeRef.current;
+    const attempts = quizAttemptRecordsRef.current;
+    if (!p || !mode || attempts.length === 0) return;
+    await recordPatientQuizSession(p.id, mode, attempts);
+    quizAttemptRecordsRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -252,6 +266,7 @@ export default function QuizTab() {
     setQuestionIds(qs.map((q) => q.media.publicId));
     setQuestionIndex(0);
     setScore(0);
+    quizAttemptRecordsRef.current = [];
     setWrongTaps(new Set());
     setLastWrong(null);
     setShowSuccess(false);
@@ -265,6 +280,7 @@ export default function QuizTab() {
     setQuestionIds(resumeSession.questions.map((q) => q.media.publicId));
     setQuestionIndex(resumeSession.currentIndex);
     setScore(0);
+    quizAttemptRecordsRef.current = [];
     setWrongTaps(new Set());
     setLastWrong(null);
     setShowSuccess(false);
@@ -279,6 +295,7 @@ export default function QuizTab() {
     setQuestionIds([]);
     setActiveMode(null);
     setQuestionIndex(0);
+    quizAttemptRecordsRef.current = [];
     setWrongTaps(new Set());
     setLastWrong(null);
     setShowSuccess(false);
@@ -296,6 +313,17 @@ export default function QuizTab() {
     if (!current) return;
 
     if (choice === current.correctAnswer) {
+      const firstTapCorrect = wrongTaps.size === 0;
+      quizAttemptRecordsRef.current = [
+        ...quizAttemptRecordsRef.current,
+        {
+          mediaPublicId: current.media.publicId,
+          firstTapCorrect,
+          totalTaps: wrongTaps.size + 1,
+          timeToCorrectMs: Date.now() - questionStartedAtRef.current,
+          attemptedAt: new Date().toISOString(),
+        },
+      ];
       if (wrongTaps.size === 0) setScore((s) => s + 1);
       saveCurrentSession(questionIndex + 1).catch(() => undefined);
       setShowSuccess(true);
@@ -320,12 +348,13 @@ export default function QuizTab() {
 
     const nextIndex = questionIndexRef.current + 1;
     if (nextIndex >= questionsLenRef.current) {
+      submitQuizAttempts().catch(() => undefined);
       clearCurrentSession().catch(() => undefined);
       setPhase({ type: 'summary' });
     } else {
       setQuestionIndex(nextIndex);
     }
-  }, [clearCurrentSession]);
+  }, [clearCurrentSession, submitQuizAttempts]);
 
   const handleLogout = () => {
 // We keep the safety check from alpha
