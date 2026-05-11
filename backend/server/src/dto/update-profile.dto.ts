@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpdateProfileDto {
@@ -18,4 +18,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isSubscribed?: boolean;
 }

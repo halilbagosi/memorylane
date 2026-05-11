@@ -131,6 +131,19 @@ export class MediaService {
   ): Promise<UploadIntentResponse> {
     const kind = dto.kind as MediaKindValue;
 
+    // ── Subscription: enforce allowed media kinds ──
+    const caregiver = await this.prisma.caregiver.findUnique({
+      where: { id: caregiverId },
+      select: { isSubscribed: true },
+    });
+    const { getPlanLimits } = await import('../auth/subscription.constants');
+    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
+    if (!limits.allowedMediaKinds.includes(kind)) {
+      throw new ForbiddenException(
+        `${kind.toLowerCase()} uploads require a Premium subscription. Upgrade to unlock video, audio, and document uploads.`,
+      );
+    }
+
     const allowed = ALLOWED_MIME_BY_KIND[kind];
     const normalizedMime = dto.contentType.trim().toLowerCase();
     if (!allowed.includes(normalizedMime)) {

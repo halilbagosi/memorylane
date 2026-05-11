@@ -12,7 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { getCaregiverInfo, getToken } from '../../src/utils/auth';
@@ -24,6 +24,7 @@ import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButto
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
 import { CareLevel, getQuizSettings, QuizDifficulty, QuizMode, updateQuizModes } from '../../src/services/media';
+import { getPlanLimits } from '../../src/utils/subscription';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -62,6 +63,7 @@ export default function CreateTab() {
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
   const [careLevel, setCareLevel] = useState<CareLevel>('DEMENTIA');
   const [aiAdaptiveEnabled, setAiAdaptiveEnabled] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,6 +85,7 @@ export default function CreateTab() {
     () => patients.find((patient) => patient.id === selectedPatientId) ?? null,
     [patients, selectedPatientId],
   );
+  const canUseAiAdaptive = getPlanLimits(isSubscribed).aiDifficultyEnabled;
 
   const loadPatients = useCallback(async () => {
     const token = await getToken();
@@ -98,6 +101,8 @@ export default function CreateTab() {
     try {
       const caregiver = await getCaregiverInfo();
       setMyId(caregiver?.id ?? '');
+      const nextIsSubscribed = caregiver?.isSubscribed === true;
+      setIsSubscribed(nextIsSubscribed);
 
       const res = await fetch(`${API_BASE_URL}/patients/my-list`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -120,7 +125,7 @@ export default function CreateTab() {
           setSelectedModes(settings.quizModes);
           setDifficulty(settings.quizDifficulty);
           setCareLevel(settings.careLevel);
-          setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
+          setAiAdaptiveEnabled(nextIsSubscribed && settings.aiAdaptiveEnabled);
         } catch {
           setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
         }
@@ -145,12 +150,12 @@ export default function CreateTab() {
       setSelectedModes(settings.quizModes);
       setDifficulty(settings.quizDifficulty);
       setCareLevel(settings.careLevel);
-      setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
+      setAiAdaptiveEnabled(canUseAiAdaptive && settings.aiAdaptiveEnabled);
     } catch {
       showDialog('Error', 'Unable to load existing quiz modes.', [{ label: 'OK', onPress: dismissDialog }]);
       setSelectedModes([]);
     }
-  }, []);
+  }, [canUseAiAdaptive]);
 
   useFocusEffect(
     useCallback(() => {
@@ -168,6 +173,17 @@ export default function CreateTab() {
       if (prev.includes(mode)) return prev.filter((entry) => entry !== mode);
       return [...prev, mode];
     });
+  };
+
+  const handleAiAdaptiveToggle = (value: boolean) => {
+    if (value && !canUseAiAdaptive) {
+      showDialog('Premium Feature', 'AI adaptive difficulty is available with Premium.', [
+        { label: 'Not now', onPress: dismissDialog },
+        { label: 'Upgrade', onPress: () => { dismissDialog(); router.push('/account'); } },
+      ]);
+      return;
+    }
+    setAiAdaptiveEnabled(value);
   };
 
   const selectPatient = async (patientId: string) => {
@@ -225,10 +241,14 @@ export default function CreateTab() {
 
     setSaving(true);
     try {
-      await updateQuizModes(selectedPatientId, selectedModes, difficulty, { careLevel, aiAdaptiveEnabled });
+      const adaptiveEnabledForSave = canUseAiAdaptive && aiAdaptiveEnabled;
+      await updateQuizModes(selectedPatientId, selectedModes, difficulty, {
+        careLevel,
+        aiAdaptiveEnabled: adaptiveEnabledForSave,
+      });
       showDialog(
         'Quiz Created',
-        `Saved for ${selectedPatient?.name ?? 'patient'} with ${aiAdaptiveEnabled ? 'AI adaptive difficulty' : `${difficulty.toLowerCase()} difficulty`}.`,
+        `Saved for ${selectedPatient?.name ?? 'patient'} with ${adaptiveEnabledForSave ? 'AI adaptive difficulty' : `${difficulty.toLowerCase()} difficulty`}.`,
         [{ label: 'Done', onPress: dismissDialog }],
       );
     } catch {
@@ -432,30 +452,6 @@ export default function CreateTab() {
           </View>
         </AdaptiveCard>
 
-        {/* AI Adaptive Mode */}
-        <AdaptiveCard style={styles.sectionCard}>
-          <View style={styles.premiumRow}>
-            <View style={styles.premiumLeft}>
-              <View style={[styles.sectionIconWrap, styles.premiumIconWrap]}>
-                <AppIcon iosName="sparkles" androidFallback="AI" size={16} color="#D4A843" />
-              </View>
-              <View style={styles.premiumTextWrap}>
-                <Text style={styles.premiumTitle}>AI Adaptive Difficulty</Text>
-                <Text style={styles.premiumSubtitle}>
-                  Brain.js adjusts decoys and hints using accuracy, response time, and time of day.
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={aiAdaptiveEnabled}
-              onValueChange={setAiAdaptiveEnabled}
-              trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
-              thumbColor={aiAdaptiveEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
-              ios_backgroundColor="rgba(0,0,0,0.12)"
-            />
-          </View>
-        </AdaptiveCard>
-
         {/* Difficulty */}
         <AdaptiveCard style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
@@ -500,6 +496,51 @@ export default function CreateTab() {
               ? 'Safety fallback still uses Easy below 70%, Medium from 70-90%, and Hard above 90%.'
               : DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.helper}
           </Text>
+        </AdaptiveCard>
+
+        {/* AI Adaptive Mode */}
+        <AdaptiveCard
+          style={{
+            ...styles.sectionCard,
+            ...(!canUseAiAdaptive ? styles.premiumLockedCard : {}),
+          }}
+        >
+          <View style={styles.premiumRow}>
+            <View style={styles.premiumLeft}>
+              <View style={[styles.sectionIconWrap, styles.premiumIconWrap]}>
+                <AppIcon iosName="sparkles" androidFallback="AI" size={16} color="#D4A843" />
+              </View>
+              <View style={styles.premiumTextWrap}>
+                <View style={styles.premiumTitleRow}>
+                  <Text style={styles.premiumTitle}>AI Adaptive Difficulty</Text>
+                  {!canUseAiAdaptive && <Text style={styles.premiumBadge}>Premium</Text>}
+                </View>
+                <Text style={styles.premiumSubtitle}>
+                  {canUseAiAdaptive
+                    ? 'Adjusts difficulty using the patient’s answers, response time, time of day, and selected care level.'
+                    : 'Upgrade to adapt quiz difficulty using patient performance and care level.'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={canUseAiAdaptive && aiAdaptiveEnabled}
+              onValueChange={handleAiAdaptiveToggle}
+              disabled={!canUseAiAdaptive}
+              trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
+              thumbColor={canUseAiAdaptive && aiAdaptiveEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
+              ios_backgroundColor="rgba(0,0,0,0.12)"
+            />
+          </View>
+          {!canUseAiAdaptive && (
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={() => router.push('/account')}
+              activeOpacity={0.78}
+            >
+              <AppIcon iosName="star.fill" androidFallback="*" size={14} color="#7B5A00" />
+              <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+            </TouchableOpacity>
+          )}
         </AdaptiveCard>
 
         {/* Create Button */}
@@ -812,6 +853,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  premiumLockedCard: {
+    borderColor: 'rgba(212,168,67,0.28)',
+  },
   premiumLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -825,16 +869,50 @@ const styles = StyleSheet.create({
   premiumTextWrap: {
     flex: 1,
   },
+  premiumTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   premiumTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
     color: colors.textDark,
+  },
+  premiumBadge: {
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(212,168,67,0.18)',
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    color: '#7B5A00',
   },
   premiumSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  upgradeButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(212,168,67,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(123,90,0,0.18)',
+  },
+  upgradeButtonText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: '#7B5A00',
   },
 
   // Save button

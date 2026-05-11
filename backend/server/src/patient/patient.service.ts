@@ -4,6 +4,7 @@ import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
 import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
 import { AiDifficultyService, QuizDifficulty } from './ai-difficulty.service';
+import { getPlanLimits } from '../auth/subscription.constants';
 
 export type CareLevelValue = 'PREVENTATIVE' | 'DEMENTIA';
 
@@ -33,6 +34,16 @@ export class PatientService {
   ) {}
 
   async create(createPatientDto: CreatePatientDto, caregiverId: string) {
+    // ── Subscription: enforce patient limit for free-plan users ──
+    const caregiver = await this.prisma.caregiver.findUnique({ where: { id: caregiverId }, select: { isSubscribed: true } });
+    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
+    const currentPatientCount = await this.prisma.patientCaregiver.count({ where: { caregiverId } });
+    if (currentPatientCount >= limits.maxPatientsPerCaregiver) {
+      throw new ForbiddenException(
+        `Free plan allows up to ${limits.maxPatientsPerCaregiver} patients. Upgrade to Premium for unlimited patients.`,
+      );
+    }
+
     //generate unique 6-character code as eg: 7B2A91
     const patientJoinCode = randomBytes(3).toString('hex').toUpperCase();
 
@@ -45,6 +56,7 @@ export class PatientService {
           avatarUrl: createPatientDto.avatarUrl ?? null,
           patientJoinCode: patientJoinCode,
           createdBy: caregiverId,
+          aiAdaptiveEnabled: limits.aiDifficultyEnabled,
         },
       });
 
@@ -84,6 +96,23 @@ export class PatientService {
 
     if (existing) {
       throw new ConflictException('You are already linked to this patient');
+    }
+
+    // ── Subscription: enforce secondary caregiver limit ──
+    const ownerLink = await this.prisma.patientCaregiver.findFirst({
+      where: { patientId: patient.id, isPrimary: true },
+      include: { caregiver: { select: { isSubscribed: true } } },
+    });
+    if (ownerLink) {
+      const ownerLimits = getPlanLimits(ownerLink.caregiver.isSubscribed);
+      const secondaryCount = await this.prisma.patientCaregiver.count({
+        where: { patientId: patient.id, isPrimary: false },
+      });
+      if (secondaryCount >= ownerLimits.maxSecondaryCaregiversPerPatient) {
+        throw new ForbiddenException(
+          `This patient has reached the maximum of ${ownerLimits.maxSecondaryCaregiversPerPatient} secondary caregivers. The primary caregiver needs to upgrade to Premium.`,
+        );
+      }
     }
 
     await this.prisma.patientCaregiver.create({
@@ -348,6 +377,14 @@ export class PatientService {
       where: { caregiverId_patientId: { caregiverId, patientId } },
     });
     if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+    const caregiver = await this.prisma.caregiver.findUnique({
+      where: { id: caregiverId },
+      select: { isSubscribed: true },
+    });
+    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
+    if (aiAdaptiveEnabled === true && !limits.aiDifficultyEnabled) {
+      throw new ForbiddenException('AI adaptive difficulty requires a Premium subscription');
+    }
 
     const VALID = ['NAME', 'AGE', 'RELATIONSHIP'];
     const sanitized = [...new Set(modes.filter((m) => VALID.includes(m)))];
@@ -363,7 +400,9 @@ export class PatientService {
         quizModes: sanitized,
         ...(quizDifficulty ? { quizDifficulty } : {}),
         ...(nextCareLevel ? { careLevel: nextCareLevel as CareLevelValue } : {}),
-        ...(typeof aiAdaptiveEnabled === 'boolean' ? { aiAdaptiveEnabled } : {}),
+        ...(typeof aiAdaptiveEnabled === 'boolean'
+          ? { aiAdaptiveEnabled: limits.aiDifficultyEnabled ? aiAdaptiveEnabled : false }
+          : {}),
       },
       select: {
         quizModes: true,
