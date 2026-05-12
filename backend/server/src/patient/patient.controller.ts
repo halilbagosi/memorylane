@@ -75,8 +75,35 @@ export class PatientController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id/quiz-modes')
-  async updateQuizModes(@Param('id') patientId: string, @Body() body: { modes: string[] }, @Req() req: any) {
-    return this.patientService.updateQuizModes(patientId, req.user.userId, body.modes);
+  async updateQuizModes(
+    @Param('id') patientId: string,
+    @Body() body: { modes: string[]; difficulty?: string; careLevel?: string; aiAdaptiveEnabled?: boolean },
+    @Req() req: any,
+  ) {
+    return this.patientService.updateQuizModes(
+      patientId,
+      req.user.userId,
+      body.modes,
+      body.difficulty,
+      body.careLevel,
+      body.aiAdaptiveEnabled,
+    );
+  }
+
+  @Post(':id/quiz-results')
+  async recordQuizResults(
+    @Param('id') patientId: string,
+    @Body() body: { attempts?: Array<{
+      publicId: string;
+      mode?: string;
+      difficulty?: string;
+      firstTapCorrect: boolean;
+      totalTaps: number;
+      timeToCorrectMs: number;
+      hadHint?: boolean;
+    }> },
+  ) {
+    return this.patientService.recordQuizResults(patientId, body.attempts ?? []);
   }
 
   @Patch(':id/biometric-recovery')

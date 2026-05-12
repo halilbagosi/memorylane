@@ -12,7 +12,8 @@ import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
-import { getToken } from '../src/utils/auth';
+import { getToken, getCaregiverInfo } from '../src/utils/auth';
+import { canAddPatient, FREE_PLAN_LIMITS } from '../src/utils/subscription';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
@@ -230,6 +231,24 @@ export default function AddPatientScreen() {
     setApiError('');
 
     try {
+      // ── Subscription gate: check patient limit before calling API ──
+      const caregiverInfo = await getCaregiverInfo();
+      const isSubscribed = caregiverInfo?.isSubscribed ?? false;
+      if (!isSubscribed) {
+        // Fetch current patient count from API to get accurate number
+        const countRes = await fetch(`${API_BASE_URL}/patients`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (countRes.ok) {
+          const patients = await countRes.json();
+          if (!canAddPatient(isSubscribed, Array.isArray(patients) ? patients.length : 0)) {
+            setApiError(`Free plan allows up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients. Upgrade to Premium for unlimited patients.`);
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
+
       const avatarUrl = avatarBase64 ? `data:image/jpeg;base64,${avatarBase64}` : undefined;
 
       const response = await fetch(`${API_BASE_URL}/patients`, {

@@ -8,6 +8,7 @@ import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { LocalStorageService } from './storage/local-storage.service';
 import { STORAGE_SERVICE } from './storage/storage.interface';
+import { AiDifficultyService } from '../patient/ai-difficulty.service';
 
 const RAW_UPLOAD_LIMIT = (() => {
   const v = Number(process.env.MEDIA_MAX_BYTES_AUDIO);
@@ -24,6 +25,7 @@ const RAW_UPLOAD_LIMIT = (() => {
     MediaCryptoService,
     FaceVerificationService,
     SignedUrlService,
+    AiDifficultyService,
     { provide: STORAGE_SERVICE, useClass: LocalStorageService },
   ],
 })

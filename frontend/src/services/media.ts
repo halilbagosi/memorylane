@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import { API_BASE_URL } from '../config/api';
 import { getToken } from '../utils/auth';
 
@@ -21,6 +21,8 @@ export interface MediaListItem {
   lastName: string | null;
   relationshipType: string | null;
   birthYear: number | null;
+  hint: string | null;
+  nickname: string | null;
   note: string | null;
   eventYear: number | null;
   isApproximateYear: boolean;
@@ -91,6 +93,8 @@ export interface MediaMetadataInput {
   lastName?: string;
   relationshipType?: string;
   birthYear?: number;
+  hint?: string;
+  nickname?: string;
   note?: string;
   eventYear?: number;
   isApproximateYear?: boolean;
@@ -156,7 +160,7 @@ export async function getAccessUrl(publicId: string): Promise<AccessUrlResponse>
 
 async function computeContentHash(uri: string): Promise<string | undefined> {
   try {
-    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const base64 = await new File(uri).base64();
     return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, base64);
   } catch {
     return undefined;
@@ -190,6 +194,8 @@ async function createUploadIntent(input: {
 }
 
 export type QuizMode = 'NAME' | 'AGE' | 'RELATIONSHIP';
+export type QuizDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
+export type CareLevel = 'PREVENTATIVE' | 'DEMENTIA';
 
 export interface QuizMediaItem {
   publicId: string;
@@ -198,21 +204,38 @@ export interface QuizMediaItem {
   relationshipType: string | null;
   birthYear: number | null;
   eventYear: number | null;
+  hint: string | null;
+  nickname: string | null;
   downloadUrl: string;
   downloadExpiresAt: string;
 }
 
 export interface PatientQuizData {
   quizModes: QuizMode[];
+  quizDifficulty: QuizDifficulty;
+  predictedDifficulty: QuizDifficulty;
+  careLevel: CareLevel;
+  aiAdaptiveEnabled: boolean;
+  successRate: number;
   media: QuizMediaItem[];
 }
 
-export interface QuizAttemptInput {
-  mediaPublicId: string;
+export interface QuizSettings {
+  quizModes: QuizMode[];
+  quizDifficulty: QuizDifficulty;
+  careLevel: CareLevel;
+  aiAdaptiveEnabled: boolean;
+  successRate: number;
+}
+
+export interface QuizResultAttempt {
+  publicId: string;
+  mode: QuizMode;
+  difficulty: QuizDifficulty;
   firstTapCorrect: boolean;
   totalTaps: number;
   timeToCorrectMs: number;
-  attemptedAt: string;
+  hadHint: boolean;
 }
 
 /** Public — no JWT required. Called from the patient device. */
@@ -244,14 +267,56 @@ export async function getQuizModes(patientId: string): Promise<QuizMode[]> {
   return data.quizModes;
 }
 
-export async function updateQuizModes(patientId: string, modes: QuizMode[]): Promise<QuizMode[]> {
+export async function getQuizSettings(patientId: string): Promise<QuizSettings> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
+    headers: await authHeaders(),
+  });
+  const data = await jsonOrThrow(res);
+  return {
+    quizModes: data.quizModes,
+    quizDifficulty: data.quizDifficulty ?? 'MEDIUM',
+    careLevel: data.careLevel ?? 'DEMENTIA',
+    aiAdaptiveEnabled: data.aiAdaptiveEnabled === true,
+    successRate: Number(data.successRate ?? 0),
+  };
+}
+
+export async function updateQuizModes(
+  patientId: string,
+  modes: QuizMode[],
+  difficulty?: QuizDifficulty,
+  options?: { careLevel?: CareLevel; aiAdaptiveEnabled?: boolean },
+): Promise<QuizSettings> {
   const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify({ modes }),
+    body: JSON.stringify({
+      modes,
+      ...(difficulty ? { difficulty } : {}),
+      ...(options?.careLevel ? { careLevel: options.careLevel } : {}),
+      ...(typeof options?.aiAdaptiveEnabled === 'boolean' ? { aiAdaptiveEnabled: options.aiAdaptiveEnabled } : {}),
+    }),
   });
   const data = await jsonOrThrow(res);
-  return data.quizModes;
+  return {
+    quizModes: data.quizModes,
+    quizDifficulty: data.quizDifficulty ?? 'MEDIUM',
+    careLevel: data.careLevel ?? 'DEMENTIA',
+    aiAdaptiveEnabled: data.aiAdaptiveEnabled === true,
+    successRate: Number(data.successRate ?? 0),
+  };
+}
+
+export async function submitQuizResults(
+  patientId: string,
+  attempts: QuizResultAttempt[],
+): Promise<{ successRate: number; predictedDifficulty: QuizDifficulty; targetComplexity: number; source: string }> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-results`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attempts }),
+  });
+  return jsonOrThrow(res);
 }
 
 export async function updateMediaMetadata(

@@ -3,6 +3,28 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { randomBytes } from 'crypto';
 import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
+import { AiDifficultyService, QuizDifficulty } from './ai-difficulty.service';
+import { getPlanLimits } from '../auth/subscription.constants';
+
+export type CareLevelValue = 'PREVENTATIVE' | 'DEMENTIA';
+
+export interface QuizSettings {
+  quizModes: string[];
+  quizDifficulty: string;
+  careLevel: CareLevelValue;
+  aiAdaptiveEnabled: boolean;
+  successRate: number;
+}
+
+interface QuizResultAttemptInput {
+  publicId: string;
+  mode?: string;
+  difficulty?: string;
+  firstTapCorrect: boolean;
+  totalTaps: number;
+  timeToCorrectMs: number;
+  hadHint?: boolean;
+}
 
 const QUIZ_MODE_LABELS: Record<string, { label: string; description: string }> = {
   NAME: { label: 'Type A', description: 'Name recognition' },
@@ -12,9 +34,22 @@ const QUIZ_MODE_LABELS: Record<string, { label: string; description: string }> =
 
 @Injectable()
 export class PatientService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly aiDifficulty: AiDifficultyService,
+  ) {}
 
   async create(createPatientDto: CreatePatientDto, caregiverId: string) {
+    // ── Subscription: enforce patient limit for free-plan users ──
+    const caregiver = await this.prisma.caregiver.findUnique({ where: { id: caregiverId }, select: { isSubscribed: true } });
+    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
+    const currentPatientCount = await this.prisma.patientCaregiver.count({ where: { caregiverId } });
+    if (currentPatientCount >= limits.maxPatientsPerCaregiver) {
+      throw new ForbiddenException(
+        `Free plan allows up to ${limits.maxPatientsPerCaregiver} patients. Upgrade to Premium for unlimited patients.`,
+      );
+    }
+
     //generate unique 6-character code as eg: 7B2A91
     const patientJoinCode = randomBytes(3).toString('hex').toUpperCase();
 
@@ -27,7 +62,7 @@ export class PatientService {
           avatarUrl: createPatientDto.avatarUrl ?? null,
           patientJoinCode: patientJoinCode,
           createdBy: caregiverId,
-          ...(createPatientDto.dementiaLevel ? { dementiaLevel: createPatientDto.dementiaLevel } : {}),
+          aiAdaptiveEnabled: limits.aiDifficultyEnabled,
         },
       });
 
@@ -67,6 +102,23 @@ export class PatientService {
 
     if (existing) {
       throw new ConflictException('You are already linked to this patient');
+    }
+
+    // ── Subscription: enforce secondary caregiver limit ──
+    const ownerLink = await this.prisma.patientCaregiver.findFirst({
+      where: { patientId: patient.id, isPrimary: true },
+      include: { caregiver: { select: { isSubscribed: true } } },
+    });
+    if (ownerLink) {
+      const ownerLimits = getPlanLimits(ownerLink.caregiver.isSubscribed);
+      const secondaryCount = await this.prisma.patientCaregiver.count({
+        where: { patientId: patient.id, isPrimary: false },
+      });
+      if (secondaryCount >= ownerLimits.maxSecondaryCaregiversPerPatient) {
+        throw new ForbiddenException(
+          `This patient has reached the maximum of ${ownerLimits.maxSecondaryCaregiversPerPatient} secondary caregivers. The primary caregiver needs to upgrade to Premium.`,
+        );
+      }
     }
 
     await this.prisma.patientCaregiver.create({
@@ -300,35 +352,169 @@ export class PatientService {
     return { message: 'Device unpaired successfully' };
   }
 
-  async getQuizModes(patientId: string, caregiverId: string): Promise<{ quizModes: string[] }> {
+  async getQuizModes(patientId: string, caregiverId: string): Promise<QuizSettings> {
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId } },
     });
     if (!link) throw new ForbiddenException('Not a caregiver for this patient');
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
-      select: { quizModes: true },
+      select: {
+        quizModes: true,
+        quizDifficulty: true,
+        careLevel: true,
+        aiAdaptiveEnabled: true,
+        successRate: true,
+      },
     });
     if (!patient) throw new NotFoundException('Patient not found');
-    return { quizModes: patient.quizModes };
+    return patient;
   }
 
-  async updateQuizModes(patientId: string, caregiverId: string, modes: string[]): Promise<{ quizModes: string[] }> {
+  async updateQuizModes(
+    patientId: string,
+    caregiverId: string,
+    modes: string[],
+    difficulty?: string,
+    careLevel?: string,
+    aiAdaptiveEnabled?: boolean,
+  ): Promise<QuizSettings> {
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId } },
     });
     if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+    const caregiver = await this.prisma.caregiver.findUnique({
+      where: { id: caregiverId },
+      select: { isSubscribed: true },
+    });
+    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
+    if (aiAdaptiveEnabled === true && !limits.aiDifficultyEnabled) {
+      throw new ForbiddenException('AI adaptive difficulty requires a Premium subscription');
+    }
 
     const VALID = ['NAME', 'AGE', 'RELATIONSHIP'];
     const sanitized = [...new Set(modes.filter((m) => VALID.includes(m)))];
     if (sanitized.length === 0) throw new BadRequestException('At least one quiz mode must remain active');
+    const VALID_DIFFICULTY = ['EASY', 'MEDIUM', 'HARD'];
+    const quizDifficulty = difficulty && VALID_DIFFICULTY.includes(difficulty) ? difficulty : undefined;
+    const VALID_CARE_LEVELS = ['PREVENTATIVE', 'DEMENTIA'];
+    const nextCareLevel = careLevel && VALID_CARE_LEVELS.includes(careLevel) ? careLevel : undefined;
 
     const patient = await this.prisma.patient.update({
       where: { id: patientId },
-      data: { quizModes: sanitized },
-      select: { quizModes: true },
+      data: {
+        quizModes: sanitized,
+        ...(quizDifficulty ? { quizDifficulty } : {}),
+        ...(nextCareLevel ? { careLevel: nextCareLevel as CareLevelValue } : {}),
+        ...(typeof aiAdaptiveEnabled === 'boolean'
+          ? { aiAdaptiveEnabled: limits.aiDifficultyEnabled ? aiAdaptiveEnabled : false }
+          : {}),
+      },
+      select: {
+        quizModes: true,
+        quizDifficulty: true,
+        careLevel: true,
+        aiAdaptiveEnabled: true,
+        successRate: true,
+      },
     });
-    return { quizModes: patient.quizModes };
+    return patient;
+  }
+
+  async recordQuizResults(patientId: string, attempts: QuizResultAttemptInput[]) {
+    if (!Array.isArray(attempts) || attempts.length === 0) {
+      throw new BadRequestException('Quiz results require at least one attempt');
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: {
+        id: true,
+        quizDifficulty: true,
+        aiAdaptiveEnabled: true,
+        aiDifficultyModel: true,
+      },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const publicIds = attempts.map((attempt) => attempt.publicId).filter(Boolean);
+    const mediaRows = await this.prisma.media.findMany({
+      where: { patientId, publicId: { in: publicIds }, collection: 'QUIZ' },
+      select: { id: true, publicId: true },
+    });
+    const mediaByPublicId = new Map(mediaRows.map((media) => [media.publicId, media.id]));
+    const validAttempts = attempts.filter((attempt) => mediaByPublicId.has(attempt.publicId));
+    if (validAttempts.length === 0) throw new BadRequestException('No valid quiz media found for results');
+
+    await this.prisma.quizSession.create({
+      data: {
+        patientId,
+        endedAt: new Date(),
+        quizAttempts: {
+          create: validAttempts.map((attempt) => ({
+            mediaId: mediaByPublicId.get(attempt.publicId)!,
+            firstTapCorrect: attempt.firstTapCorrect === true,
+            totalTaps: Math.max(1, Math.min(10, Number(attempt.totalTaps) || 1)),
+            timeToCorrectMs: Math.max(250, Math.min(120000, Number(attempt.timeToCorrectMs) || 8000)),
+            difficulty: ['EASY', 'MEDIUM', 'HARD'].includes(attempt.difficulty ?? '') ? attempt.difficulty : patient.quizDifficulty,
+            questionMode: ['NAME', 'AGE', 'RELATIONSHIP'].includes(attempt.mode ?? '') ? attempt.mode : null,
+            hadHint: attempt.hadHint === true,
+            endAttemptAt: new Date(),
+          })),
+        },
+      },
+    });
+
+    const lastAttempts = await this.prisma.quizAttempt.findMany({
+      where: { session: { patientId } },
+      orderBy: { attemptedAt: 'desc' },
+      take: 10,
+      select: {
+        firstTapCorrect: true,
+        timeToCorrectMs: true,
+        difficulty: true,
+      },
+    });
+    const successRate = lastAttempts.length > 0
+      ? lastAttempts.filter((attempt) => attempt.firstTapCorrect).length / lastAttempts.length
+      : 0;
+    const averageTimeMs = lastAttempts.length > 0
+      ? lastAttempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / lastAttempts.length
+      : 8000;
+    const latest = validAttempts[validAttempts.length - 1];
+    const inputs = {
+      accuracy: successRate,
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latest.timeToCorrectMs, averageTimeMs),
+      timeOfDay: this.aiDifficulty.timeOfDayScore(),
+      currentDifficulty: this.aiDifficulty.difficultyToComplexity(latest.difficulty ?? patient.quizDifficulty),
+    };
+    const targetComplexity = await this.aiDifficulty.saveTrainingSample(
+      patientId,
+      inputs,
+      latest.firstTapCorrect,
+    );
+
+    const aiDifficultyModel = patient.aiAdaptiveEnabled
+      ? this.aiDifficulty.trainWithResult(patient.aiDifficultyModel, inputs, latest.firstTapCorrect)
+      : patient.aiDifficultyModel;
+    const prediction = patient.aiAdaptiveEnabled
+      ? this.aiDifficulty.predict(inputs, aiDifficultyModel)
+      : this.aiDifficulty.ruleBased(inputs);
+
+    await this.prisma.patient.update({
+      where: { id: patientId },
+      data: {
+        successRate,
+        aiDifficultyModel: aiDifficultyModel as any,
+      },
+    });
+
+    return {
+      successRate,
+      predictedDifficulty: patient.aiAdaptiveEnabled ? prediction.difficulty : (patient.quizDifficulty as QuizDifficulty),
+      targetComplexity,
+      source: patient.aiAdaptiveEnabled ? prediction.source : 'RULE_BASED',
+    };
   }
 
   async recordQuizSession(patientId: string, body: any) {
