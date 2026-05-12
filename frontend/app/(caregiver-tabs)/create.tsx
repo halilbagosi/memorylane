@@ -508,12 +508,11 @@ export default function CreateTab() {
           <View style={styles.premiumRow}>
             <View style={styles.premiumLeft}>
               <View style={[styles.sectionIconWrap, styles.premiumIconWrap]}>
-                <AppIcon iosName="sparkles" androidFallback="AI" size={16} color="#D4A843" />
+                <AppIcon iosName="brain.head.profile" androidFallback="AI" size={16} color="#D4A843" />
               </View>
               <View style={styles.premiumTextWrap}>
                 <View style={styles.premiumTitleRow}>
                   <Text style={styles.premiumTitle}>AI Adaptive Difficulty</Text>
-                  {!canUseAiAdaptive && <Text style={styles.premiumBadge}>Premium</Text>}
                 </View>
                 <Text style={styles.premiumSubtitle}>
                   {canUseAiAdaptive
@@ -537,7 +536,6 @@ export default function CreateTab() {
               onPress={() => router.push('/account')}
               activeOpacity={0.78}
             >
-              <AppIcon iosName="star.fill" androidFallback="*" size={14} color="#7B5A00" />
               <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
             </TouchableOpacity>
           )}
@@ -879,16 +877,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
     color: colors.textDark,
-  },
-  premiumBadge: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: 'rgba(212,168,67,0.18)',
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 11,
-    color: '#7B5A00',
   },
   premiumSubtitle: {
     fontFamily: typography.fontFamily.regular,
