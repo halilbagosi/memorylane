@@ -26,7 +26,6 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientQuizData, QuizMode, recordPatientQuizSession, type QuizAttemptInput } from '../../src/services/media';
 import {
   CareLevel,
   getPatientQuizData,
@@ -34,6 +33,7 @@ import {
   QuizMode,
   QuizResultAttempt,
   submitQuizResults,
+  type QuizAttemptInput,
 } from '../../src/services/media';
 import {
   buildAdaptiveQuizSet,
@@ -159,6 +159,7 @@ export default function QuizTab() {
   const quizDifficultyRef = useRef<QuizDifficulty>(quizDifficulty);
   const questionStartTimeRef = useRef(Date.now());
   const attemptResultsRef = useRef<QuizResultAttempt[]>([]);
+  const quizAttemptRecordsRef = useRef<QuizAttemptInput[]>([]);
 
   const photoSize = useMemo(() => Math.min(width - 56, height * 0.38, 360), [height, width]);
 
@@ -232,14 +233,6 @@ export default function QuizTab() {
     if (p) await deleteSavedSession(p.id);
   }, []);
 
-  const submitQuizAttempts = useCallback(async () => {
-    const p = patientRef.current;
-    const mode = activeModeRef.current;
-    const attempts = quizAttemptRecordsRef.current;
-    if (!p || !mode || attempts.length === 0) return;
-    await recordPatientQuizSession(p.id, mode, attempts);
-    quizAttemptRecordsRef.current = [];
-  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
@@ -310,8 +303,13 @@ export default function QuizTab() {
   }, [initialise]);
 
   const startSet = useCallback((mode: QuizMode) => {
+    console.log(`[Quiz] Starting set for mode: ${mode}, pool size: ${mediaPool.length}`);
     const qs = buildQuizSet(mediaPool, mode, quizDifficulty);
-    if (qs.length === 0) return;
+    console.log(`[Quiz] Generated ${qs.length} questions`);
+    if (qs.length === 0) {
+      console.warn('[Quiz] No questions generated, cannot start quiz');
+      return;
+    }
     setQuestions(qs);
     setActiveMode(mode);
     setQuestionIds(qs.map((q) => q.media.publicId));
@@ -329,8 +327,13 @@ export default function QuizTab() {
   }, [hintOpacity, mediaPool, quizDifficulty]);
 
   const startAdaptiveSet = useCallback(() => {
+    console.log(`[Quiz] Starting adaptive set. CareLevel: ${careLevel}, Modes: ${enabledModes.join(',')}, Pool: ${mediaPool.length}`);
     const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty);
-    if (qs.length === 0) return;
+    console.log(`[Quiz] Generated ${qs.length} adaptive questions`);
+    if (qs.length === 0) {
+      console.warn('[Quiz] No adaptive questions generated, cannot start quiz');
+      return;
+    }
     setQuestions(qs);
     setActiveMode(careLevel === 'PREVENTATIVE' ? 'MIXED' : qs[0].mode);
     setQuestionIds(qs.map((q) => q.media.publicId));
@@ -439,7 +442,7 @@ export default function QuizTab() {
           mediaPublicId: current.media.publicId,
           firstTapCorrect,
           totalTaps: wrongTaps.size + 1,
-          timeToCorrectMs: Date.now() - questionStartedAtRef.current,
+          timeToCorrectMs: Date.now() - questionStartTimeRef.current,
           attemptedAt: new Date().toISOString(),
         },
       ];
@@ -484,7 +487,6 @@ export default function QuizTab() {
 
     const nextIndex = questionIndexRef.current + 1;
     if (nextIndex >= questionsLenRef.current) {
-      submitQuizAttempts().catch(() => undefined);
       clearCurrentSession().catch(() => undefined);
       const p = patientRef.current;
       const attempts = attemptResultsRef.current;
