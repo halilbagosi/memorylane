@@ -49,4 +49,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
   CMD node -e "require('net').connect(Number(process.env.PORT)||8080,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
 
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]
+CMD ["node", "dist/main.js"]

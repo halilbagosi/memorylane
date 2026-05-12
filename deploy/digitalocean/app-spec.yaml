@@ -1,0 +1,74 @@
+# DigitalOcean App Platform — example spec for `doctl apps create --spec app-spec.example.yaml`
+# Replace placeholders: YOUR_GITHUB_ORG/YOUR_REPO, region, instance size, and secret env values.
+# For SECRET entries, prefer setting values in the control panel (or encrypted EV[...] values from `doctl`)
+# instead of committing real secrets in this file.
+#
+# UI alternative: New App → GitHub → Source directory `backend/server`,
+# Dockerfile path `Dockerfile`, HTTP port `8080`. Attach Postgres and bind DATABASE_URL.
+#
+# Note: container-local disk under /app/uploads/media is not durable across deploys/restarts
+# on App Platform unless you add persistent storage or switch media to object storage (e.g. Spaces).
+#
+# Dockerfile path is relative to repository root; source_dir is the build context.
+
+name: memorylane-api
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: bdurmishi23/memorylane
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: backend/server/Dockerfile
+    source_dir: backend/server
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_TIME
+        type: GENERAL
+      - key: HOST
+        value: 0.0.0.0
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PORT
+        value: '8080'
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DATABASE_URL
+        value: ${db.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: JWT_SECRET
+        value: b22bb6dfad7c1adb1c76b4dfad1bea7db074c6a104ddbf790761e62fe002956a
+        scope: RUN_TIME
+        type: SECRET
+      - key: ENCRYPTION_KEY
+        value: Ra3197c37dd65779aa9a9126dd95b4bc1729d82fdcb82945e3f0c9aae48457e03
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEDIA_MASTER_KEY
+        value: 858512b9a2d589852649ad04c52a14d42dcd439d20fa15950bd4df95503871a2
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEDIA_SIGNED_URL_SECRET
+        value: R55fd5c58fefd7aec2997b23e11c3e3d598ad8b6a5304cbfedbdadec9ebb2aefa
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEDIA_STORAGE_DRIVER
+        value: local
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEDIA_STORAGE_LOCAL_PATH
+        value: /app/uploads/media
+        scope: RUN_TIME
+        type: GENERAL
+
+databases:
+  - name: db
+    engine: PG
+    version: '16'
+    production: false
