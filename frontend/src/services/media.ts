@@ -246,6 +246,19 @@ export async function getPatientQuizData(patientId: string): Promise<PatientQuiz
   return jsonOrThrow(res);
 }
 
+export async function recordPatientQuizSession(
+  patientId: string,
+  mode: QuizMode,
+  attempts: QuizAttemptInput[],
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, attempts }),
+  });
+  await jsonOrThrow(res);
+}
+
 export async function getQuizModes(patientId: string): Promise<QuizMode[]> {
   const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(patientId)}/quiz-modes`, {
     headers: await authHeaders(),

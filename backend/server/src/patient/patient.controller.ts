@@ -63,6 +63,17 @@ export class PatientController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get(':id/progress')
+  async getQuizProgress(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.getQuizProgress(patientId, req.user.userId);
+  }
+
+  @Post(':id/quiz-sessions')
+  async recordQuizSession(@Param('id') patientId: string, @Body() body: any) {
+    return this.patientService.recordQuizSession(patientId, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/quiz-modes')
   async updateQuizModes(
     @Param('id') patientId: string,

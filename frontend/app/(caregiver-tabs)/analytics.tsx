@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useRouter } from 'expo-router';
@@ -9,6 +9,7 @@ import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
+import { AdaptiveCard } from '../../src/components/AdaptiveCard';
 import { API_BASE_URL } from '../../src/config/api';
 import { clearAuth, getCaregiverInfo, getToken } from '../../src/utils/auth';
 
@@ -16,12 +17,17 @@ type FilterKey = 'day' | 'week' | 'month' | 'year' | 'custom';
 
 type QuizReport = {
   id: string;
+  mode: string;
+  mediaPublicId: string;
   name: string;
   attempts: number;
   averagePercent: number;
   pointsEarned: number;
   pointsTotal: number;
   completed: number;
+  averageTimeMs?: number;
+  createdAt: string;
+  questionOutcomes: QuestionOutcome[];
 };
 
 type QuestionOutcome = {
@@ -35,6 +41,7 @@ type QuestionOutcome = {
 
 type QuizTypeReport = {
   id: string;
+  mode: string;
   label: string;
   description: string;
   quizzes: QuizReport[];
@@ -56,6 +63,12 @@ type PatientListItem = {
   surname: string;
 };
 
+type ProgressResponse = {
+  patientId: string;
+  registeredAt: string;
+  quizTypes: QuizTypeReport[];
+};
+
 type AppliedFilter = {
   filter: FilterKey;
   dateValue: string;
@@ -71,7 +84,8 @@ const FILTERS: FilterOption[] = [
   { key: 'custom', label: 'Custom' },
 ];
 
-const TODAY = new Date(2026, 4, 7);
+const isIOS = Platform.OS === 'ios';
+const TODAY = new Date();
 const CAREGIVER_REGISTERED_AT = new Date(2024, 0, 12);
 
 function ordinal(day: number) {
@@ -180,39 +194,6 @@ const DATE_OPTIONS: Record<Exclude<FilterKey, 'custom'>, DateOption[]> = {
 const DEFAULT_CUSTOM_FROM = '2026-05-01';
 const DEFAULT_CUSTOM_TO = toISODate(TODAY);
 
-const QUIZ_TYPES: QuizTypeReport[] = [
-  {
-    id: 'face',
-    label: 'Type A',
-    description: 'Face recognition',
-    quizzes: [
-      { id: 'face-1', name: 'Morning Family Faces', attempts: 18, averagePercent: 82, pointsEarned: 410, pointsTotal: 500, completed: 15 },
-      { id: 'face-2', name: 'Close Friends', attempts: 13, averagePercent: 68, pointsEarned: 272, pointsTotal: 400, completed: 10 },
-      { id: 'face-3', name: 'Grandchildren', attempts: 9, averagePercent: 91, pointsEarned: 273, pointsTotal: 300, completed: 8 },
-    ],
-  },
-  {
-    id: 'voice',
-    label: 'Type B',
-    description: 'Voice matching',
-    quizzes: [
-      { id: 'voice-1', name: 'Who Said It?', attempts: 11, averagePercent: 74, pointsEarned: 222, pointsTotal: 300, completed: 9 },
-      { id: 'voice-2', name: 'Familiar Voices', attempts: 7, averagePercent: 57, pointsEarned: 171, pointsTotal: 300, completed: 5 },
-    ],
-  },
-  {
-    id: 'memory',
-    label: 'Type C',
-    description: 'Memory prompts',
-    quizzes: [
-      { id: 'memory-1', name: 'Places We Know', attempts: 16, averagePercent: 79, pointsEarned: 316, pointsTotal: 400, completed: 13 },
-      { id: 'memory-2', name: 'Holiday Moments', attempts: 8, averagePercent: 64, pointsEarned: 192, pointsTotal: 300, completed: 6 },
-      { id: 'memory-3', name: 'Daily Routines', attempts: 14, averagePercent: 86, pointsEarned: 344, pointsTotal: 400, completed: 12 },
-      { id: 'memory-4', name: 'Favorite Songs', attempts: 6, averagePercent: 48, pointsEarned: 96, pointsTotal: 200, completed: 4 },
-    ],
-  },
-];
-
 function summarize(quizzes: QuizReport[]) {
   const attempts = quizzes.reduce((sum, quiz) => sum + quiz.attempts, 0);
   const completed = quizzes.reduce((sum, quiz) => sum + quiz.completed, 0);
@@ -223,43 +204,6 @@ function summarize(quizzes: QuizReport[]) {
   return { attempts, completed, pointsEarned, pointsTotal, averagePercent };
 }
 
-function filterMultiplier(filter: FilterKey | null) {
-  switch (filter) {
-    case 'day':
-      return 0.38;
-    case 'week':
-      return 0.62;
-    case 'month':
-      return 0.82;
-    case 'custom':
-      return 0.72;
-    case 'year':
-    default:
-      return 1;
-  }
-}
-
-function applyTimeFilterToQuiz(quiz: QuizReport, filter: FilterKey | null): QuizReport {
-  if (!filter) return quiz;
-
-  const multiplier = filterMultiplier(filter);
-  const attempts = Math.max(1, Math.round(quiz.attempts * multiplier));
-  const completed = Math.min(attempts, Math.max(1, Math.round(quiz.completed * multiplier)));
-  const percentShift = filter === 'day' ? -3 : filter === 'week' ? -1 : filter === 'custom' ? 1 : 0;
-  const averagePercent = Math.max(0, Math.min(100, quiz.averagePercent + percentShift));
-  const pointsTotal = Math.max(50, Math.round(quiz.pointsTotal * multiplier));
-  const pointsEarned = Math.min(pointsTotal, Math.round(pointsTotal * (averagePercent / 100)));
-
-  return {
-    ...quiz,
-    attempts,
-    completed,
-    averagePercent,
-    pointsEarned,
-    pointsTotal,
-  };
-}
-
 function thresholdStage(percent: number) {
   if (percent < 20) return 1;
   if (percent < 40) return 2;
@@ -268,30 +212,72 @@ function thresholdStage(percent: number) {
   return 5;
 }
 
-function getQuestionOutcomes(quizId: string): QuestionOutcome[] {
-  const outcomes: Record<string, QuestionOutcome[]> = {
-    'face-1': [
-      { id: 'q1', prompt: 'Recognize Elena from family photos', status: 'Correct', attemptsUntilResult: 1, duration: '00:18', takenAt: 'May 6th, 2026 at 09:14' },
-      { id: 'q2', prompt: 'Recognize Arben at the beach', status: 'Wrong', attemptsUntilResult: 2, duration: '01:07', takenAt: 'May 6th, 2026 at 09:16' },
-      { id: 'q3', prompt: 'Recognize Mira with grandchildren', status: 'Skipped', attemptsUntilResult: 3, duration: '02:12', takenAt: 'May 6th, 2026 at 09:19' },
-      { id: 'q4', prompt: 'Recognize Drita in the garden', status: 'Correct', attemptsUntilResult: 1, duration: '00:24', takenAt: 'May 6th, 2026 at 09:21' },
-    ],
-    'face-2': [
-      { id: 'q1', prompt: 'Match Luan to his portrait', status: 'Correct', attemptsUntilResult: 1, duration: '00:31', takenAt: 'May 5th, 2026 at 15:08' },
-      { id: 'q2', prompt: 'Find Ana in the group photo', status: 'Wrong', attemptsUntilResult: 2, duration: '01:26', takenAt: 'May 5th, 2026 at 15:10' },
-      { id: 'q3', prompt: 'Recognize Besa from dinner', status: 'Correct', attemptsUntilResult: 1, duration: '00:43', takenAt: 'May 5th, 2026 at 15:13' },
-    ],
-    'face-3': [
-      { id: 'q1', prompt: 'Recognize grandchildren together', status: 'Correct', attemptsUntilResult: 1, duration: '00:15', takenAt: 'May 4th, 2026 at 10:02' },
-      { id: 'q2', prompt: 'Match portrait to name', status: 'Correct', attemptsUntilResult: 1, duration: '00:28', takenAt: 'May 4th, 2026 at 10:04' },
-    ],
-  };
+function formatTakenAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return formatExportTimestamp(date);
+}
 
-  return outcomes[quizId] ?? [
-    { id: 'q1', prompt: 'Question 1', status: 'Correct', attemptsUntilResult: 1, duration: '00:29', takenAt: 'May 6th, 2026 at 11:20' },
-    { id: 'q2', prompt: 'Question 2', status: 'Wrong', attemptsUntilResult: 2, duration: '01:03', takenAt: 'May 6th, 2026 at 11:23' },
-    { id: 'q3', prompt: 'Question 3', status: 'Skipped', attemptsUntilResult: 2, duration: '01:48', takenAt: 'May 6th, 2026 at 11:26' },
-  ];
+function dateRangeForFilter(filter: AppliedFilter | null): { start: Date; end: Date } | null {
+  if (!filter) return null;
+
+  if (filter.filter === 'day') {
+    const start = fromISODate(filter.dateValue);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  if (filter.filter === 'month') {
+    const [year, month] = filter.dateValue.split('-').map(Number);
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59, 999);
+    return { start, end };
+  }
+
+  if (filter.filter === 'year') {
+    const year = Number(filter.dateValue);
+    return {
+      start: new Date(year, 0, 1),
+      end: new Date(year, 11, 31, 23, 59, 59, 999),
+    };
+  }
+
+  if (filter.filter === 'custom') {
+    const start = fromISODate(filter.customFrom);
+    const end = fromISODate(filter.customTo);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  start.setHours(0, 0, 0, 0);
+  return { start, end };
+}
+
+function applyTimeFilterToQuiz(quiz: QuizReport, filter: AppliedFilter | null): QuizReport {
+  const range = dateRangeForFilter(filter);
+  if (!range) return quiz;
+
+  const questionOutcomes = quiz.questionOutcomes.filter((outcome) => {
+    const date = new Date(outcome.takenAt);
+    if (Number.isNaN(date.getTime())) return false;
+    return date >= range.start && date <= range.end;
+  });
+  const pointsEarned = questionOutcomes.filter((outcome) => outcome.status === 'Correct').length;
+  const pointsTotal = questionOutcomes.length;
+
+  return {
+    ...quiz,
+    attempts: pointsTotal,
+    completed: pointsTotal,
+    pointsEarned,
+    pointsTotal,
+    averagePercent: pointsTotal > 0 ? Math.round((pointsEarned / pointsTotal) * 100) : 0,
+    questionOutcomes,
+  };
 }
 
 function escapeHtml(value: string) {
@@ -336,13 +322,13 @@ function buildPdfHtml({
     ? '<tr><th>Question</th><th>Result</th><th>Tries</th><th>Time</th><th>Taken</th></tr>'
     : '<tr><th>Quiz</th><th>Score</th><th>Points</th><th>Threshold</th><th>Completed/Attempts</th></tr>';
   const rowItems: string[] = selectedQuiz
-    ? getQuestionOutcomes(selectedQuiz.id).map((outcome) => `
+    ? selectedQuiz.questionOutcomes.map((outcome) => `
       <tr>
         <td>${escapeHtml(outcome.prompt)}</td>
         <td>${escapeHtml(outcome.status)}</td>
         <td>${outcome.attemptsUntilResult}</td>
         <td>${escapeHtml(outcome.duration)}</td>
-        <td>${escapeHtml(outcome.takenAt)}</td>
+        <td>${escapeHtml(formatTakenAt(outcome.takenAt))}</td>
       </tr>
     `)
     : quizzes.map((quiz) => `
@@ -442,7 +428,7 @@ function buildPdfHtml({
             </table>
           </section>
         `).join('')}
-        <div class="note">MemoryLane progress report generated from mock visualization data.</div>
+        <div class="note">MemoryLane progress report generated from recorded quiz answers.</div>
       </body>
     </html>
   `;
@@ -462,20 +448,21 @@ export default function AnalyticsTab() {
   const [patientOptions, setPatientOptions] = useState<DateOption[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [patientsLoading, setPatientsLoading] = useState(true);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [quizTypes, setQuizTypes] = useState<QuizTypeReport[]>([]);
   const [caregiverName, setCaregiverName] = useState('Caregiver');
   const [exporting, setExporting] = useState(false);
 
   const allQuizzes = useMemo(
-    () => QUIZ_TYPES.flatMap((type) => type.quizzes),
-    []
+    () => quizTypes.flatMap((type) => type.quizzes),
+    [quizTypes]
   );
-  const selectedType = QUIZ_TYPES.find((type) => type.id === selectedTypeId) ?? null;
+  const selectedType = quizTypes.find((type) => type.id === selectedTypeId) ?? null;
   const isOverallSelected = selectedTypeId === 'overall';
   const detailQuizzes = isOverallSelected ? allQuizzes : selectedType?.quizzes ?? [];
-  const activeFilterKey = appliedFilter?.filter ?? null;
   const visibleDetailQuizzes = useMemo(
-    () => detailQuizzes.map((quiz) => applyTimeFilterToQuiz(quiz, activeFilterKey)),
-    [detailQuizzes, activeFilterKey]
+    () => detailQuizzes.map((quiz) => applyTimeFilterToQuiz(quiz, appliedFilter)),
+    [detailQuizzes, appliedFilter]
   );
   const detailSummary = summarize(visibleDetailQuizzes);
   const detailTitle = isOverallSelected ? 'All quiz types' : selectedType?.description ?? '';
@@ -543,6 +530,66 @@ export default function AnalyticsTab() {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchProgress = async () => {
+      if (!selectedPatientId) {
+        setQuizTypes([]);
+        return;
+      }
+
+      try {
+        setProgressLoading(true);
+        const token = await getToken();
+        if (!token) {
+          router.replace('/login');
+          return;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/patients/${encodeURIComponent(selectedPatientId)}/progress`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 401) {
+          await clearAuth();
+          router.replace('/login');
+          return;
+        }
+
+        if (res.status === 404) {
+          if (!cancelled) {
+            setQuizTypes([]);
+            setSelectedTypeId(null);
+            setSelectedQuizId(null);
+          }
+          return;
+        }
+
+        if (!res.ok) throw new Error('Could not load quiz progress.');
+
+        const data = await res.json() as ProgressResponse;
+        if (!cancelled) {
+          setQuizTypes(data.quizTypes ?? []);
+          setSelectedTypeId(null);
+          setSelectedQuizId(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setQuizTypes([]);
+        }
+      } finally {
+        if (!cancelled) setProgressLoading(false);
+      }
+    };
+
+    fetchProgress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, selectedPatientId]);
 
   const handleFilterChange = (filter: FilterKey) => {
     setDraftFilter(filter);
@@ -617,7 +664,7 @@ export default function AnalyticsTab() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Progress</Text>
-          <Text style={styles.headerSubtitle}>Mock quiz reports for patient progress</Text>
+          <Text style={styles.headerSubtitle}>Quiz reports from recorded answers</Text>
         </View>
         <CaregiverAvatarButton />
       </View>
@@ -671,19 +718,28 @@ export default function AnalyticsTab() {
                   quizCount={visibleDetailQuizzes.length}
                 />
 
-                <ReportCharts quizzes={visibleDetailQuizzes} selectedFilter={activeFilterKey ?? 'year'} />
+                <ReportCharts quizzes={visibleDetailQuizzes} selectedFilter={appliedFilter?.filter ?? 'year'} />
 
                 <Text style={styles.sectionTitle}>Individual quizzes</Text>
-                {visibleDetailQuizzes.map((quiz) => (
-                  <QuizRow key={quiz.id} quiz={quiz} onPress={() => setSelectedQuizId(quiz.id)} />
-                ))}
+                {visibleDetailQuizzes.length > 0 ? (
+                  visibleDetailQuizzes.map((quiz) => (
+                    <QuizRow key={quiz.id} quiz={quiz} onPress={() => setSelectedQuizId(quiz.id)} />
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>No quiz answers found for this selection.</Text>
+                )}
               </>
             )}
           </>
         ) : (
           <>
-            <View style={styles.patientPanel}>
-              <Text style={styles.filterLabel}>Choose patient</Text>
+            <AdaptiveCard style={styles.patientPanel}>
+              <SectionHeader
+                icon="person.fill"
+                fallback="P"
+                title="Patient"
+                helper="Choose whose progress to review"
+              />
               {patientsLoading ? (
                 <Text style={styles.emptyText}>Loading patients...</Text>
               ) : patientOptions.length > 0 ? (
@@ -701,24 +757,40 @@ export default function AnalyticsTab() {
               ) : (
                 <Text style={styles.emptyText}>No patients found for this caregiver account.</Text>
               )}
-            </View>
+            </AdaptiveCard>
 
-            <Text style={styles.sectionTitle}>Quiz types</Text>
-            <TypeRow
-              label="Overall"
-              description="All Type A, B, and C quizzes"
-              quizCount={allQuizzes.length}
-              onPress={() => setSelectedTypeId('overall')}
+            <SectionHeader
+              icon="chart.bar.fill"
+              fallback="Q"
+              title="Quiz types"
+              helper="Open a type to view reports"
             />
-            {QUIZ_TYPES.map((type) => (
-              <TypeRow
-                key={type.id}
-                label={type.label}
-                description={type.description}
-                quizCount={type.quizzes.length}
-                onPress={() => setSelectedTypeId(type.id)}
-              />
-            ))}
+            {progressLoading ? (
+              <Text style={styles.emptyText}>Loading quiz progress...</Text>
+            ) : (
+              <>
+                <TypeRow
+                  label="Overall"
+                  description="All active quiz types"
+                  quizCount={allQuizzes.length}
+                  onPress={() => setSelectedTypeId('overall')}
+                />
+                {quizTypes.map((type) => (
+                  <TypeRow
+                    key={type.id}
+                    label={type.label}
+                    description={type.description}
+                    quizCount={type.quizzes.length}
+                    onPress={() => setSelectedTypeId(type.id)}
+                  />
+                ))}
+              </>
+            )}
+            {!progressLoading && quizTypes.length === 0 && (
+              <Text style={styles.emptyText}>
+                No quiz types are active for this patient yet. Create a quiz configuration and add quiz media first.
+              </Text>
+            )}
           </>
         )}
       </ScrollView>
@@ -851,6 +923,30 @@ function CalendarField({
   );
 }
 
+function SectionHeader({
+  icon,
+  fallback,
+  title,
+  helper,
+}: {
+  icon: any;
+  fallback: string;
+  title: string;
+  helper?: string;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionIconWrap}>
+        <AppIcon iosName={icon} androidFallback={fallback} size={16} color={colors.secondary} />
+      </View>
+      <View style={styles.sectionHeaderText}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {helper && <Text style={styles.helperTextInline}>{helper}</Text>}
+      </View>
+    </View>
+  );
+}
+
 function ActionRow({
   onOpenFilter,
   activeFilterLabel,
@@ -925,12 +1021,25 @@ function FilterModal({
   onApply: () => void;
   onClose: () => void;
 }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    opacity.setValue(0);
+    scale.setValue(0.96);
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 8, tension: 100, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, scale, visible]);
+
   if (!visible) return null;
 
   return (
-    <View style={styles.modalOverlay}>
+    <Animated.View style={[styles.modalOverlay, { opacity }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={styles.filterModalCard}>
+      <Animated.View style={[styles.filterModalCard, { transform: [{ scale }] }]}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>Filter time</Text>
           <Pressable style={styles.modalCloseButton} onPress={onClose}>
@@ -981,8 +1090,8 @@ function FilterModal({
             <Text style={styles.modalApplyText}>Apply filter</Text>
           </Pressable>
         </View>
-      </View>
-    </View>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -998,7 +1107,7 @@ function ReportPanel({
   quizCount: number;
 }) {
   return (
-    <View style={styles.reportPanel}>
+    <AdaptiveCard style={styles.reportPanel}>
       <View>
         <Text style={styles.eyebrow}>{eyebrow}</Text>
         <Text style={styles.reportTitle}>{title}</Text>
@@ -1012,7 +1121,7 @@ function ReportPanel({
       <Text style={styles.reportNote}>
         {summary.completed} completed attempts from {summary.attempts} total attempts.
       </Text>
-    </View>
+    </AdaptiveCard>
   );
 }
 
@@ -1036,6 +1145,9 @@ function TypeRow({
       onPress={onPress}
       disabled={!onPress}
     >
+      <View style={styles.rowIconWrap}>
+        <AppIcon iosName="chart.bar.fill" androidFallback="Q" size={16} color={colors.secondary} />
+      </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{label}</Text>
         <Text style={styles.rowSubtitle}>{description}</Text>
@@ -1060,6 +1172,9 @@ function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) 
       onPress={onPress}
       disabled={!onPress}
     >
+      <View style={styles.rowIconWrap}>
+        <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={colors.secondary} />
+      </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{quiz.name}</Text>
         <Text style={styles.rowSubtitle}>{quiz.completed} completed attempts</Text>
@@ -1078,13 +1193,18 @@ function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) 
 }
 
 function QuizAttemptDetails({ quiz }: { quiz: QuizReport }) {
-  const outcomes = getQuestionOutcomes(quiz.id);
+  const outcomes = quiz.questionOutcomes;
 
   return (
     <View>
-      <Text style={styles.sectionTitle}>Question feedback</Text>
-      {outcomes.map((outcome) => (
-        <View key={outcome.id} style={styles.questionCard}>
+      <SectionHeader
+        icon="checkmark.circle.fill"
+        fallback="✓"
+        title="Question feedback"
+        helper="Recorded answers"
+      />
+      {outcomes.length > 0 ? outcomes.map((outcome) => (
+        <AdaptiveCard key={outcome.id} style={styles.questionCard}>
           <View style={styles.questionHeader}>
             <Text style={styles.questionPrompt}>{outcome.prompt}</Text>
             <Text style={[
@@ -1100,9 +1220,11 @@ function QuizAttemptDetails({ quiz }: { quiz: QuizReport }) {
             <Metric label="Tries" value={String(outcome.attemptsUntilResult)} />
             <Metric label="Time" value={outcome.duration} />
           </View>
-          <Text style={styles.questionTakenAt}>Taken {outcome.takenAt}</Text>
-        </View>
-      ))}
+          <Text style={styles.questionTakenAt}>Taken {formatTakenAt(outcome.takenAt)}</Text>
+        </AdaptiveCard>
+      )) : (
+        <Text style={styles.emptyText}>No answers recorded for this quiz in the selected period.</Text>
+      )}
     </View>
   );
 }
@@ -1124,7 +1246,7 @@ function ReportCharts({
 
   return (
     <View style={styles.chartsSection}>
-      <View style={styles.chartPanel}>
+      <AdaptiveCard style={styles.chartPanel}>
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle}>Quiz score comparison</Text>
           <Text style={styles.chartRange}>{selectedLabel}</Text>
@@ -1141,9 +1263,9 @@ function ReportCharts({
             <Text style={styles.barValue}>{quiz.averagePercent}%</Text>
           </View>
         ))}
-      </View>
+      </AdaptiveCard>
 
-      <View style={styles.chartPanel}>
+      <AdaptiveCard style={styles.chartPanel}>
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle}>Report distribution</Text>
           <Text style={styles.chartRange}>1/5 - 5/5</Text>
@@ -1164,9 +1286,9 @@ function ReportCharts({
             </View>
           ))}
         </View>
-      </View>
+      </AdaptiveCard>
 
-      <View style={styles.chartPanel}>
+      <AdaptiveCard style={styles.chartPanel}>
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle}>Attempts by quiz</Text>
           <Text style={styles.chartRange}>{quizzes.reduce((sum, quiz) => sum + quiz.attempts, 0)} total</Text>
@@ -1183,7 +1305,7 @@ function ReportCharts({
             <Text style={styles.barValue}>{quiz.attempts}</Text>
           </View>
         ))}
-      </View>
+      </AdaptiveCard>
     </View>
   );
 }
@@ -1229,24 +1351,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: 20,
-    paddingBottom: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 100,
+    overflow: 'visible',
   },
   actionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: -4,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   actionButton: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(3, 87, 58, 0.22)',
-    backgroundColor: colors.neutralLight,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
     paddingHorizontal: 14,
     marginHorizontal: 4,
     marginBottom: 8,
@@ -1256,7 +1379,8 @@ const styles = StyleSheet.create({
   },
   filterActionButtonActive: {
     justifyContent: 'flex-start',
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    borderColor: 'rgba(45,79,62,0.3)',
+    backgroundColor: 'rgba(45,79,62,0.08)',
   },
   actionButtonText: {
     flexShrink: 1,
@@ -1298,14 +1422,14 @@ const styles = StyleSheet.create({
     left: 0,
     justifyContent: 'center',
     padding: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.38)',
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
     zIndex: 100,
     elevation: 100,
   },
   filterModalCard: {
-    borderRadius: 8,
+    borderRadius: isIOS ? 20 : 24,
     padding: 16,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.96)' : '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.08)',
     zIndex: 60,
@@ -1327,7 +1451,7 @@ const styles = StyleSheet.create({
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
   modalCloseText: {
@@ -1344,7 +1468,7 @@ const styles = StyleSheet.create({
     minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: isIOS ? 14 : 16,
     paddingHorizontal: 14,
     marginLeft: 8,
   },
@@ -1365,14 +1489,11 @@ const styles = StyleSheet.create({
     color: colors.textLight,
   },
   patientPanel: {
-    borderRadius: 8,
-    padding: 14,
-    backgroundColor: colors.neutralLight,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    padding: 16,
     marginBottom: 16,
-    zIndex: 20,
-    elevation: 20,
+    overflow: 'visible',
+    zIndex: 1000,
+    elevation: 1000,
   },
   emptyText: {
     fontFamily: typography.fontFamily.medium,
@@ -1398,17 +1519,17 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   selectWrapOpen: {
-    zIndex: 30,
-    elevation: 30,
+    zIndex: 1100,
+    elevation: 1100,
   },
   selectButton: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(3, 87, 58, 0.22)',
-    backgroundColor: 'rgba(232, 245, 236, 0.55)',
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
     paddingHorizontal: 12,
   },
   selectDisabled: {
@@ -1436,13 +1557,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     marginTop: 4,
-    borderRadius: 8,
+    borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.08)',
     backgroundColor: colors.neutralLight,
     overflow: 'hidden',
-    zIndex: 40,
-    elevation: 40,
+    zIndex: 1200,
+    elevation: 1200,
   },
   selectMenuScroll: {
     maxHeight: 240,
@@ -1480,11 +1601,7 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   reportPanel: {
-    borderRadius: 8,
     padding: 16,
-    backgroundColor: colors.neutralLight,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
     marginBottom: 18,
   },
   eyebrow: {
@@ -1528,20 +1645,41 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
+    fontSize: 16,
     color: colors.textDark,
-    marginBottom: 10,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  sectionIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(45,79,62,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionHeaderText: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  helperTextInline: {
+    fontFamily: typography.fontFamily.regular,
+    color: colors.textMuted,
+    fontSize: 12,
   },
   chartsSection: {
     marginBottom: 18,
   },
   chartPanel: {
-    borderRadius: 8,
     padding: 14,
-    backgroundColor: colors.neutralLight,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   chartHeader: {
     flexDirection: 'row',
@@ -1645,11 +1783,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: isIOS ? 14 : 16,
     padding: 14,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    borderColor: 'rgba(0,0,0,0.08)',
     marginBottom: 10,
   },
   rowPressed: {
@@ -1658,6 +1796,15 @@ const styles = StyleSheet.create({
   rowMain: {
     flex: 1,
     paddingRight: 12,
+  },
+  rowIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(45,79,62,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   rowTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1698,11 +1845,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   questionCard: {
-    borderRadius: 8,
     padding: 14,
-    backgroundColor: colors.neutralLight,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
     marginBottom: 10,
   },
   questionHeader: {

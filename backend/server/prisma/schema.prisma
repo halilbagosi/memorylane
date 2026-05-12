@@ -131,6 +131,12 @@ model PasswordHistory {
   @@map("password_history")
 }
 
+enum DementiaLevel {
+  MILD
+  MODERATE
+  SEVERE
+}
+
 model Patient {
   id                 String              @id @default(uuid())
   createdBy          String              @map("created_by") //to the primary caregiver
@@ -144,6 +150,7 @@ model Patient {
   
   paired             Boolean             @default(false)
   biometricRecoveryEnabled Boolean       @default(false) @map("biometric_recovery_enabled")
+  dementiaLevel      DementiaLevel?      @map("dementia_level")
   quizReminderTimes  String[]            @default([]) @map("quiz_reminder_times")
   quizModes          String[]            @default(["NAME", "AGE", "RELATIONSHIP"]) @map("quiz_modes")
   quizDifficulty     String              @default("MEDIUM") @map("quiz_difficulty")
@@ -272,6 +279,7 @@ model QuizAttempt {
   id              String      @id @default(uuid())
   sessionId       String      @map("session_id")
   mediaId         String      @map("media_id")
+  mode            String      @default("NAME")
   firstTapCorrect Boolean     @map("first_tap_correct")
   totalTaps       Int         @map("total_taps")
   timeToCorrectMs Int         @map("time_to_correct_ms")

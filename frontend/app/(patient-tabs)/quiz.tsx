@@ -26,6 +26,7 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
+import { getPatientQuizData, QuizMode, recordPatientQuizSession, type QuizAttemptInput } from '../../src/services/media';
 import {
   CareLevel,
   getPatientQuizData,
@@ -231,6 +232,15 @@ export default function QuizTab() {
     if (p) await deleteSavedSession(p.id);
   }, []);
 
+  const submitQuizAttempts = useCallback(async () => {
+    const p = patientRef.current;
+    const mode = activeModeRef.current;
+    const attempts = quizAttemptRecordsRef.current;
+    if (!p || !mode || attempts.length === 0) return;
+    await recordPatientQuizSession(p.id, mode, attempts);
+    quizAttemptRecordsRef.current = [];
+  }, []);
+
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState.match(/inactive|background/) && phaseRef.current.type === 'quiz') {
@@ -307,6 +317,7 @@ export default function QuizTab() {
     setQuestionIds(qs.map((q) => q.media.publicId));
     setQuestionIndex(0);
     setScore(0);
+    quizAttemptRecordsRef.current = [];
     setWrongTaps(new Set());
     setLastWrong(null);
     setHintVisible(false);
@@ -342,6 +353,7 @@ export default function QuizTab() {
     setQuestionIds(resumeSession.questions.map((q) => q.media.publicId));
     setQuestionIndex(resumeSession.currentIndex);
     setScore(0);
+    quizAttemptRecordsRef.current = [];
     setWrongTaps(new Set());
     setLastWrong(null);
     setHintVisible(false);
@@ -360,6 +372,7 @@ export default function QuizTab() {
     setQuestionIds([]);
     setActiveMode(null);
     setQuestionIndex(0);
+    quizAttemptRecordsRef.current = [];
     setWrongTaps(new Set());
     setLastWrong(null);
     setHintVisible(false);
@@ -419,6 +432,17 @@ export default function QuizTab() {
     if (!current) return;
 
     if (choice === current.correctAnswer) {
+      const firstTapCorrect = wrongTaps.size === 0;
+      quizAttemptRecordsRef.current = [
+        ...quizAttemptRecordsRef.current,
+        {
+          mediaPublicId: current.media.publicId,
+          firstTapCorrect,
+          totalTaps: wrongTaps.size + 1,
+          timeToCorrectMs: Date.now() - questionStartedAtRef.current,
+          attemptedAt: new Date().toISOString(),
+        },
+      ];
       if (wrongTaps.size === 0) setScore((s) => s + 1);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
       attemptResultsRef.current.push({
@@ -460,6 +484,7 @@ export default function QuizTab() {
 
     const nextIndex = questionIndexRef.current + 1;
     if (nextIndex >= questionsLenRef.current) {
+      submitQuizAttempts().catch(() => undefined);
       clearCurrentSession().catch(() => undefined);
       const p = patientRef.current;
       const attempts = attemptResultsRef.current;
