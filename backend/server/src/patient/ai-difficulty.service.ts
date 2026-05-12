@@ -1,9 +1,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as brain from 'brain.js';
 
 // The default Node bundle imports gpu.js, which tries to load native headless-gl.
 // The browser bundle still provides the CPU NeuralNetwork and avoids that crash.
-const brain = require('brain.js/dist/browser');
 
 export type QuizDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
@@ -162,7 +162,7 @@ export class AiDifficultyService implements OnModuleInit {
   }
 
   private createNetwork(storedModel?: unknown) {
-    const net = new brain.NeuralNetwork({ hiddenLayers: [6, 4], learningRate: 0.3 });
+    const net = new brain.NeuralNetwork({ hiddenLayers: [6, 4] });
     if (storedModel) {
       try {
         net.fromJSON(storedModel as any);
@@ -179,12 +179,12 @@ export class AiDifficultyService implements OnModuleInit {
         // Fall through to base training.
       }
     }
-    net.train(this.baseTrainingSet() as any, { iterations: 160, errorThresh: 0.01, log: false });
+    net.train(this.baseTrainingSet() as any, { iterations: 160, errorThresh: 0.01, learningRate: 0.3, log: false });
     return net;
   }
 
   private createNetworkFromSamples(samples: Array<DifficultyInputs & { targetComplexity: number }>) {
-    const net = new brain.NeuralNetwork({ hiddenLayers: [6, 4], learningRate: 0.3 });
+    const net = new brain.NeuralNetwork({ hiddenLayers: [6, 4] });
     const savedTraining = samples.map((sample) => ({
       input: this.normalizeInputs({
         accuracy: sample.accuracy,
@@ -197,6 +197,7 @@ export class AiDifficultyService implements OnModuleInit {
     net.train([...this.baseTrainingSet(), ...savedTraining] as any, {
       iterations: samples.length > 0 ? 220 : 160,
       errorThresh: 0.01,
+      learningRate: 0.3,
       log: false,
     });
     return net;

@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
-  Linking, Animated, Pressable,
+  Linking, Animated, Pressable, TouchableWithoutFeedback, LayoutAnimation, UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { CommonActions } from '@react-navigation/native';
@@ -17,6 +19,7 @@ import { API_BASE_URL } from '../../src/config/api';
 import { getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
 import { AdaptiveCard } from '../../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../../src/components/AdaptiveBadge';
+import { AdaptiveButton } from '../../src/components/AdaptiveButton';
 import { AppIcon } from '../../src/components/AppIcon';
 import { M3BottomSheet } from '../../src/components/M3BottomSheet';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
@@ -26,6 +29,10 @@ import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryMod
 
 const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface PatientItem {
   id: string;
@@ -731,15 +738,15 @@ function PatientDetailContent({
   showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
   dismissDialog: () => void;
 }) {
-  const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library'>('detail');
+  const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library' | 'reminders'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
   const [editName, setEditName] = React.useState('');
   const [editSurname, setEditSurname] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
-  const [reminderModalVisible, setReminderModalVisible] = React.useState(false);
-  const [reminderInput, setReminderInput] = React.useState('');
   const [reminderTimes, setReminderTimes] = React.useState<string[]>([]);
+  const [activePickerIndex, setActivePickerIndex] = React.useState<number | null>(null);
+  const [showTimePicker, setShowTimePicker] = React.useState(false);
   const [codeCopied, setCodeCopied] = React.useState(false);
   const codeCopiedOpacity = React.useRef(new Animated.Value(0)).current;
 
@@ -756,7 +763,12 @@ function PatientDetailContent({
     }).start(() => setCodeCopied(false));
   };
 
-  React.useEffect(() => { setView('detail'); }, [patient?.id]);
+  const switchView = (v: typeof view) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setView(v);
+  };
+
+  React.useEffect(() => { switchView('detail'); }, [patient?.id]);
   React.useEffect(() => { setReminderTimes((patient?.quizReminderTimes ?? []).slice().sort()); }, [patient?.id, patient?.quizReminderTimes]);
 
   if (!patient) return null;
@@ -838,26 +850,80 @@ function PatientDetailContent({
     showDialog('Patient Photo', 'Choose a photo for this patient', actions);
   };
 
-const addReminderTime = () => {
-    const normalized = reminderInput.trim();
-    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(normalized)) {
-      showDialog('Invalid Time', 'Use 24-hour format HH:MM.', [{ label: 'OK', onPress: dismissDialog }]);
+  const onTimeChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (event.type === 'dismissed' || !selectedDate) {
+      if (Platform.OS === 'android') setActivePickerIndex(null);
       return;
     }
-    if (reminderTimes.includes(normalized)) return;
+
+    const hours = selectedDate.getHours().toString().padStart(2, '0');
+    const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
+
+    if (activePickerIndex !== null) {
+      setReminderTimes(prev => {
+        const next = [...prev];
+        if (activePickerIndex < next.length) {
+          next[activePickerIndex] = timeStr;
+        } else {
+          if (!next.includes(timeStr)) next.push(timeStr);
+        }
+        return next.sort();
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    }
+    
+    if (Platform.OS !== 'ios') {
+      setActivePickerIndex(null);
+    }
+  };
+
+  const confirmIOSTime = () => {
+    setActivePickerIndex(null);
+    setShowTimePicker(false);
+  };
+
+  const handleAddTimePress = () => {
     if (reminderTimes.length >= 6) {
       showDialog('Limit Reached', 'You can set up to 6 reminder times.', [{ label: 'OK', onPress: dismissDialog }]);
       return;
     }
-    setReminderTimes(prev => [...prev, normalized].sort());
-    setReminderInput('');
+    setActivePickerIndex(reminderTimes.length);
+    setShowTimePicker(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  };
+
+  const handleEditTimePress = (index: number) => {
+    setActivePickerIndex(index);
+    setShowTimePicker(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  };
+
+  const removeReminderTime = (index: number) => {
+    setReminderTimes(prev => prev.filter((_, i) => i !== index));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
   };
 
   const saveReminderTimes = async () => {
     setSaving(true);
     const ok = await onSaveQuizReminders(patient, reminderTimes);
     setSaving(false);
-    if (ok) setReminderModalVisible(false);
+    if (ok) switchView('detail');
+  };
+
+  const getPickerDate = () => {
+    const d = new Date();
+    if (activePickerIndex !== null && activePickerIndex < reminderTimes.length) {
+      const [h, m] = reminderTimes[activePickerIndex].split(':').map(Number);
+      d.setHours(h, m, 0, 0);
+    }
+    return d;
+  };
+
+  const getOrdinal = (n: number) => {
+    const s = ["th", "st", "nd", "rd"], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
   };
 
   /* ── Memory Library view ── */
@@ -868,7 +934,7 @@ const addReminderTime = () => {
         patientName={`${patient.name} ${patient.surname}`.trim()}
         isPrimary={patient.isPrimary}
         myId={myId}
-        onBack={() => setView('detail')}
+        onBack={() => switchView('detail')}
       />
     );
   }
@@ -877,7 +943,7 @@ const addReminderTime = () => {
     return (
       <View style={styles.sheetContainer}>
         <View style={styles.sheetNavHeader}>
-          <TouchableOpacity onPress={() => setView('detail')} style={styles.backBtn} activeOpacity={0.6}>
+          <TouchableOpacity onPress={() => switchView('detail')} style={styles.backBtn} activeOpacity={0.6}>
             <AppIcon
               iosName="chevron.left"
               androidFallback="‹"
@@ -968,6 +1034,123 @@ const addReminderTime = () => {
     );
   }
 
+  /* ── Quiz Reminders view ── */
+  if (view === 'reminders') {
+    return (
+      <View style={styles.sheetContainer}>
+        <View style={styles.sheetNavHeader}>
+          <TouchableOpacity onPress={() => switchView('detail')} style={styles.backBtn} activeOpacity={0.6}>
+            <AppIcon
+              iosName="chevron.left"
+              androidFallback="‹"
+              size={isIOS ? 22 : 24}
+              color={isIOS ? colors.secondary : colors.textDark}
+              weight={isIOS ? 'semibold' : 'medium'}
+            />
+            {isIOS && <Text style={styles.backBtnText}>Back</Text>}
+          </TouchableOpacity>
+          <Text style={styles.sheetNavTitle}>Quiz Reminders</Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        <Text style={styles.remindersSectionTitle}>Schedule</Text>
+        <AdaptiveCard style={styles.remindersCard} backgroundColor={isIOS ? 'rgba(255,255,255,0.6)' : '#FFFFFF'}>
+          {reminderTimes.map((time, index) => (
+            <View key={`${time}-${index}`} style={[styles.reminderRow, index === reminderTimes.length - 1 && reminderTimes.length < 6 && { borderBottomWidth: StyleSheet.hairlineWidth }]}>
+              <TouchableOpacity 
+                style={styles.reminderDeleteBtn} 
+                onPress={() => removeReminderTime(index)}
+              >
+                <View style={styles.minusIconWrapper}>
+                  <AppIcon iosName="minus.circle.fill" androidFallback="-" size={22} color="#FF3B30" />
+                </View>
+              </TouchableOpacity>
+              
+              <Text style={styles.reminderLabel}>{getOrdinal(index + 1)} Reminder</Text>
+              
+              <TouchableOpacity 
+                style={styles.timePill} 
+                onPress={() => handleEditTimePress(index)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.timePillText}>{time}</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          
+          {reminderTimes.length < 6 && (
+            <TouchableOpacity 
+              style={[styles.reminderRow, { borderBottomWidth: 0 }]} 
+              onPress={handleAddTimePress}
+              activeOpacity={0.6}
+            >
+              <View style={styles.plusIconWrapper}>
+                <AppIcon iosName="plus.circle.fill" androidFallback="+" size={22} color="#4CAF50" />
+              </View>
+              <Text style={styles.addReminderLabel}>Add Reminder</Text>
+            </TouchableOpacity>
+          )}
+        </AdaptiveCard>
+
+        <Text style={styles.remindersHint}>
+          The patient will receive a notification on their device at these times to take a quiz.
+        </Text>
+
+        <AdaptiveButton
+          title={saving ? "Saving..." : "Save Changes"}
+          onPress={saveReminderTimes}
+          disabled={saving}
+          style={{ marginTop: 24 }}
+        />
+
+        {/* Time Picker Modal for iOS */}
+        {isIOS && showTimePicker && (
+          <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
+            <TouchableWithoutFeedback onPress={() => setShowTimePicker(false)}>
+              <View style={styles.pickerModalOverlay}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View style={styles.iosPickerContainer}>
+                    <View style={styles.iosPickerHeader}>
+                      <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                        <Text style={styles.iosPickerCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.iosPickerTitle}>Select Time</Text>
+                      <TouchableOpacity onPress={confirmIOSTime}>
+                        <Text style={styles.iosPickerDone}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.iosPickerWrapper}>
+                      <DateTimePicker
+                        value={getPickerDate()}
+                        mode="time"
+                        is24Hour={true}
+                        display="spinner"
+                        onChange={onTimeChange}
+                        themeVariant="light"
+                        style={styles.iosPicker}
+                      />
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+
+        {/* Android Time Picker */}
+        {!isIOS && showTimePicker && (
+          <DateTimePicker
+            value={getPickerDate()}
+            mode="time"
+            is24Hour={true}
+            display="default"
+            onChange={onTimeChange}
+          />
+        )}
+      </View>
+    );
+  }
+
   /* ── Main detail view ── */
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sheetContainer} showsVerticalScrollIndicator={false}>
@@ -1005,43 +1188,6 @@ const addReminderTime = () => {
         </View>
       </Modal>
 
-      <Modal visible={reminderModalVisible} transparent animationType="fade" onRequestClose={() => setReminderModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Quiz Reminder Times</Text>
-            <TextInput
-              style={styles.editInput}
-              value={reminderInput}
-              onChangeText={setReminderInput}
-              placeholder="HH:MM"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="numbers-and-punctuation"
-              maxLength={5}
-            />
-            <TouchableOpacity style={[styles.modalSaveBtn, { marginTop: 10 }]} onPress={addReminderTime}>
-              <Text style={styles.modalSaveText}>Add Time</Text>
-            </TouchableOpacity>
-            <View style={{ marginTop: 12, gap: 8 }}>
-              {reminderTimes.map((time) => (
-                <View key={time} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={styles.patientAgeText}>{time}</Text>
-                  <TouchableOpacity onPress={() => setReminderTimes(prev => prev.filter(t => t !== time))}>
-                    <Text style={{ color: '#C0392B', fontFamily: typography.fontFamily.medium }}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setReminderModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={saveReminderTimes} disabled={saving}>
-                <Text style={styles.modalSaveText}>{saving ? 'Saving…' : 'Save'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Header */}
       <View style={styles.sheetHeader}>
@@ -1128,7 +1274,7 @@ const addReminderTime = () => {
       <View style={styles.actionsList}>
 
         {patient.isPrimary && (
-          <TouchableOpacity style={styles.actionRow} onPress={() => setReminderModalVisible(true)}>
+          <TouchableOpacity style={styles.actionRow} onPress={() => switchView('reminders')}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(180, 174, 232, 0.2)' }]}>
               <AppIcon iosName="bell.badge" androidFallback="🔔" size={18} color={colors.primary} />
             </View>
@@ -1148,7 +1294,7 @@ const addReminderTime = () => {
         )}
 
         {patient.isPrimary && (
-          <TouchableOpacity style={styles.actionRow} onPress={() => setView('careTeam')}>
+          <TouchableOpacity style={styles.actionRow} onPress={() => switchView('careTeam')}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
               <AppIcon iosName="person.2" androidFallback="👥" size={18} color={colors.secondary} />
             </View>
@@ -1173,7 +1319,7 @@ const addReminderTime = () => {
         )}
 
         {!patient.isPrimary && (
-          <TouchableOpacity style={styles.actionRow} onPress={() => setView('careTeam')} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.actionRow} onPress={() => switchView('careTeam')} activeOpacity={0.7}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.08)' }]}>
               <AppIcon iosName="person.2" androidFallback="👥" size={18} color={colors.secondary} />
             </View>
@@ -2100,6 +2246,126 @@ const styles = StyleSheet.create({
     color: '#C0392B',
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  remindersSectionTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  remindersCard: {
+    paddingVertical: 4,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  reminderDeleteBtn: {
+    marginRight: 12,
+  },
+  minusIconWrapper: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reminderLabel: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 16,
+    color: colors.textDark,
+  },
+  timePill: {
+    backgroundColor: isIOS ? 'rgba(0,0,0,0.05)' : 'rgba(45,79,62,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  timePillText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 16,
+    color: colors.secondary,
+  },
+  plusIconWrapper: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  addReminderLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 16,
+    color: colors.textDark,
+  },
+  remindersHint: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 16,
+    paddingHorizontal: 20,
+    lineHeight: 18,
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  iosPickerContainer: {
+    backgroundColor: colors.neutral,
+    borderRadius: 28,
+    paddingBottom: 20,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  iosPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  iosPickerCancel: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 17,
+    color: colors.textMuted,
+  },
+  iosPickerTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 17,
+    color: colors.textDark,
+  },
+  iosPickerDone: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 17,
+    color: colors.secondary,
+  },
+  iosPickerWrapper: {
+    height: 220,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  iosPicker: {
+    height: 220,
+    width: SCREEN_WIDTH,
+    alignSelf: 'center',
   },
 });
 

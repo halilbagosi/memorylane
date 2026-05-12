@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { SFSymbol } from 'expo-symbols';
@@ -401,7 +402,8 @@ export default function QuizTab() {
 
   const buildSuccessMessage = useCallback((question: QuizQuestion) => {
     const nickname = question.media.nickname?.trim();
-    const fallback = 'Well done, Filan!';
+    const patientFirstName = patient?.name?.split(' ')[0] ?? '';
+    const fallback = patientFirstName ? `Well done, ${patientFirstName}!` : 'Well done!';
     if (!nickname) return fallback;
     const options = [
       `${nickname} says: Well done!`,
@@ -418,6 +420,7 @@ export default function QuizTab() {
 
     if (choice === current.correctAnswer) {
       if (wrongTaps.size === 0) setScore((s) => s + 1);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
       attemptResultsRef.current.push({
         publicId: current.media.publicId,
         mode: current.mode,
@@ -438,6 +441,7 @@ export default function QuizTab() {
     }
     setLastWrong(choice);
     setWrongTaps((prev) => new Set([...prev, choice]));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
     wrongShake.setValue(0);
     Animated.sequence([
       Animated.timing(wrongShake, { toValue: 8, duration: 60, useNativeDriver: true }),
@@ -531,7 +535,7 @@ export default function QuizTab() {
   const renderIntro = () => (
     <View style={styles.introContent}>
       <Text style={styles.introText}>
-        Good morning, {patient?.name ?? 'friend'}. Let's see some familiar faces!
+        Good morning{patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!
       </Text>
       <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
         <Text style={styles.startButtonText}>Start</Text>
@@ -543,7 +547,7 @@ export default function QuizTab() {
     <View style={[styles.resumeFill, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
       <View style={styles.resumeCard}>
         <Text style={styles.resumeText}>
-          Welcome back, {patient?.name ?? 'friend'}. Would you like to continue your practice?
+          Welcome back{patient?.name ? `, ${patient.name}` : ''}. Would you like to continue your practice?
         </Text>
         <View style={styles.resumeActions}>
           <TouchableOpacity style={styles.resumePrimaryBtn} onPress={continueSavedSession} activeOpacity={0.85}>
@@ -684,7 +688,7 @@ export default function QuizTab() {
     <ScrollView contentContainerStyle={styles.summaryContent} showsVerticalScrollIndicator={false}>
       <View style={styles.summaryMessageBlock}>
         <Text style={styles.summaryTitle}>
-          Wonderful job, {patient?.name ?? 'friend'}. You've seen everyone today!
+          Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
         </Text>
       </View>
 
