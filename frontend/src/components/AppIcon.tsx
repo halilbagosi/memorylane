@@ -55,6 +55,7 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'tray': 'tray-arrow-down',
   'tray.fill': 'tray-full',
   'info.circle.fill': 'information',
+  'brain.head.profile': 'brain',
   'sparkles': 'auto-fix',
   'gauge.with.dots.needle.50percent': 'speedometer-medium',
   'flame.fill': 'fire',

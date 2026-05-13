@@ -16,6 +16,8 @@ import { SignedUrlService } from './crypto/signed-url.service';
 import { CreateUploadIntentDto } from './dto/create-upload-intent.dto';
 import { UpdateMediaMetadataDto } from './dto/update-media-metadata.dto';
 import { FaceVerificationService } from './face-verification.service';
+import { decrypt, encrypt } from '../patient/encryption.util';
+import { AiDifficultyService, QuizDifficulty } from '../patient/ai-difficulty.service';
 import {
   ALLOWED_MIME_BY_KIND,
   getMaxBytes,
@@ -57,6 +59,8 @@ export interface MediaListItem {
   relationshipType: string | null;
   birthYear: number | null;
   decoyNames: string[];
+  hint: string | null;
+  nickname: string | null;
   note: string | null;
   eventYear: number | null;
   isApproximateYear: boolean;
@@ -83,6 +87,8 @@ export interface QuizMediaItem {
   relationshipType: string | null;
   birthYear: number | null;
   eventYear: number | null;
+  hint: string | null;
+  nickname: string | null;
   downloadUrl: string;
   downloadExpiresAt: string;
 }
@@ -94,6 +100,8 @@ type MediaMetadataFields = {
   relationshipType?: string | null;
   birthYear?: number | null;
   decoyNames?: string[] | null;
+  hint?: string | null;
+  nickname?: string | null;
   note?: string | null;
   eventYear?: number | null;
   isApproximateYear?: boolean | null;
@@ -112,6 +120,7 @@ export class MediaService {
     private readonly mediaCrypto: MediaCryptoService,
     private readonly signedUrls: SignedUrlService,
     private readonly faceVerification: FaceVerificationService,
+    private readonly aiDifficulty: AiDifficultyService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
@@ -128,6 +137,7 @@ export class MediaService {
       where: { id: caregiverId },
       select: { isSubscribed: true },
     });
+    const { getPlanLimits } = await import('../auth/subscription.constants');
     const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
     if (!limits.allowedMediaKinds.includes(kind)) {
       throw new ForbiddenException(
@@ -331,6 +341,8 @@ export class MediaService {
         relationshipType: true,
         birthYear: true,
         decoyNames: true,
+        hint: true,
+        nickname: true,
         note: true,
         eventYear: true,
         isApproximateYear: true,
@@ -352,6 +364,8 @@ export class MediaService {
       relationshipType: r.relationshipType ?? null,
       birthYear: r.birthYear ?? null,
       decoyNames: r.decoyNames ?? [],
+      hint: this.decryptOptional(r.hint),
+      nickname: this.decryptOptional(r.nickname),
       note: r.note ?? null,
       eventYear: r.eventYear ?? null,
       isApproximateYear: r.isApproximateYear,
@@ -433,10 +447,25 @@ export class MediaService {
   async getPatientQuizData(
     patientId: string,
     apiBaseUrl: string,
-  ): Promise<{ quizModes: string[]; media: QuizMediaItem[] }> {
+  ): Promise<{
+    quizModes: string[];
+    quizDifficulty: string;
+    predictedDifficulty: QuizDifficulty;
+    careLevel: string;
+    aiAdaptiveEnabled: boolean;
+    successRate: number;
+    media: QuizMediaItem[];
+  }> {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
-      select: { quizModes: true },
+      select: {
+        quizModes: true,
+        quizDifficulty: true,
+        careLevel: true,
+        aiAdaptiveEnabled: true,
+        successRate: true,
+        aiDifficultyModel: true,
+      },
     });
     if (!patient) throw new NotFoundException('Patient not found');
 
@@ -449,6 +478,8 @@ export class MediaService {
         relationshipType: true,
         birthYear: true,
         eventYear: true,
+        hint: true,
+        nickname: true,
       },
     });
 
@@ -462,12 +493,44 @@ export class MediaService {
         relationshipType: r.relationshipType ?? null,
         birthYear: r.birthYear ?? null,
         eventYear: r.eventYear ?? null,
+        hint: this.decryptOptional(r.hint),
+        nickname: this.decryptOptional(r.nickname),
         downloadUrl: this.buildSignedUrl(apiBaseUrl, 'download', token),
         downloadExpiresAt: expiresAt.toISOString(),
       };
     });
 
-    return { quizModes: patient.quizModes, media };
+    const attempts = await this.prisma.quizAttempt.findMany({
+      where: { session: { patientId } },
+      orderBy: { attemptedAt: 'desc' },
+      take: 10,
+      select: { firstTapCorrect: true, timeToCorrectMs: true },
+    });
+    const averageTimeMs = attempts.length > 0
+      ? attempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / attempts.length
+      : 8000;
+    const latestTimeMs = attempts[0]?.timeToCorrectMs ?? averageTimeMs;
+    const fallbackInputs = {
+      accuracy: patient.successRate,
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, averageTimeMs),
+      timeOfDay: this.aiDifficulty.timeOfDayScore(),
+      currentDifficulty: this.aiDifficulty.difficultyToComplexity(patient.quizDifficulty),
+    };
+    const prediction = patient.aiAdaptiveEnabled
+      ? this.aiDifficulty.predict(fallbackInputs, patient.aiDifficultyModel)
+      : this.aiDifficulty.ruleBased(fallbackInputs);
+
+    return {
+      quizModes: patient.quizModes,
+      quizDifficulty: patient.quizDifficulty,
+      predictedDifficulty: patient.aiAdaptiveEnabled
+        ? prediction.difficulty
+        : (patient.quizDifficulty as QuizDifficulty),
+      careLevel: patient.careLevel,
+      aiAdaptiveEnabled: patient.aiAdaptiveEnabled,
+      successRate: patient.successRate,
+      media,
+    };
   }
 
   /** Returns READY MEMORY items for a patient, sorted chronologically.
@@ -526,6 +589,8 @@ export class MediaService {
         relationshipType: true,
         birthYear: true,
         decoyNames: true,
+        hint: true,
+        nickname: true,
         note: true,
         eventYear: true,
         isApproximateYear: true,
@@ -586,6 +651,8 @@ export class MediaService {
       const relationshipType = trimOrNull(dto.relationshipType);
       const birthYear = dto.birthYear ?? null;
       const decoyNames = (dto.decoyNames ?? []).map((name) => name.trim()).filter(Boolean);
+      const hint = trimOrNull(dto.hint);
+      const nickname = trimOrNull(dto.nickname);
       if (!firstName || !relationshipType || birthYear === null) {
         throw new BadRequestException(
           'Quiz media requires a person name, relationship, and birth year',
@@ -602,6 +669,8 @@ export class MediaService {
         relationshipType,
         birthYear,
         decoyNames,
+        hint: this.encryptOptional(hint),
+        nickname: this.encryptOptional(nickname),
         note: null,
         eventYear: null,
         isApproximateYear: false,
@@ -621,6 +690,8 @@ export class MediaService {
       relationshipType: null,
       birthYear: null,
       decoyNames: [],
+      hint: null,
+      nickname: null,
       note,
       eventYear: dto.eventYear ?? null,
       isApproximateYear: dto.isApproximateYear === true,
@@ -708,6 +779,20 @@ export class MediaService {
   private normalizePersonName(value?: string | null): string | null {
     const normalized = value?.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
     return normalized || null;
+  }
+
+  private isEncryptedMetadata(value: string): boolean {
+    return /^[0-9a-f]{32}:[0-9a-f]+$/i.test(value);
+  }
+
+  private encryptOptional(value: string | null): string | null {
+    if (!value) return null;
+    return this.isEncryptedMetadata(value) ? value : encrypt(value);
+  }
+
+  private decryptOptional(value?: string | null): string | null {
+    if (!value) return null;
+    return this.isEncryptedMetadata(value) ? decrypt(value) : value;
   }
 
   private async hasReadyDuplicateQuizFace(patientId: string, imageBuffer: Buffer): Promise<boolean> {

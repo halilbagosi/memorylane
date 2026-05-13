@@ -1,7 +1,6 @@
-import { QuizMediaItem, QuizMode } from './media';
+import { CareLevel, QuizDifficulty, QuizMediaItem, QuizMode } from './media';
 
 const FALLBACK_RELATIONSHIPS = ['Friend', 'Cousin', 'Neighbor', 'Coworker', 'Teacher', 'Classmate'];
-const DECOY_COUNT = 3;
 
 export interface QuizQuestion {
   media: QuizMediaItem;
@@ -67,9 +66,9 @@ function formatAnswer(raw: string, mode: QuizMode): string {
   return raw;
 }
 
-function generateAgeDecoys(correctAge: number): string[] {
+function generateAgeDecoys(correctAge: number, decoyCount: number): string[] {
   const decoys = new Set<string>();
-  for (let attempt = 0; attempt < 50 && decoys.size < DECOY_COUNT; attempt++) {
+  for (let attempt = 0; attempt < 50 && decoys.size < decoyCount; attempt++) {
     const offset = Math.floor(Math.random() * 20) - 10;
     if (offset === 0) continue;
     const age = Math.max(1, correctAge + offset);
@@ -78,11 +77,17 @@ function generateAgeDecoys(correctAge: number): string[] {
   // Guaranteed fallbacks if random range was too narrow
   const extras = [correctAge + 13, correctAge - 13, correctAge + 7, correctAge - 7, correctAge + 4, correctAge - 4];
   for (const fa of extras) {
-    if (decoys.size >= DECOY_COUNT) break;
+    if (decoys.size >= decoyCount) break;
     const a = Math.max(1, fa);
     if (String(a) !== String(correctAge) && !decoys.has(String(a))) decoys.add(String(a));
   }
-  return [...decoys].slice(0, DECOY_COUNT);
+  return [...decoys].slice(0, decoyCount);
+}
+
+function decoyCountForDifficulty(difficulty: QuizDifficulty): number {
+  if (difficulty === 'EASY') return 2;
+  if (difficulty === 'HARD') return 4;
+  return 3;
 }
 
 function buildDecoys(
@@ -90,6 +95,7 @@ function buildDecoys(
   allMedia: QuizMediaItem[],
   mode: QuizMode,
   rawCorrect: string,
+  decoyCount: number,
 ): string[] {
   const others = allMedia.filter(m => m.publicId !== media.publicId);
 
@@ -102,16 +108,16 @@ function buildDecoys(
       if (!key || key === correctKey || !name || name === rawCorrect || decoysByIdentity.has(key)) continue;
       decoysByIdentity.set(key, name);
     }
-    return pickRandom([...decoysByIdentity.values()], DECOY_COUNT);
+    return pickRandom([...decoysByIdentity.values()], decoyCount);
   }
 
   if (mode === 'RELATIONSHIP') {
     const pool = [...new Set(
       others.map(m => m.relationshipType).filter((r): r is string => !!r && r !== rawCorrect),
     )];
-    const picks = pickRandom(pool, DECOY_COUNT);
-    if (picks.length < DECOY_COUNT) {
-      const needed = DECOY_COUNT - picks.length;
+    const picks = pickRandom(pool, decoyCount);
+    if (picks.length < decoyCount) {
+      const needed = decoyCount - picks.length;
       const fallbacks = FALLBACK_RELATIONSHIPS.filter(r => r !== rawCorrect && !picks.includes(r));
       return [...picks, ...pickRandom(fallbacks, needed)];
     }
@@ -119,7 +125,7 @@ function buildDecoys(
   }
 
   // AGE
-  return generateAgeDecoys(parseInt(rawCorrect, 10));
+  return generateAgeDecoys(parseInt(rawCorrect, 10), decoyCount);
 }
 
 function questionText(mode: QuizMode): string {
@@ -135,16 +141,18 @@ function buildQuestion(
   allMedia: QuizMediaItem[],
   mode: QuizMode,
   imageUrl: string,
+  difficulty: QuizDifficulty,
 ): QuizQuestion | null {
   const rawCorrect = getRawAnswer(media, mode);
   if (!rawCorrect) return null;
 
-  const rawDecoys = buildDecoys(media, allMedia, mode, rawCorrect);
-  if (rawDecoys.length < DECOY_COUNT) return null;
+  const decoyCount = decoyCountForDifficulty(difficulty);
+  const rawDecoys = buildDecoys(media, allMedia, mode, rawCorrect, decoyCount);
+  if (rawDecoys.length < decoyCount) return null;
 
   const correctAnswer = formatAnswer(rawCorrect, mode);
   const choices = shuffle([...new Set([correctAnswer, ...rawDecoys.map(d => formatAnswer(d, mode))])]);
-  if (choices.length < DECOY_COUNT + 1) return null;
+  if (choices.length < decoyCount + 1) return null;
 
   return {
     media,
@@ -165,6 +173,7 @@ export function buildQuizPool(
 export function buildQuizSet(
   pool: { media: QuizMediaItem; imageUrl: string }[],
   mode: QuizMode,
+  difficulty: QuizDifficulty = 'MEDIUM',
   count?: number,
 ): QuizQuestion[] {
   const allMedia = pool.map(p => p.media);
@@ -182,7 +191,7 @@ export function buildQuizSet(
 
   const questions: QuizQuestion[] = [];
   for (const { media, imageUrl } of selected) {
-    const q = buildQuestion(media, allMedia, mode, imageUrl);
+    const q = buildQuestion(media, allMedia, mode, imageUrl, difficulty);
     if (q) questions.push(q);
   }
   return questions;
@@ -192,6 +201,7 @@ export function buildQuizSetFromIds(
   pool: { media: QuizMediaItem; imageUrl: string }[],
   mode: QuizMode,
   publicIds: string[],
+  difficulty: QuizDifficulty = 'MEDIUM',
 ): QuizQuestion[] {
   const allMedia = pool.map(p => p.media);
   const byPublicId = new Map(pool.map(item => [item.media.publicId, item]));
@@ -205,7 +215,62 @@ export function buildQuizSetFromIds(
     if (!identityKey || seenIdentities.has(identityKey)) continue;
     seenIdentities.add(identityKey);
 
-    const q = buildQuestion(item.media, allMedia, mode, item.imageUrl);
+    const q = buildQuestion(item.media, allMedia, mode, item.imageUrl, difficulty);
+    if (q) questions.push(q);
+  }
+  return questions;
+}
+
+export function buildAdaptiveQuizSet(
+  pool: { media: QuizMediaItem; imageUrl: string }[],
+  modes: QuizMode[],
+  careLevel: CareLevel,
+  difficulty: QuizDifficulty = 'MEDIUM',
+): QuizQuestion[] {
+  if (careLevel !== 'PREVENTATIVE') {
+    const preferredMode = modes.includes('NAME') ? 'NAME' : modes[0];
+    return preferredMode ? buildQuizSet(pool, preferredMode, difficulty) : [];
+  }
+
+  const mixed: QuizQuestion[] = [];
+  const seen = new Set<string>();
+  for (const mode of shuffle(modes)) {
+    for (const question of buildQuizSet(pool, mode, difficulty)) {
+      const key = `${question.media.publicId}:${question.mode}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      mixed.push(question);
+    }
+  }
+  return shuffle(mixed);
+}
+
+export function buildAdaptiveQuizSetFromIds(
+  pool: { media: QuizMediaItem; imageUrl: string }[],
+  modes: QuizMode[],
+  careLevel: CareLevel,
+  publicIds: string[],
+  difficulty: QuizDifficulty = 'MEDIUM',
+): QuizQuestion[] {
+  if (careLevel !== 'PREVENTATIVE') {
+    const preferredMode = modes.includes('NAME') ? 'NAME' : modes[0];
+    return preferredMode ? buildQuizSetFromIds(pool, preferredMode, publicIds, difficulty) : [];
+  }
+
+  const allMedia = pool.map(p => p.media);
+  const byPublicId = new Map(pool.map(item => [item.media.publicId, item]));
+  const questions: QuizQuestion[] = [];
+  const perMediaModeIndex = new Map<string, number>();
+
+  for (const publicId of publicIds) {
+    const item = byPublicId.get(publicId);
+    if (!item) continue;
+    const eligibleModes = modes.filter(mode => getRawAnswer(item.media, mode) !== null);
+    if (eligibleModes.length === 0) continue;
+    const index = perMediaModeIndex.get(publicId) ?? 0;
+    const mode = eligibleModes[index % eligibleModes.length];
+    perMediaModeIndex.set(publicId, index + 1);
+    const q = buildQuestion(item.media, allMedia, mode, item.imageUrl, difficulty);
     if (q) questions.push(q);
   }
   return questions;

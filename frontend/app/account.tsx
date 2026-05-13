@@ -675,7 +675,7 @@ export default function AccountScreen() {
             <Text style={styles.avatarName}>
               {profile?.name} {profile?.surname}
               {profile?.isSubscribed && (
-                <Text style={styles.premiumBadge}> ⭐ Premium</Text>
+                <Text style={styles.premiumBadge}> Premium</Text>
               )}
             </Text>
             <Text style={styles.avatarEmail}>{profile?.email}</Text>

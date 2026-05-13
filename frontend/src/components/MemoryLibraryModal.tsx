@@ -14,35 +14,43 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   View,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from './AppIcon';
 import { M3Dialog, type M3DialogAction } from './M3Dialog';
 import { ZoomableImage } from './ZoomableImage';
+import { getCaregiverInfo } from '../utils/auth';
+import { canUploadMediaKind } from '../utils/subscription';
 import {
   deleteMedia,
   getAccessUrl,
-  getQuizModes,
   listPatientMedia,
   updateMediaMetadata,
-  updateQuizModes,
   uploadPatientMedia,
   verifyQuizPhoto,
   type MediaCollection,
   type MediaListItem,
   type MediaMetadataInput,
   type QuizPhotoVerificationCode,
-  type QuizMode,
 } from '../services/media';
 
 const isIOS = Platform.OS === 'ios';
+
+if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_GUTTER = 8;
 const GRID_PADDING = 16;
@@ -54,8 +62,8 @@ const TILE_SIZE_QUIZ =
   (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GUTTER * (QUIZ_COLUMNS - 1)) / QUIZ_COLUMNS;
 const TILE_SIZE_MEMORY =
   (SCREEN_WIDTH - MEMORY_GRID_PADDING * 2 - MEMORY_GRID_GAP * (MEMORY_COLUMNS - 1)) / MEMORY_COLUMNS;
-// Keep TILE_SIZE as the quiz default so MemoryTile/styles that reference it still work for QUIZ
 const TILE_SIZE = TILE_SIZE_QUIZ;
+
 type MediaKindFilter = 'ALL' | 'PHOTO' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
 interface MediaTileVM extends MediaListItem {
@@ -94,23 +102,22 @@ async function normalizeQuizPhotoAsset(asset: { uri: string; mimeType?: string }
 }
 
 async function readAssetBase64(uri: string) {
-  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  return new File(uri).base64();
 }
 
 export interface MemoryLibrarySheetContentProps {
   patientId: string;
-  patientName: string;
-  isPrimary: boolean;
-  myId: string;
-  onBack: () => void;
+  patientName?: string;
+  isPrimary?: boolean;
+  myId?: string;
+  onBack?: () => void;
 }
 
 export function MemoryLibrarySheetContent({
   patientId,
-  patientName,
-  isPrimary,
-  myId,
-  onBack,
+  patientName = '',
+  isPrimary = true,
+  myId = '',
 }: MemoryLibrarySheetContentProps) {
   const [items, setItems] = useState<MediaTileVM[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,6 +137,8 @@ export function MemoryLibrarySheetContent({
   const [quizFirstName, setQuizFirstName] = useState('');
   const [quizRelationship, setQuizRelationship] = useState('');
   const [quizBirthYear, setQuizBirthYear] = useState('');
+  const [quizHint, setQuizHint] = useState('');
+  const [quizNickname, setQuizNickname] = useState('');
   const [verifyingQuizPhoto, setVerifyingQuizPhoto] = useState(false);
   const [quizPhotoVerified, setQuizPhotoVerified] = useState(false);
   const [quizVerificationMessage, setQuizVerificationMessage] = useState<string | null>(null);
@@ -140,16 +149,17 @@ export function MemoryLibrarySheetContent({
   const [memoryIsApproximate, setMemoryIsApproximate] = useState(false);
   const [previewItem, setPreviewItem] = useState<MediaTileVM | null>(null);
   const [editingMedia, setEditingMedia] = useState<MediaTileVM | null>(null);
+  
   const [editFirstName, setEditFirstName] = useState('');
   const [editRelationship, setEditRelationship] = useState('');
   const [editBirthYear, setEditBirthYear] = useState('');
+  const [editHint, setEditHint] = useState('');
+  const [editNickname, setEditNickname] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editYear, setEditYear] = useState('');
   const [editIsApproximate, setEditIsApproximate] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
-  const [quizModes, setQuizModes] = useState<QuizMode[]>(['NAME', 'AGE', 'RELATIONSHIP']);
-  const [savingQuizModes, setSavingQuizModes] = useState(false);
 
   const [mlDialog, setMlDialog] = useState<{
     visible: boolean;
@@ -157,6 +167,10 @@ export function MemoryLibrarySheetContent({
     body: string;
     actions: M3DialogAction[];
   }>({ visible: false, title: '', body: '', actions: [] });
+
+  const animate = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  };
 
   const showMlDialog = (title: string, body: string, actions: M3DialogAction[]) => {
     setMlDialog({ visible: true, title, body, actions });
@@ -173,17 +187,14 @@ export function MemoryLibrarySheetContent({
         const now = Date.now();
         return data.map((d) => {
           const ex = urlMap.get(d.publicId);
-          const hasFreshUrl =
-            ex?.signedUrl &&
-            ex.signedUrlExpiresAt &&
-            ex.signedUrlExpiresAt > now + 5_000;
+          const hasFreshUrl = ex?.signedUrl && ex.signedUrlExpiresAt && ex.signedUrlExpiresAt > now + 5_000;
           return hasFreshUrl
             ? { ...d, signedUrl: ex.signedUrl, signedUrlExpiresAt: ex.signedUrlExpiresAt }
             : d;
         });
       });
     } catch (e: any) {
-      setError(e?.message ?? 'Could not load memories.');
+      setError(e?.message ?? 'Could not load media.');
     }
   }, [patientId]);
 
@@ -193,27 +204,8 @@ export function MemoryLibrarySheetContent({
     setSelected(new Set());
     setLibraryTab('QUIZ');
     setKindFilter('ALL');
-    Promise.all([
-      loadMedia(),
-      getQuizModes(patientId).then(setQuizModes).catch(() => undefined),
-    ]).finally(() => setLoading(false));
+    loadMedia().finally(() => setLoading(false));
   }, [patientId]);
-
-  const handleToggleQuizMode = async (mode: QuizMode) => {
-    const isActive = quizModes.includes(mode);
-    if (isActive && quizModes.length === 1) return; // must keep at least one
-    const next = isActive ? quizModes.filter((m) => m !== mode) : [...quizModes, mode];
-    setQuizModes(next);
-    setSavingQuizModes(true);
-    try {
-      const saved = await updateQuizModes(patientId, next);
-      setQuizModes(saved);
-    } catch {
-      setQuizModes(quizModes); // revert on error
-    } finally {
-      setSavingQuizModes(false);
-    }
-  };
 
   const ensureSignedUrl = useCallback(
     async (publicId: string, forceRefresh = false) => {
@@ -283,8 +275,7 @@ export function MemoryLibrarySheetContent({
   useEffect(() => {
     const now = Date.now();
     items.forEach((m) => {
-      const needsUrl =
-        !m.signedUrl || !m.signedUrlExpiresAt || m.signedUrlExpiresAt <= now + 5_000;
+      const needsUrl = !m.signedUrl || !m.signedUrlExpiresAt || m.signedUrlExpiresAt <= now + 5_000;
       if (m.status === 'READY' && needsUrl && !m.loadingUrl && !m.urlError) {
         ensureSignedUrl(m.publicId);
       }
@@ -347,9 +338,16 @@ export function MemoryLibrarySheetContent({
     if (contentType.startsWith('image/')) kind = 'PHOTO';
     else if (contentType.startsWith('video/')) kind = 'VIDEO';
     else if (contentType.startsWith('audio/')) kind = 'AUDIO';
+    
     if (metadata.collection === 'QUIZ' && kind !== 'PHOTO' && kind !== 'AUDIO') {
       throw new Error('Quiz media must be a photo or audio file.');
     }
+
+    const caregiverInfo = await getCaregiverInfo();
+    if (!canUploadMediaKind(caregiverInfo?.isSubscribed ?? false, kind)) {
+      throw new Error(`${kind.charAt(0) + kind.slice(1).toLowerCase()} uploads require a Premium subscription.`);
+    }
+
     await uploadPatientMedia({
       patientId,
       kind,
@@ -366,6 +364,8 @@ export function MemoryLibrarySheetContent({
     setQuizFirstName('');
     setQuizRelationship('');
     setQuizBirthYear('');
+    setQuizHint('');
+    setQuizNickname('');
     setQuizPhotoVerified(false);
     setQuizVerificationMessage(null);
     setVerifyingQuizPhoto(false);
@@ -381,8 +381,7 @@ export function MemoryLibrarySheetContent({
       NOT_FRONTAL: `A front-facing photo will help ${name} recognize this person more easily.`,
       INVALID_IMAGE: 'We could not read this image. Please try another photo.',
       DUPLICATE_PHOTO: 'This photo or person has already been added to the quiz. Please choose a new photo.',
-      FACE_VERIFICATION_UNAVAILABLE:
-        fallback ?? 'Face verification is temporarily unavailable. Please try again in a moment.',
+      FACE_VERIFICATION_UNAVAILABLE: fallback ?? 'Face verification is temporarily unavailable. Please try again in a moment.',
     };
     return messages[code as QuizPhotoVerificationCode] ?? fallback ?? `To help ${name} recognize this person, please use a clear, close-up photo of just one face.`;
   };
@@ -501,10 +500,7 @@ export function MemoryLibrarySheetContent({
       try {
         const verification = await verifyQuizPhoto(patientId, await readAssetBase64(photo.uri));
         if (!verification.accepted) {
-          throw {
-            code: verification.code,
-            detail: verification.message,
-          };
+          throw { code: verification.code, detail: verification.message };
         }
         setPendingQuizAssets(assets);
         setQuizPhotoVerified(true);
@@ -576,11 +572,7 @@ export function MemoryLibrarySheetContent({
     }
     const selectedPhotos = pendingQuizAssets.filter((asset) => inferMime(asset).startsWith('image/'));
     if (selectedPhotos.length > 0 && !quizPhotoVerified) {
-      showMlDialog(
-        'Photo Not Verified',
-        friendlyQuizPhotoMessage(undefined),
-        [{ label: 'OK', onPress: dismissMlDialog }],
-      );
+      showMlDialog('Photo Not Verified', friendlyQuizPhotoMessage(undefined), [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
     if (selectedPhotos.length > 1) {
@@ -609,11 +601,15 @@ export function MemoryLibrarySheetContent({
       firstName,
       relationshipType: quizRelationship,
       birthYear,
+      hint: quizHint.trim(),
+      nickname: quizNickname.trim(),
     });
     setPendingQuizAssets([]);
     setQuizFirstName('');
     setQuizRelationship('');
     setQuizBirthYear('');
+    setQuizHint('');
+    setQuizNickname('');
     setQuizPhotoVerified(false);
     setQuizVerificationMessage(null);
   };
@@ -646,6 +642,8 @@ export function MemoryLibrarySheetContent({
     setEditFirstName(item.firstName ?? '');
     setEditRelationship(item.relationshipType ?? '');
     setEditBirthYear(item.birthYear !== null ? String(item.birthYear) : '');
+    setEditHint(item.hint ?? '');
+    setEditNickname(item.nickname ?? '');
     setEditNote(item.note ?? '');
     setEditYear(item.eventYear !== null ? String(item.eventYear) : '');
     setEditIsApproximate(item.isApproximateYear ?? false);
@@ -675,6 +673,8 @@ export function MemoryLibrarySheetContent({
           firstName,
           relationshipType,
           birthYear,
+          hint: editHint.trim(),
+          nickname: editNickname.trim(),
         });
       } else {
         const note = editNote.trim();
@@ -700,9 +700,10 @@ export function MemoryLibrarySheetContent({
           ? {
               ...prev,
               firstName: editFirstName.trim() || prev.firstName,
-              lastName: prev.lastName,
               relationshipType: editRelationship.trim() || prev.relationshipType,
               birthYear: editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : prev.birthYear,
+              hint: editHint.trim() || prev.hint,
+              nickname: editNickname.trim() || prev.nickname,
               note: editNote.trim() || prev.note,
               eventYear: editYear.trim() ? parseInt(editYear.trim(), 10) : prev.eventYear,
               isApproximateYear: editIsApproximate,
@@ -723,7 +724,7 @@ export function MemoryLibrarySheetContent({
       showMlDialog('Permission Denied', 'Only the primary caregiver or the uploader can delete this memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
       return;
     }
-    showMlDialog('Delete Memory', 'This permanently removes the file. This cannot be undone.', [
+    showMlDialog('Delete Item', 'This permanently removes the file. This cannot be undone.', [
       { label: 'Cancel', onPress: dismissMlDialog },
       {
         label: 'Delete',
@@ -734,7 +735,7 @@ export function MemoryLibrarySheetContent({
             await deleteMedia(item.publicId);
             setItems((prev) => prev.filter((m) => m.publicId !== item.publicId));
           } catch (e: any) {
-            showMlDialog('Delete Failed', e?.message ?? 'Could not delete memory.', [{ label: 'OK', onPress: dismissMlDialog }]);
+            showMlDialog('Delete Failed', e?.message ?? 'Could not delete item.', [{ label: 'OK', onPress: dismissMlDialog }]);
           }
         },
       },
@@ -753,7 +754,7 @@ export function MemoryLibrarySheetContent({
     if (selected.size === 0) return;
     showMlDialog(
       'Delete Selected',
-      `Permanently delete ${selected.size} memor${selected.size === 1 ? 'y' : 'ies'}? This cannot be undone.`,
+      `Permanently delete ${selected.size} item${selected.size === 1 ? '' : 's'}? This cannot be undone.`,
       [
         { label: 'Cancel', onPress: dismissMlDialog },
         {
@@ -774,202 +775,91 @@ export function MemoryLibrarySheetContent({
     );
   };
 
-  const exitEditMode = () => {
-    setEditMode(false);
-    setSelected(new Set());
-  };
-
-  // ── Shared sub-views ──────────────────────────────────────────────────────
-
-  const navHeader = (
-    <View style={styles.sheetNavHeader}>
-      <TouchableOpacity
-        onPress={editMode ? exitEditMode : onBack}
-        style={styles.backBtn}
-        activeOpacity={0.6}
-      >
-        {editMode ? (
-          <Text style={styles.navActionText}>Cancel</Text>
-        ) : (
-          <>
-            <AppIcon
-              iosName="chevron.left"
-              androidFallback="‹"
-              size={isIOS ? 22 : 24}
-              color={isIOS ? colors.secondary : colors.textDark}
-              weight={isIOS ? 'semibold' : 'medium'}
-            />
-            {isIOS && <Text style={styles.backBtnText}>Back</Text>}
-          </>
-        )}
-      </TouchableOpacity>
-
-      <Text style={styles.sheetNavTitle} numberOfLines={1}>
-        {editMode
-          ? selected.size > 0
-            ? `${selected.size} selected`
-            : 'Select Memories'
-          : 'Memory Library'}
-      </Text>
-
-      {editMode ? (
-        <TouchableOpacity
-          style={[styles.navRightBtn, selected.size === 0 && { opacity: 0.35 }]}
-          onPress={deleteSelected}
-          activeOpacity={0.7}
-          disabled={selected.size === 0 || bulkDeleting}
-        >
-          {bulkDeleting ? (
-            <ActivityIndicator size="small" color="#C0392B" />
-          ) : (
-            <Text style={[styles.navActionText, { color: '#C0392B' }]}>Delete</Text>
-          )}
-        </TouchableOpacity>
-      ) : isPrimary ? (
-        <TouchableOpacity
-          style={styles.navRightBtn}
-          onPress={() => setEditMode(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.navActionText}>Select</Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={{ width: 60 }} />
-      )}
-    </View>
-  );
-
-  const uploadBanner = uploading && uploadProgress ? (
-    <View style={styles.uploadBanner}>
-      <ActivityIndicator size="small" color="#fff" />
-      <Text style={styles.uploadBannerText}>
-        Uploading {uploadProgress.current} of {uploadProgress.total}…
-      </Text>
-    </View>
-  ) : verifyingQuizPhoto ? (
-    <View style={styles.uploadBanner}>
-      <ActivityIndicator size="small" color="#fff" />
-      <Text style={styles.uploadBannerText}>Verifying clarity...</Text>
-    </View>
-  ) : null;
-
-  const quizDraftHasPhoto = pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/'));
-  const quizSaveDisabled = uploading || verifyingQuizPhoto || (quizDraftHasPhoto && !quizPhotoVerified);
-
-  const libraryTabs = (
-    <View style={styles.libraryTabs}>
-      {(['QUIZ', 'MEMORY'] as const).map((f) => (
-        <TouchableOpacity
-          key={f}
-          style={[styles.libraryTab, libraryTab === f && styles.libraryTabActive]}
-          onPress={() => {
-            setLibraryTab(f);
-            setKindFilter('ALL');
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.libraryTabText, libraryTab === f && styles.libraryTabTextActive]}>
-            {f === 'QUIZ' ? 'Quiz' : 'Memories'}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  const mediaFilters = (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.filterContent}
-      style={styles.filterRow}
-    >
-      {(['ALL', 'PHOTO', ...(libraryTab === 'MEMORY' ? ['VIDEO', 'AUDIO', 'DOCUMENT'] : ['AUDIO'])] as MediaKindFilter[]).map((f) => (
-        <TouchableOpacity
-          key={f}
-          style={[styles.chip, kindFilter === f && styles.chipActive]}
-          onPress={() => setKindFilter(f)}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.chipText, kindFilter === f && styles.chipTextActive]}>
-            {f === 'ALL'
-              ? 'All'
-              : f === 'PHOTO'
-              ? 'Photos'
-              : f === 'VIDEO'
-              ? 'Videos'
-              : f === 'AUDIO'
-              ? 'Audio'
-              : 'Files'}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-
-  // Android-only inline add button (iOS uses floating FAB)
-  const addRowButton = !isIOS && !editMode ? (
-    <TouchableOpacity
-      style={styles.addRowBtn}
-      onPress={showAddOptions}
-      activeOpacity={0.7}
-      disabled={uploading || verifyingQuizPhoto}
-    >
-      {uploading || verifyingQuizPhoto ? (
-        <ActivityIndicator size="small" color={colors.secondary} />
-      ) : (
-        <AppIcon iosName="plus.circle.fill" androidFallback="+" size={18} color={colors.secondary} />
-      )}
-      <Text style={styles.addRowBtnText}>
-        {verifyingQuizPhoto ? 'Verifying...' : uploading ? 'Uploading...' : libraryTab === 'QUIZ' ? 'Add Quiz Media' : 'Add Memory'}
-      </Text>
-    </TouchableOpacity>
-  ) : null;
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const hasSelectableMedia = !loading && !error && filteredItems.length > 0;
+  const selectControlDisabled = !editMode && !hasSelectableMedia;
 
   return (
     <View style={[styles.wrapper, isIOS && styles.wrapperIOS]}>
-      {/* Fixed header area */}
+      {/* Fixed Header Area with Pills and Edit Button */}
       <View style={styles.headerArea}>
-        {navHeader}
-        {uploadBanner}
-        {libraryTabs}
-        {libraryTab === 'MEMORY' && mediaFilters}
-        {addRowButton}
+        <View style={styles.controlsRow}>
+          <View style={styles.filterChips}>
+            <TouchableOpacity 
+              style={[styles.filterChip, libraryTab === 'QUIZ' && styles.filterChipActive]}
+              onPress={() => { animate(); setLibraryTab('QUIZ'); setKindFilter('ALL'); setEditMode(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.filterChipText, libraryTab === 'QUIZ' && styles.filterChipTextActive]}>Quiz Media</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.filterChip, libraryTab === 'MEMORY' && styles.filterChipActive]}
+              onPress={() => { animate(); setLibraryTab('MEMORY'); setKindFilter('ALL'); setEditMode(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.filterChipText, libraryTab === 'MEMORY' && styles.filterChipTextActive]}>Memories</Text>
+            </TouchableOpacity>
+          </View>
+
+          {isPrimary && (
+            <TouchableOpacity 
+              style={[
+                styles.editButton,
+                editMode && styles.editButtonActive,
+              ]}
+              onPress={() => { animate(); setEditMode(!editMode); setSelected(new Set()); }}
+              activeOpacity={selectControlDisabled ? 1 : 0.7}
+              disabled={selectControlDisabled}
+            >
+              <Text style={[styles.editButtonText, editMode && styles.editButtonTextActive]}>
+                {editMode ? 'Done' : 'Select'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Secondary Media Kind Filters */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.secondaryFilterContent} style={styles.secondaryFilterRow}>
+          {(['ALL', 'PHOTO', ...(libraryTab === 'MEMORY' ? ['VIDEO', 'AUDIO', 'DOCUMENT'] : ['AUDIO'])] as MediaKindFilter[]).map((f) => (
+            <TouchableOpacity key={f} style={[styles.chip, kindFilter === f && styles.chipActive]} onPress={() => setKindFilter(f)} activeOpacity={0.7}>
+              <Text style={[styles.chipText, kindFilter === f && styles.chipTextActive]}>
+                {f === 'ALL' ? 'All' : f === 'PHOTO' ? 'Photos' : f === 'VIDEO' ? 'Videos' : f === 'AUDIO' ? 'Audio' : 'Files'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {(uploading || verifyingQuizPhoto) && (
+          <View style={styles.uploadBanner}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.uploadBannerText}>
+              {verifyingQuizPhoto ? 'Verifying clarity...' : `Uploading ${uploadProgress?.current} of ${uploadProgress?.total}…`}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* Content */}
+      {/* Grid Content */}
       {loading ? (
-        <View style={[styles.center, isIOS && styles.centerFlex]}>
+        <View style={styles.centerFlex}>
           <ActivityIndicator size="large" color={colors.secondary} />
         </View>
       ) : error ? (
-        <View style={[styles.center, isIOS && styles.centerFlex]}>
+        <View style={styles.centerFlex}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity
-            onPress={() => {
-              setLoading(true);
-              loadMedia().finally(() => setLoading(false));
-            }}
-            style={styles.retryBtn}
-          >
+          <TouchableOpacity onPress={() => { setLoading(true); loadMedia().finally(() => setLoading(false)); }} style={styles.retryBtn}>
             <Text style={styles.retryBtnText}>Try again</Text>
           </TouchableOpacity>
         </View>
       ) : filteredItems.length === 0 ? (
-        <View style={[styles.center, isIOS && styles.centerFlex]}>
+        <View style={styles.centerFlex}>
           <View style={styles.emptyIconWrap}>
             <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={32} color={colors.textMuted} />
           </View>
-          <Text style={styles.emptyTitle}>No memories yet</Text>
+          <Text style={styles.emptyTitle}>No files yet</Text>
           <Text style={styles.emptyBody}>
-            {libraryTab === 'QUIZ' && kindFilter === 'AUDIO'
-              ? 'Tap + to add an audio file, then enter the speaker details.'
-              : libraryTab === 'QUIZ'
+            {libraryTab === 'QUIZ'
               ? 'Tap + to add a clear face photo or audio file, then enter the person details.'
-              : isIOS
-              ? 'Tap the + button to add the first memory.'
-              : 'Tap "Add Memory" above to get started.'}
+              : 'Tap + to add a memory photo, video, or note.'}
           </Text>
         </View>
       ) : groupedMemoryData ? (
@@ -977,53 +867,33 @@ export function MemoryLibrarySheetContent({
           key="memory-grouped"
           data={groupedMemoryData}
           keyExtractor={(row) => row.key}
-          contentContainerStyle={[styles.memoryGrid, isIOS && { paddingBottom: 100 }]}
-          scrollEnabled={isIOS}
-          nestedScrollEnabled={true}
-          style={isIOS ? styles.flatListIOS : undefined}
+          contentContainerStyle={styles.memoryGrid}
           removeClippedSubviews
           initialNumToRender={18}
           maxToRenderPerBatch={18}
-          updateCellsBatchingPeriod={40}
-          windowSize={9}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item: row }) => {
-            if (row.type === 'HEADER') {
-              return <YearHeader label={row.label} />;
-            }
-            const canDeleteOf = (m: MediaTileVM) => isPrimary || m.caregiverId === myId;
+            if (row.type === 'HEADER') return <YearHeader label={row.label} />;
             return (
               <View style={styles.memoryGridRow}>
-                {row.items.map((item) => {
-                  const isSelected = selected.has(item.publicId);
-                  const canDelete = canDeleteOf(item);
-                  return (
-                    <MemoryTile
-                      key={item.publicId}
-                      item={item}
-                      tileSize={TILE_SIZE_MEMORY}
-                      editMode={editMode}
-                      isSelected={isSelected}
-                      canDelete={canDelete}
-                      isPrimary={isPrimary}
-                      onImageError={() => handleImageLoadError(item.publicId)}
-                      onPress={() => {
-                        if (editMode && (isPrimary || canDelete)) { toggleSelect(item.publicId); return; }
-                        if (!editMode) {
-                          setQuizDetailsVisible(false);
-                          setMemoryDetailsVisible(false);
-                          setPendingQuizAssets([]);
-                          setPendingMemoryAssets([]);
-                          setPreviewItem(item);
-                        }
-                      }}
-                      onLongPress={() => { if (!editMode && canDelete) confirmDelete(item); }}
-                    />
-                  );
-                })}
-                {row.items.length < MEMORY_COLUMNS &&
-                  Array.from({ length: MEMORY_COLUMNS - row.items.length }).map((_, i) => (
-                    <View key={`pad-${i}`} style={{ width: TILE_SIZE_MEMORY, height: TILE_SIZE_MEMORY }} />
-                  ))}
+                {row.items.map((item) => (
+                  <MemoryTile
+                    key={item.publicId}
+                    item={item}
+                    tileSize={TILE_SIZE_MEMORY}
+                    editMode={editMode}
+                    isSelected={selected.has(item.publicId)}
+                    canDelete={isPrimary || item.caregiverId === myId}
+                    isPrimary={isPrimary}
+                    onImageError={() => handleImageLoadError(item.publicId)}
+                    onPress={() => {
+                      if (editMode && (isPrimary || item.caregiverId === myId)) { toggleSelect(item.publicId); return; }
+                      if (!editMode) setPreviewItem(item);
+                    }}
+                    onLongPress={() => { if (!editMode && (isPrimary || item.caregiverId === myId)) confirmDelete(item); }}
+                  />
+                ))}
+                {row.items.length < MEMORY_COLUMNS && Array.from({ length: MEMORY_COLUMNS - row.items.length }).map((_, i) => <View key={`pad-${i}`} style={{ width: TILE_SIZE_MEMORY, height: TILE_SIZE_MEMORY }} />)}
               </View>
             );
           }}
@@ -1034,57 +904,45 @@ export function MemoryLibrarySheetContent({
           data={filteredItems}
           keyExtractor={(item) => item.publicId}
           numColumns={QUIZ_COLUMNS}
-          contentContainerStyle={[styles.grid, isIOS && { paddingBottom: 100 }]}
+          contentContainerStyle={styles.grid}
           columnWrapperStyle={styles.gridRow}
-          scrollEnabled={isIOS}
-          nestedScrollEnabled={true}
-          style={isIOS ? styles.flatListIOS : undefined}
-          ListHeaderComponent={
-            <View>
-              <QuizModeSelector
-                patientName={patientName}
-                activeModes={quizModes}
-                saving={savingQuizModes}
-                onToggle={handleToggleQuizMode}
-              />
-              {mediaFilters}
-            </View>
-          }
-          renderItem={({ item }) => {
-            const isSelected = selected.has(item.publicId);
-            const canDelete = isPrimary || item.caregiverId === myId;
-            return (
-              <MemoryTile
-                item={item}
-                editMode={editMode}
-                isSelected={isSelected}
-                canDelete={canDelete}
-                isPrimary={isPrimary}
-                onImageError={() => handleImageLoadError(item.publicId)}
-                onPress={() => {
-                  if (editMode && (isPrimary || canDelete)) {
-                    toggleSelect(item.publicId);
-                    return;
-                  }
-                  if (!editMode) {
-                    setQuizDetailsVisible(false);
-                    setMemoryDetailsVisible(false);
-                    setPendingQuizAssets([]);
-                    setPendingMemoryAssets([]);
-                    setPreviewItem(item);
-                  }
-                }}
-                onLongPress={() => {
-                  if (!editMode && canDelete) confirmDelete(item);
-                }}
-              />
-            );
-          }}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <MemoryTile
+              item={item}
+              editMode={editMode}
+              isSelected={selected.has(item.publicId)}
+              canDelete={isPrimary || item.caregiverId === myId}
+              isPrimary={isPrimary}
+              onImageError={() => handleImageLoadError(item.publicId)}
+              onPress={() => {
+                if (editMode && (isPrimary || item.caregiverId === myId)) { toggleSelect(item.publicId); return; }
+                if (!editMode) setPreviewItem(item);
+              }}
+              onLongPress={() => { if (!editMode && (isPrimary || item.caregiverId === myId)) confirmDelete(item); }}
+            />
+          )}
         />
       )}
 
-      {/* Floating action button — iOS only (Android uses inline button) */}
-      {isIOS && !editMode && (
+      {/* Dynamic Action Button (FAB) */}
+      {editMode ? (
+        <TouchableOpacity
+          style={styles.deleteFab}
+          onPress={deleteSelected}
+          activeOpacity={0.8}
+          disabled={selected.size === 0 || bulkDeleting}
+        >
+          {bulkDeleting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <AppIcon iosName="trash.fill" androidFallback="Del" size={20} color="#fff" />
+              <Text style={styles.deleteFabText}>Delete ({selected.size})</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : (
         <TouchableOpacity
           style={[styles.fab, (uploading || verifyingQuizPhoto) && styles.fabDisabled]}
           onPress={showAddOptions}
@@ -1099,158 +957,51 @@ export function MemoryLibrarySheetContent({
         </TouchableOpacity>
       )}
 
-      <Modal
-        visible={quizGuidanceVisible && !previewItem}
-        transparent
-        animationType="fade"
-        onDismiss={launchQueuedQuizPhotoPicker}
-        onRequestClose={() => {
-          queuedPickerSourceRef.current = null;
-          setPendingQuizPhotoSource(null);
-          setQuizGuidanceVisible(false);
-        }}
-      >
+      {/* Modals */}
+      <Modal visible={quizGuidanceVisible && !previewItem} transparent animationType="fade" onDismiss={launchQueuedQuizPhotoPicker} onRequestClose={() => { queuedPickerSourceRef.current = null; setPendingQuizPhotoSource(null); setQuizGuidanceVisible(false); }}>
         <View style={styles.modalBackdrop}>
           <View style={styles.guidanceModal}>
             <Text style={styles.quizModalTitle}>Tips for a Great Quiz</Text>
             <View style={styles.guidanceTips}>
-              <View style={styles.guidanceTip}>
-                <View style={styles.guidanceIcon}>
-                  <AppIcon iosName="person.fill" androidFallback="1" size={18} color={colors.secondary} />
-                </View>
-                <Text style={styles.guidanceTipText}>One person only</Text>
-              </View>
-              <View style={styles.guidanceTip}>
-                <View style={styles.guidanceIcon}>
-                  <AppIcon iosName="sun.max.fill" androidFallback="*" size={18} color={colors.secondary} />
-                </View>
-                <Text style={styles.guidanceTipText}>Clear and bright</Text>
-              </View>
-              <View style={styles.guidanceTip}>
-                <View style={styles.guidanceIcon}>
-                  <AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={colors.secondary} />
-                </View>
-                <Text style={styles.guidanceTipText}>Looking at the camera</Text>
-              </View>
-              <View style={styles.guidanceTip}>
-                <View style={[styles.guidanceIcon, styles.guidanceIconError]}>
-                  <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color="#C0392B" />
-                </View>
-                <Text style={styles.guidanceTipText}>Same photo not allowed</Text>
-              </View>
+              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="person.fill" androidFallback="1" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>One person only</Text></View>
+              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="sun.max.fill" androidFallback="*" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>Clear and bright</Text></View>
+              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>Looking at the camera</Text></View>
+              <View style={styles.guidanceTip}><View style={[styles.guidanceIcon, styles.guidanceIconError]}><AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color="#C0392B" /></View><Text style={styles.guidanceTipText}>Same photo not allowed</Text></View>
             </View>
             <View style={styles.quizModalActions}>
-              <TouchableOpacity
-                style={styles.quizCancelBtn}
-                onPress={() => {
-                  queuedPickerSourceRef.current = null;
-                  setQuizGuidanceVisible(false);
-                  setPendingQuizPhotoSource(null);
-                }}
-              >
-                <Text style={styles.quizCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quizSaveBtn}
-                onPress={() => {
-                  const source = pendingQuizPhotoSource ?? 'library';
-                  queuedPickerSourceRef.current = source;
-                  setQuizGuidanceVisible(false);
-                  setPendingQuizPhotoSource(null);
-                  if (!isIOS) {
-                    setTimeout(launchQueuedQuizPhotoPicker, 350);
-                  }
-                }}
-              >
-                <Text style={styles.quizSaveText}>Pick a Photo</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.quizCancelBtn} onPress={() => { queuedPickerSourceRef.current = null; setQuizGuidanceVisible(false); setPendingQuizPhotoSource(null); }}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.quizSaveBtn} onPress={() => { const source = pendingQuizPhotoSource ?? 'library'; queuedPickerSourceRef.current = source; setQuizGuidanceVisible(false); setPendingQuizPhotoSource(null); if (!isIOS) setTimeout(launchQueuedQuizPhotoPicker, 350); }}><Text style={styles.quizSaveText}>Pick a Photo</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal
-        visible={quizDetailsVisible && !previewItem}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setQuizDetailsVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={isIOS ? 'padding' : 'height'}
-          keyboardVerticalOffset={24}
-        >
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalScrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-          <View style={styles.quizModal}>
-            <Text style={styles.quizModalTitle}>Add Quiz Info</Text>
-            <Text style={styles.quizModalBody}>Add who is in the photo or speaking in the audio before saving this quiz media.</Text>
-            <TextInput
-              style={styles.detailInput}
-              value={quizFirstName}
-              onChangeText={setQuizFirstName}
-              placeholder="Person name"
-              placeholderTextColor={colors.textMuted}
-            />
-            <TextInput
-              style={styles.detailInput}
-              value={quizRelationship}
-              onChangeText={setQuizRelationship}
-              placeholder="Relationship with patient"
-              placeholderTextColor={colors.textMuted}
-            />
-            <TextInput
-              style={styles.detailInput}
-              value={quizBirthYear}
-              onChangeText={setQuizBirthYear}
-              placeholder="Birth year"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={4}
-            />
-            {quizDraftHasPhoto && (
-              <View style={[styles.verificationBox, quizPhotoVerified && styles.verificationBoxSuccess]}>
-                {verifyingQuizPhoto ? (
-                  <ActivityIndicator size="small" color={colors.secondary} />
-                ) : (
-                  <AppIcon
-                    iosName={quizPhotoVerified ? 'checkmark.circle.fill' : 'info.circle.fill'}
-                    androidFallback={quizPhotoVerified ? '✓' : 'i'}
-                    size={18}
-                    color={colors.secondary}
-                  />
-                )}
-                <Text style={styles.verificationText}>
-                  {verifyingQuizPhoto
-                    ? 'Verifying clarity...'
-                    : quizVerificationMessage ?? 'To help recognition, this photo needs one clear, front-facing face.'}
-                </Text>
+      <Modal visible={quizDetailsVisible && !previewItem} transparent animationType="fade" onRequestClose={() => setQuizDetailsVisible(false)}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={isIOS ? 'padding' : 'height'} keyboardVerticalOffset={24}>
+          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+            <View style={styles.quizModal}>
+              <Text style={styles.quizModalTitle}>Add Quiz Info</Text>
+              <Text style={styles.quizModalBody}>Add who is in the photo or speaking in the audio before saving this quiz media.</Text>
+              <TextInput style={styles.detailInput} value={quizFirstName} onChangeText={setQuizFirstName} placeholder="Person name" placeholderTextColor={colors.textMuted} />
+              <TextInput style={styles.detailInput} value={quizRelationship} onChangeText={setQuizRelationship} placeholder="Relationship with patient" placeholderTextColor={colors.textMuted} />
+              <TextInput style={styles.detailInput} value={quizBirthYear} onChangeText={setQuizBirthYear} placeholder="Birth year" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={quizHint} onChangeText={setQuizHint} placeholder="Patient Hint (optional)" placeholderTextColor={colors.textMuted} multiline />
+              <TextInput style={styles.detailInput} value={quizNickname} onChangeText={setQuizNickname} placeholder="Personal nickname (optional)" placeholderTextColor={colors.textMuted} />
+              
+              {pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/')) && (
+                <View style={[styles.verificationBox, quizPhotoVerified && styles.verificationBoxSuccess]}>
+                  {verifyingQuizPhoto ? <ActivityIndicator size="small" color={colors.secondary} /> : <AppIcon iosName={quizPhotoVerified ? 'checkmark.circle.fill' : 'info.circle.fill'} androidFallback={quizPhotoVerified ? '✓' : 'i'} size={18} color={colors.secondary} />}
+                  <Text style={styles.verificationText}>{verifyingQuizPhoto ? 'Verifying clarity...' : quizVerificationMessage ?? 'To help recognition, this photo needs one clear, front-facing face.'}</Text>
+                </View>
+              )}
+              
+              <View style={styles.quizModalActions}>
+                <TouchableOpacity style={styles.quizCancelBtn} onPress={() => { setQuizDetailsVisible(false); resetQuizDraft(); }}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.quizSaveBtn, (uploading || verifyingQuizPhoto || (pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/')) && !quizPhotoVerified)) && styles.fabDisabled]} onPress={saveQuizDetailsAndUpload} disabled={uploading || verifyingQuizPhoto || (pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/')) && !quizPhotoVerified)}>
+                  <Text style={styles.quizSaveText}>{verifyingQuizPhoto ? 'Verifying...' : 'Save Quiz Media'}</Text>
+                </TouchableOpacity>
               </View>
-            )}
-            <View style={styles.quizModalActions}>
-              <TouchableOpacity
-                style={styles.quizCancelBtn}
-                onPress={() => {
-                  setQuizDetailsVisible(false);
-                  resetQuizDraft();
-                }}
-              >
-                <Text style={styles.quizCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quizSaveBtn, quizSaveDisabled && styles.fabDisabled]}
-                onPress={saveQuizDetailsAndUpload}
-                disabled={quizSaveDisabled}
-              >
-                <Text style={styles.quizSaveText}>
-                  {verifyingQuizPhoto ? 'Verifying...' : 'Save Quiz Media'}
-                </Text>
-              </TouchableOpacity>
             </View>
-          </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -1260,243 +1011,60 @@ export function MemoryLibrarySheetContent({
           <View style={styles.quizModal}>
             <Text style={styles.quizModalTitle}>Memory Details</Text>
             <Text style={styles.quizModalBody}>Add a note and optionally the year this memory took place.</Text>
-            <TextInput
-              style={[styles.detailInput, styles.noteInput]}
-              value={memoryNote}
-              onChangeText={setMemoryNote}
-              placeholder="Describe this memory"
-              placeholderTextColor={colors.textMuted}
-              multiline
-            />
-            <TextInput
-              style={styles.detailInput}
-              value={memoryYear}
-              onChangeText={setMemoryYear}
-              placeholder="Year (e.g. 1985) — optional"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={4}
-            />
-            <TouchableOpacity
-              style={styles.approxRow}
-              onPress={() => setMemoryIsApproximate((v) => !v)}
-              activeOpacity={0.7}
-            >
+            <TextInput style={[styles.detailInput, styles.noteInput]} value={memoryNote} onChangeText={setMemoryNote} placeholder="Describe this memory" placeholderTextColor={colors.textMuted} multiline />
+            <TextInput style={styles.detailInput} value={memoryYear} onChangeText={setMemoryYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
+            <TouchableOpacity style={styles.approxRow} onPress={() => setMemoryIsApproximate((v) => !v)} activeOpacity={0.7}>
               <View style={[styles.approxCheckbox, memoryIsApproximate && styles.approxCheckboxActive]}>
                 {memoryIsApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
               </View>
               <Text style={styles.approxLabel}>Approximate year</Text>
             </TouchableOpacity>
             <View style={styles.quizModalActions}>
-              <TouchableOpacity
-                style={styles.quizCancelBtn}
-                onPress={() => {
-                  setMemoryDetailsVisible(false);
-                  setPendingMemoryAssets([]);
-                  setMemoryNote('');
-                  setMemoryYear('');
-                  setMemoryIsApproximate(false);
-                }}
-              >
-                <Text style={styles.quizCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quizSaveBtn} onPress={saveMemoryDetailsAndUpload}>
-                <Text style={styles.quizSaveText}>Save Changes</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.quizCancelBtn} onPress={() => { setMemoryDetailsVisible(false); setPendingMemoryAssets([]); setMemoryNote(''); setMemoryYear(''); setMemoryIsApproximate(false); }}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.quizSaveBtn} onPress={saveMemoryDetailsAndUpload}><Text style={styles.quizSaveText}>Save Changes</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      <MediaDetailsModal
-        item={previewItem?.kind !== 'PHOTO' && previewItem?.kind !== 'VIDEO' ? previewItem : null}
-        onClose={() => setPreviewItem(null)}
-        onEdit={openMetadataEdit}
-      />
-
-      <MemoryFullscreenPreviewModal
-        item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null}
-        onClose={() => setPreviewItem(null)}
-        onEdit={openMetadataEdit}
-      />
-
-      <EditMetadataModal
-        item={editingMedia}
-        firstName={editFirstName}
-        relationship={editRelationship}
-        birthYear={editBirthYear}
-        note={editNote}
-        year={editYear}
-        isApproximate={editIsApproximate}
-        saving={savingEdit}
-        onChangeFirstName={setEditFirstName}
-        onChangeRelationship={setEditRelationship}
-        onChangeBirthYear={setEditBirthYear}
-        onChangeNote={setEditNote}
-        onChangeYear={setEditYear}
-        onToggleApproximate={() => setEditIsApproximate((v) => !v)}
-        onClose={() => setEditingMedia(null)}
-        onSave={saveMetadataEdit}
-      />
-
-      <M3Dialog
-        visible={mlDialog.visible}
-        title={mlDialog.title}
-        body={mlDialog.body}
-        actions={mlDialog.actions}
-        onDismiss={dismissMlDialog}
-      />
-    </View>
-  );
-}
-
-// ── QuizModeSelector ─────────────────────────────────────────────────────────
-
-const ALL_QUIZ_MODES: { key: QuizMode; label: string }[] = [
-  { key: 'NAME', label: 'Name' },
-  { key: 'AGE', label: 'Age' },
-  { key: 'RELATIONSHIP', label: 'Relationship' },
-];
-
-function QuizModeSelector({
-  patientName,
-  activeModes,
-  saving,
-  onToggle,
-}: {
-  patientName: string;
-  activeModes: QuizMode[];
-  saving: boolean;
-  onToggle: (mode: QuizMode) => void;
-}) {
-  return (
-    <View style={styles.quizSelectorWrapper}>
-      <Text style={styles.quizSelectorLabel} numberOfLines={1}>
-        Customize {patientName}'s quiz:
-      </Text>
-      <View style={styles.quizSelectorPills}>
-        {ALL_QUIZ_MODES.map(({ key, label }) => {
-          const active = activeModes.includes(key);
-          const isLast = active && activeModes.length === 1;
-          return (
-            <TouchableOpacity
-              key={key}
-              style={[styles.quizPill, active && styles.quizPillActive, isLast && styles.quizPillLast]}
-              onPress={() => onToggle(key)}
-              activeOpacity={0.75}
-              disabled={saving || isLast}
-            >
-              <Text style={[styles.quizPillText, active && styles.quizPillTextActive]}>
-                {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-        {saving && <ActivityIndicator size="small" color={colors.secondary} style={{ marginLeft: 6 }} />}
-      </View>
+      <MediaDetailsModal item={previewItem?.kind !== 'PHOTO' && previewItem?.kind !== 'VIDEO' ? previewItem : null} onClose={() => setPreviewItem(null)} onEdit={openMetadataEdit} />
+      <MemoryFullscreenPreviewModal item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null} onClose={() => setPreviewItem(null)} onEdit={openMetadataEdit} />
+      <EditMetadataModal item={editingMedia} firstName={editFirstName} relationship={editRelationship} birthYear={editBirthYear} hint={editHint} nickname={editNickname} note={editNote} year={editYear} isApproximate={editIsApproximate} saving={savingEdit} onChangeFirstName={setEditFirstName} onChangeRelationship={setEditRelationship} onChangeBirthYear={setEditBirthYear} onChangeHint={setEditHint} onChangeNickname={setEditNickname} onChangeNote={setEditNote} onChangeYear={setEditYear} onToggleApproximate={() => setEditIsApproximate((v) => !v)} onClose={() => setEditingMedia(null)} onSave={saveMetadataEdit} />
+      <M3Dialog visible={mlDialog.visible} title={mlDialog.title} body={mlDialog.body} actions={mlDialog.actions} onDismiss={dismissMlDialog} />
     </View>
   );
 }
 
 // ── YearHeader ────────────────────────────────────────────────────────────────
-
 function YearHeader({ label }: { label: string }) {
   const decadeMatch = label.match(/^(\d+)(s)$/);
-
   return (
     <View style={styles.yearHeader}>
       <Text style={styles.yearHeaderText}>
-        {decadeMatch ? (
-          <>
-            {decadeMatch[1]}
-            <Text style={styles.yearHeaderSuffix}>{decadeMatch[2]}</Text>
-          </>
-        ) : (
-          label
-        )}
+        {decadeMatch ? <>{decadeMatch[1]}<Text style={styles.yearHeaderSuffix}>{decadeMatch[2]}</Text></> : label}
       </Text>
     </View>
   );
 }
 
 // ── MemoryTile ────────────────────────────────────────────────────────────────
-
-function MemoryTile({
-  item,
-  tileSize = TILE_SIZE,
-  seamless = false,
-  editMode,
-  isSelected,
-  canDelete,
-  isPrimary,
-  onImageError,
-  onPress,
-  onLongPress,
-}: {
-  item: MediaTileVM;
-  tileSize?: number;
-  seamless?: boolean;
-  editMode: boolean;
-  isSelected: boolean;
-  canDelete: boolean;
-  isPrimary: boolean;
-  onImageError?: () => void;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
+function MemoryTile({ item, tileSize = TILE_SIZE, seamless = false, editMode, isSelected, canDelete, isPrimary, onImageError, onPress, onLongPress }: { item: MediaTileVM; tileSize?: number; seamless?: boolean; editMode: boolean; isSelected: boolean; canDelete: boolean; isPrimary: boolean; onImageError?: () => void; onPress: () => void; onLongPress: () => void; }) {
   const tileStyle = { width: tileSize, height: tileSize };
   const baseTileStyle = [styles.tile, tileStyle, seamless && styles.tileSeamless];
-  if (item.status !== 'READY') {
-    return (
-      <View style={[baseTileStyle, styles.tilePlaceholder]}>
-        <ActivityIndicator size="small" color={colors.secondary} />
-        <Text style={styles.tilePendingText}>Uploading…</Text>
-      </View>
-    );
-  }
-  if (item.urlError) {
-    return (
-      <View style={[baseTileStyle, styles.tilePlaceholder]}>
-        <AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" />
-        <Text style={styles.tilePendingText}>Error</Text>
-      </View>
-    );
-  }
-  if (!item.signedUrl) {
-    return (
-      <View style={[baseTileStyle, styles.tilePlaceholder]}>
-        <ActivityIndicator size="small" color={colors.secondary} />
-      </View>
-    );
-  }
+  if (item.status !== 'READY') return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={colors.secondary} /><Text style={styles.tilePendingText}>Uploading…</Text></View>);
+  if (item.urlError) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" /><Text style={styles.tilePendingText}>Error</Text></View>);
+  if (!item.signedUrl) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={colors.secondary} /></View>);
 
   const isSelectableInEdit = editMode && (isPrimary || canDelete);
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={260}
-      activeOpacity={editMode ? 0.9 : 0.82}
-      style={[
-        baseTileStyle,
-        isSelected && styles.tileSelected,
-        editMode && !isSelectableInEdit && styles.tileDisabled,
-      ]}
-    >
+    <TouchableOpacity onPress={onPress} onLongPress={onLongPress} delayLongPress={260} activeOpacity={editMode ? 0.9 : 0.82} style={[baseTileStyle, isSelected && styles.tileSelected, editMode && !isSelectableInEdit && styles.tileDisabled]}>
       <Image source={{ uri: item.signedUrl }} style={styles.tileImage} resizeMode="cover" onError={onImageError} />
-
       {item.kind !== 'PHOTO' && (
         <View style={styles.kindBadge}>
-          <AppIcon
-            iosName={item.kind === 'VIDEO' ? 'video.fill' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
-            androidFallback={item.kind === 'VIDEO' ? '▶' : item.kind === 'AUDIO' ? '♪' : '📄'}
-            size={11}
-            color="#fff"
-          />
+          <AppIcon iosName={item.kind === 'VIDEO' ? 'video.fill' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'} androidFallback={item.kind === 'VIDEO' ? '▶' : item.kind === 'AUDIO' ? '♪' : '📄'} size={11} color="#fff" />
         </View>
       )}
-
       {editMode && (
         <View style={[styles.selectOverlay, isSelected && styles.selectOverlayActive]}>
           {isSelectableInEdit && (
@@ -1510,238 +1078,93 @@ function MemoryTile({
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-function MediaDetailsModal({
-  item,
-  onClose,
-  onEdit,
-}: {
-  item: MediaTileVM | null;
-  onClose: () => void;
-  onEdit: (item: MediaTileVM) => void;
-}) {
+// ── Detail Modals ─────────────────────────────────────────────────────────────
+function MediaDetailsModal({ item, onClose, onEdit }: { item: MediaTileVM | null; onClose: () => void; onEdit: (item: MediaTileVM) => void; }) {
   const [imageFailed, setImageFailed] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
 
-  useEffect(() => {
-    setImageFailed(false);
-    setImageLoading(item?.kind === 'PHOTO' && !!item.signedUrl);
-  }, [item?.publicId, item?.signedUrl]);
+  useEffect(() => { setImageFailed(false); setImageLoading(item?.kind === 'PHOTO' && !!item.signedUrl); }, [item?.publicId, item?.signedUrl]);
 
   if (!item) return null;
-
-  const title =
-    item.collection === 'QUIZ'
-      ? item.kind === 'AUDIO'
-        ? 'Audio'
-        : 'Photo'
-      : item.kind === 'PHOTO'
-      ? 'Photo'
-      : item.kind === 'VIDEO'
-      ? 'Video'
-      : item.kind === 'AUDIO'
-      ? 'Audio'
-      : 'File';
-
-  const primaryDetail =
-    item.collection === 'QUIZ'
-      ? [item.firstName, item.relationshipType].filter(Boolean).join(' · ')
-      : item.note || 'No note saved';
+  const title = item.collection === 'QUIZ' ? item.kind === 'AUDIO' ? 'Audio' : 'Photo' : item.kind === 'PHOTO' ? 'Photo' : item.kind === 'VIDEO' ? 'Video' : item.kind === 'AUDIO' ? 'Audio' : 'File';
+  const primaryDetail = item.collection === 'QUIZ' ? [item.firstName, item.relationshipType].filter(Boolean).join(' · ') : item.note || 'No note saved';
+  
   return (
     <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <View style={styles.previewModal}>
           <View style={styles.previewHeader}>
             <Text style={styles.quizModalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <AppIcon iosName="xmark" androidFallback="x" size={16} color={colors.textDark} />
-            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><AppIcon iosName="xmark" androidFallback="x" size={16} color={colors.textDark} /></TouchableOpacity>
           </View>
-
           {item.kind === 'PHOTO' && item.signedUrl && !imageFailed ? (
             <View style={styles.previewMediaImageFrame}>
-              {imageLoading && (
-                <View style={styles.previewImageLoading}>
-                  <ActivityIndicator size="small" color={colors.secondary} />
-                </View>
-              )}
-              <Image
-                source={{ uri: item.signedUrl }}
-                style={styles.previewMediaImage}
-                resizeMode="contain"
-                onError={() => setImageFailed(true)}
-                onLoadEnd={() => setImageLoading(false)}
-              />
+              {imageLoading && <View style={styles.previewImageLoading}><ActivityIndicator size="small" color={colors.secondary} /></View>}
+              <Image source={{ uri: item.signedUrl }} style={styles.previewMediaImage} resizeMode="contain" onError={() => setImageFailed(true)} onLoadEnd={() => setImageLoading(false)} />
             </View>
           ) : (
-            <View style={styles.previewMediaFallback}>
-              <AppIcon
-                iosName={item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'}
-                androidFallback={item.kind === 'AUDIO' ? 'Audio' : item.kind === 'VIDEO' ? 'Video' : 'File'}
-                size={40}
-                color={colors.secondary}
-              />
-            </View>
+            <View style={styles.previewMediaFallback}><AppIcon iosName={item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? 'Audio' : item.kind === 'VIDEO' ? 'Video' : 'File'} size={40} color={colors.secondary} /></View>
           )}
-
           <View style={styles.detailsList}>
             {!!primaryDetail && <Text style={styles.detailLine}>{primaryDetail}</Text>}
-            <Text style={styles.detailMeta}>
-              {item.kind.charAt(0) + item.kind.slice(1).toLowerCase()} · {new Date(item.createdAt).toLocaleDateString()}
-            </Text>
+            {item.collection === 'QUIZ' && !!item.nickname && <Text style={styles.detailLine}>Nickname: {item.nickname}</Text>}
+            {item.collection === 'QUIZ' && !!item.hint && <Text style={styles.detailMeta}>Hint: {item.hint}</Text>}
+            <Text style={styles.detailMeta}>{item.kind.charAt(0) + item.kind.slice(1).toLowerCase()} · {new Date(item.createdAt).toLocaleDateString()}</Text>
           </View>
-
-          <TouchableOpacity style={styles.editDetailsBtn} onPress={() => onEdit(item)}>
-            <Text style={styles.editDetailsText}>Edit Details</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.editDetailsBtn} onPress={() => onEdit(item)}><Text style={styles.editDetailsText}>Edit Details</Text></TouchableOpacity>
         </View>
       </View>
     </Modal>
   );
 }
 
-// ── MemoryFullscreenPreviewModal ──────────────────────────────────────────────
-
-function MemoryFullscreenPreviewModal({
-  item,
-  onClose,
-  onEdit,
-}: {
-  item: MediaTileVM | null;
-  onClose: () => void;
-  onEdit: (item: MediaTileVM) => void;
-}) {
+function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTileVM | null; onClose: () => void; onEdit: (item: MediaTileVM) => void; }) {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
 
-  useEffect(() => {
-    if (item) {
-      setImageLoading(true);
-      setImageFailed(false);
-    }
-  }, [item?.publicId, item?.signedUrl]);
+  useEffect(() => { if (item) { setImageLoading(true); setImageFailed(false); } }, [item?.publicId, item?.signedUrl]);
 
   if (!item) return null;
-
   const isPhoto = item.kind === 'PHOTO';
   const isVideo = item.kind === 'VIDEO';
-  const yearLabel =
-    item.eventYear != null
-      ? item.isApproximateYear
-        ? `~${item.eventYear}`
-        : String(item.eventYear)
-      : null;
+  const yearLabel = item.eventYear != null ? item.isApproximateYear ? `~${item.eventYear}` : String(item.eventYear) : null;
 
   return (
     <Modal visible animationType="fade" onRequestClose={onClose}>
       <View style={styles.fsPreviewScreen}>
         {(isPhoto || isVideo) && item.signedUrl && !imageFailed ? (
-          <>
-            <ZoomableImage
-              uri={item.signedUrl}
-              onLoad={() => setImageLoading(false)}
-              onError={() => { setImageLoading(false); setImageFailed(true); }}
-            />
-            {imageLoading && (
-              <View style={styles.fsPreviewLoadingOverlay}>
-                <ActivityIndicator size="large" color="#fff" />
-              </View>
-            )}
-          </>
+          <><ZoomableImage uri={item.signedUrl} onLoad={() => setImageLoading(false)} onError={() => { setImageLoading(false); setImageFailed(true); }} />{imageLoading && <View style={styles.fsPreviewLoadingOverlay}><ActivityIndicator size="large" color="#fff" /></View>}</>
         ) : (
           <View style={styles.fsPreviewFallback}>
-            <AppIcon
-              iosName={
-                imageFailed
-                  ? 'exclamationmark.triangle'
-                  : item.kind === 'AUDIO'
-                  ? 'waveform'
-                  : item.kind === 'VIDEO'
-                  ? 'video.fill'
-                  : 'doc.fill'
-              }
-              androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'}
-              size={56}
-              color={colors.secondary}
-            />
-            <Text style={styles.fsPreviewKindLabel}>
-              {imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}
-            </Text>
+            <AppIcon iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'} size={56} color={colors.secondary} />
+            <Text style={styles.fsPreviewKindLabel}>{imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}</Text>
           </View>
         )}
-
-        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close">
-          <AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={colors.textDark} />
-        </TouchableOpacity>
-
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.72)']}
-          style={styles.fsPreviewDetails}
-        >
+        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close"><AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={colors.textDark} /></TouchableOpacity>
+        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.72)']} style={styles.fsPreviewDetails}>
           {item.collection === 'QUIZ' ? (
             <>
               {!!item.firstName && <Text style={styles.fsPreviewName}>{item.firstName}</Text>}
-              {!!item.relationshipType && (
-                <Text style={styles.fsPreviewRelationship}>{item.relationshipType}</Text>
-              )}
-              {!!item.birthYear && (
-                <Text style={styles.fsPreviewRelationship}>Born {item.birthYear}</Text>
-              )}
+              {!!item.relationshipType && <Text style={styles.fsPreviewRelationship}>{item.relationshipType}</Text>}
+              {!!item.birthYear && <Text style={styles.fsPreviewRelationship}>Born {item.birthYear}</Text>}
+              {!!item.nickname && <Text style={styles.fsPreviewRelationship}>Nickname: {item.nickname}</Text>}
+              {!!item.hint && <Text style={styles.fsPreviewRelationship}>Hint: {item.hint}</Text>}
             </>
           ) : (
             <>
               {!!yearLabel && <Text style={styles.fsPreviewYear}>{yearLabel}</Text>}
-              {!!(item as any).memoryCategory && (
-                <Text style={styles.fsPreviewCategory}>{(item as any).memoryCategory}</Text>
-              )}
+              {!!(item as any).memoryCategory && <Text style={styles.fsPreviewCategory}>{(item as any).memoryCategory}</Text>}
               {!!item.note && <Text style={styles.fsPreviewNote}>{item.note}</Text>}
             </>
           )}
-          <TouchableOpacity style={styles.fsPreviewEditBtn} onPress={() => onEdit(item)}>
-            <Text style={styles.fsPreviewEditText}>Edit Details</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.fsPreviewEditBtn} onPress={() => onEdit(item)}><Text style={styles.fsPreviewEditText}>Edit Details</Text></TouchableOpacity>
         </LinearGradient>
       </View>
     </Modal>
   );
 }
 
-function EditMetadataModal({
-  item,
-  firstName,
-  relationship,
-  birthYear,
-  note,
-  year,
-  isApproximate,
-  saving,
-  onChangeFirstName,
-  onChangeRelationship,
-  onChangeBirthYear,
-  onChangeNote,
-  onChangeYear,
-  onToggleApproximate,
-  onClose,
-  onSave,
-}: {
-  item: MediaTileVM | null;
-  firstName: string;
-  relationship: string;
-  birthYear: string;
-  note: string;
-  year: string;
-  isApproximate: boolean;
-  saving: boolean;
-  onChangeFirstName: (value: string) => void;
-  onChangeRelationship: (value: string) => void;
-  onChangeBirthYear: (value: string) => void;
-  onChangeNote: (value: string) => void;
-  onChangeYear: (value: string) => void;
-  onToggleApproximate: () => void;
-  onClose: () => void;
-  onSave: () => void;
-}) {
+function EditMetadataModal({ item, firstName, relationship, birthYear, hint, nickname, note, year, isApproximate, saving, onChangeFirstName, onChangeRelationship, onChangeBirthYear, onChangeHint, onChangeNickname, onChangeNote, onChangeYear, onToggleApproximate, onClose, onSave }: any) {
   return (
     <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
@@ -1751,50 +1174,23 @@ function EditMetadataModal({
             <>
               <TextInput style={styles.detailInput} value={firstName} onChangeText={onChangeFirstName} placeholder="Name" placeholderTextColor={colors.textMuted} />
               <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={colors.textMuted} />
-              <TextInput
-                style={styles.detailInput}
-                value={birthYear}
-                onChangeText={onChangeBirthYear}
-                placeholder="Birth year"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="number-pad"
-                maxLength={4}
-              />
+              <TextInput style={styles.detailInput} value={birthYear} onChangeText={onChangeBirthYear} placeholder="Birth year" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={hint} onChangeText={onChangeHint} placeholder="Patient Hint (optional)" placeholderTextColor={colors.textMuted} multiline />
+              <TextInput style={styles.detailInput} value={nickname} onChangeText={onChangeNickname} placeholder="Personal nickname (optional)" placeholderTextColor={colors.textMuted} />
             </>
           ) : (
             <>
-              <TextInput
-                style={[styles.detailInput, styles.noteInput]}
-                value={note}
-                onChangeText={onChangeNote}
-                placeholder="Descriptive note"
-                placeholderTextColor={colors.textMuted}
-                multiline
-              />
-              <TextInput
-                style={styles.detailInput}
-                value={year}
-                onChangeText={onChangeYear}
-                placeholder="Year (e.g. 1985) — optional"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="number-pad"
-                maxLength={4}
-              />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={note} onChangeText={onChangeNote} placeholder="Descriptive note" placeholderTextColor={colors.textMuted} multiline />
+              <TextInput style={styles.detailInput} value={year} onChangeText={onChangeYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
               <TouchableOpacity style={styles.approxRow} onPress={onToggleApproximate} activeOpacity={0.7}>
-                <View style={[styles.approxCheckbox, isApproximate && styles.approxCheckboxActive]}>
-                  {isApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
-                </View>
+                <View style={[styles.approxCheckbox, isApproximate && styles.approxCheckboxActive]}>{isApproximate && <Text style={styles.approxCheckmark}>✓</Text>}</View>
                 <Text style={styles.approxLabel}>Approximate year</Text>
               </TouchableOpacity>
             </>
           )}
           <View style={styles.quizModalActions}>
-            <TouchableOpacity style={styles.quizCancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={styles.quizCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.quizSaveBtn, saving && styles.fabDisabled]} onPress={onSave} disabled={saving}>
-              <Text style={styles.quizSaveText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.quizCancelBtn} onPress={onClose} disabled={saving}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.quizSaveBtn, saving && styles.fabDisabled]} onPress={onSave} disabled={saving}><Text style={styles.quizSaveText}>{saving ? 'Saving...' : 'Save Changes'}</Text></TouchableOpacity>
           </View>
         </View>
       </View>
@@ -1802,778 +1198,122 @@ function EditMetadataModal({
   );
 }
 
-
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // Container
-  wrapper: {
-    // sized by content on Android (outer M3BottomSheet ScrollView scrolls)
-  },
-  wrapperIOS: {
-    flex: 1, // fills the formSheet
-  },
-  flatListIOS: {
-    flex: 1,
-  },
+  wrapper: { flex: 1, backgroundColor: 'transparent' },
+  wrapperIOS: { flex: 1 },
+  headerArea: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 12 },
+  
+  controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  filterChips: { flexDirection: 'row', gap: 8, flex: 1 },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
+  filterChipActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
+  filterChipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textMuted },
+  filterChipTextActive: { color: '#FFF' },
 
-  // Header area (nav + chips)
-  headerArea: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
-  },
+  editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'transparent' },
+  editButtonActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
+  editButtonText: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: colors.textMuted },
+  editButtonTextActive: { color: '#FFF' },
 
-  // Nav header — matches patients.tsx sheetNavHeader
-  sheetNavHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingTop: 4,
-  },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: isIOS ? 2 : 0,
-    minWidth: 60,
-    paddingVertical: 6,
-    paddingRight: 8,
-    ...(isIOS
-      ? {}
-      : {
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          justifyContent: 'center' as const,
-          backgroundColor: 'rgba(0,0,0,0.05)',
-        }),
-  },
-  backBtnText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 17,
-    color: colors.secondary,
-  },
-  sheetNavTitle: {
-    flex: 1,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
-    color: colors.textDark,
-    textAlign: 'center',
-  },
-  navRightBtn: {
-    minWidth: 60,
-    alignItems: 'flex-end',
-    paddingVertical: 6,
-    paddingLeft: 8,
-  },
-  navActionText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 16,
-    color: colors.secondary,
-  },
-
-  // Upload progress banner
-  uploadBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: colors.secondary,
-    paddingVertical: 9,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  uploadBannerText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: '#fff',
-  },
-
-  // Filter chips
-  filterRow: { flexGrow: 0, marginBottom: 10 },
-  filterContent: { gap: 8 },
-  libraryTabs: {
-    flexDirection: 'row',
-    width: '100%',
-    padding: 3,
-    borderRadius: 14,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    marginBottom: 10,
-  },
-  libraryTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: 11,
-  },
-  libraryTabActive: {
-    backgroundColor: colors.secondary,
-  },
-  libraryTabText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  libraryTabTextActive: {
-    color: '#fff',
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-  },
+  secondaryFilterRow: { flexGrow: 0, marginTop: 12 },
+  secondaryFilterContent: { gap: 8 },
+  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
   chipActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  chipText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
+  chipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textMuted },
   chipTextActive: { color: '#fff' },
 
-  // Android inline add button
-  addRowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(45,79,62,0.07)',
-  },
-  addRowBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.secondary,
-  },
+  uploadBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.secondary, paddingVertical: 9, borderRadius: 12, marginTop: 12 },
+  uploadBannerText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#fff' },
 
-  // Grid
-  grid: {
-    paddingHorizontal: GRID_PADDING,
-    paddingTop: 4,
-    paddingBottom: 24,
-  },
-  memoryGrid: {
-    paddingHorizontal: MEMORY_GRID_PADDING,
-    paddingTop: 4,
-    paddingBottom: 24,
-  },
+  grid: { paddingHorizontal: GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
+  memoryGrid: { paddingHorizontal: MEMORY_GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
   gridRow: { gap: GRID_GUTTER, marginBottom: GRID_GUTTER },
   memoryGridRow: { flexDirection: 'row', gap: MEMORY_GRID_GAP, marginBottom: MEMORY_GRID_GAP },
 
-  // Tiles
-  tile: {
-    width: TILE_SIZE,
-    height: TILE_SIZE,
-    borderRadius: isIOS ? 10 : 14,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-  },
-  tileSeamless: {
-    borderRadius: 0,
-  },
-  tileSelected: {
-    opacity: 0.78,
-    transform: [{ scale: 0.94 }],
-  },
+  tile: { width: TILE_SIZE, height: TILE_SIZE, borderRadius: isIOS ? 10 : 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.04)' },
+  tileSeamless: { borderRadius: 0 },
+  tileSelected: { opacity: 0.78, transform: [{ scale: 0.94 }] },
   tileDisabled: { opacity: 0.38 },
   tilePlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 4 },
-  tilePendingText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 10,
-    color: colors.textMuted,
-  },
+  tilePendingText: { fontFamily: typography.fontFamily.regular, fontSize: 10, color: colors.textMuted },
   tileImage: { width: '100%', height: '100%', objectFit: 'cover' },
-  kindBadge: {
-    position: 'absolute',
-    bottom: 5,
-    right: 5,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-  },
-  selectOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
-    padding: 6,
-  },
-  selectOverlayActive: { backgroundColor: 'rgba(3,87,58,0.18)' },
-  selectCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#fff',
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  selectCircleActive: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
+  kindBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 3 },
+  selectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'flex-end', padding: 6 },
+  selectOverlayActive: { backgroundColor: 'rgba(231,76,60,0.18)' },
+  selectCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
+  selectCircleActive: { backgroundColor: '#E74C3C', borderColor: '#E74C3C' },
 
-  // States
-  center: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 32,
-    paddingVertical: 48,
-  },
-  centerFlex: {
-    flex: 1,
-    paddingVertical: 0,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: colors.textDark,
-  },
-  emptyBody: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  errorText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: '#C0392B',
-    textAlign: 'center',
-  },
-  retryBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-  },
-  retryBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: '#fff',
-  },
+  centerFlex: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 64 },
+  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyTitle: { fontFamily: typography.fontFamily.bold, fontSize: 16, color: colors.textDark, marginTop: 6 },
+  emptyBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 4 },
+  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: '#C0392B', textAlign: 'center' },
+  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.primary, marginTop: 12 },
+  retryBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
 
-  // FAB (iOS only)
-  fab: {
-    position: 'absolute',
-    right: 24,
-    bottom: 36,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 6,
-    elevation: 8,
-  },
+  fab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 6, elevation: 8 },
+  deleteFab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, flexDirection: 'row', gap: 6, paddingHorizontal: 20, height: 56, borderRadius: 28, backgroundColor: '#E74C3C', justifyContent: 'center', alignItems: 'center', shadowColor: '#E74C3C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 8 },
+  deleteFabText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: '#FFF' },
   fabDisabled: { opacity: 0.55 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalScroll: {
-    width: '100%',
-  },
-  modalScrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingVertical: 24,
-  },
-  quizModal: {
-    width: '100%',
-    maxHeight: '86%',
-    borderRadius: 18,
-    backgroundColor: colors.neutral,
-    padding: 18,
-    gap: 10,
-  },
-  guidanceModal: {
-    width: '100%',
-    borderRadius: 18,
-    backgroundColor: colors.neutral,
-    padding: 18,
-    gap: 14,
-  },
-  guidanceTips: {
-    gap: 10,
-  },
-  guidanceTip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 42,
-  },
-  guidanceIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(3,87,58,0.1)',
-  },
-  guidanceIconError: {
-    backgroundColor: 'rgba(192,57,43,0.1)',
-  },
-  guidanceTipText: {
-    flex: 1,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textDark,
-  },
-  quizModalTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
-    color: colors.textDark,
-  },
-  quizModalBody: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textMuted,
-  },
-  detailInput: {
-    minHeight: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: colors.textDark,
-  },
-  noteInput: {
-    minHeight: 96,
-    paddingTop: 12,
-    textAlignVertical: 'top',
-  },
-  verificationBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(3,87,58,0.16)',
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  verificationBoxSuccess: {
-    backgroundColor: 'rgba(167,215,197,0.32)',
-  },
-  verificationText: {
-    flex: 1,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.secondary,
-  },
-  previewModal: {
-    width: '100%',
-    maxHeight: '86%',
-    borderRadius: 18,
-    backgroundColor: colors.neutral,
-    padding: 16,
-    gap: 12,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  closeBtnText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
-    color: colors.textDark,
-  },
-  previewMediaImageFrame: {
-    width: '100%',
-    height: Math.min(SCREEN_WIDTH * 0.72, 360),
-    alignSelf: 'center',
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: colors.neutral,
-  },
-  previewMediaImage: {
-    width: '100%',
-    height: '100%',
-  },
-  previewImageLoading: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewMediaFallback: {
-    width: '100%',
-    height: 160,
-    borderRadius: 14,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailsList: {
-    gap: 6,
-  },
-  detailLine: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 15,
-    lineHeight: 21,
-    color: colors.textDark,
-  },
-  detailMeta: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  editDetailsBtn: {
-    alignSelf: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.secondary,
-  },
-  editDetailsText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: '#fff',
-  },
-  quizModalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 4,
-  },
-  quizCancelBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  quizCancelText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  quizSaveBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.secondary,
-  },
-  quizSaveText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: '#fff',
-  },
 
-  // Year group header (MEMORY timeline)
-  yearHeader: {
-    paddingHorizontal: GRID_PADDING,
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  yearHeaderText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 15,
-    color: colors.textMuted,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  yearHeaderSuffix: {
-    fontSize: 10,
-  },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalScroll: { width: '100%' },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  quizModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: colors.neutral, padding: 18, gap: 10 },
+  guidanceModal: { width: '100%', borderRadius: 18, backgroundColor: colors.neutral, padding: 18, gap: 14 },
+  guidanceTips: { gap: 10 },
+  guidanceTip: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 42 },
+  guidanceIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(3,87,58,0.1)' },
+  guidanceIconError: { backgroundColor: 'rgba(192,57,43,0.1)' },
+  guidanceTipText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textDark },
+  quizModalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: colors.textDark },
+  quizModalBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, lineHeight: 18, color: colors.textMuted },
+  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
+  noteInput: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
+  verificationBox: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(3,87,58,0.16)', backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 12, paddingVertical: 10 },
+  verificationBoxSuccess: { backgroundColor: 'rgba(167,215,197,0.32)' },
+  verificationText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 13, lineHeight: 18, color: colors.secondary },
+  previewModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: colors.neutral, padding: 16, gap: 12 },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  previewMediaImageFrame: { width: '100%', height: Math.min(SCREEN_WIDTH * 0.72, 360), alignSelf: 'center', borderRadius: 14, overflow: 'hidden', backgroundColor: colors.neutral },
+  previewMediaImage: { width: '100%', height: '100%' },
+  previewImageLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  detailsList: { gap: 6 },
+  detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: colors.textDark },
+  detailMeta: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted },
+  editDetailsBtn: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
+  editDetailsText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  quizModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
+  quizCancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  quizCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
+  quizSaveBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
+  quizSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
 
-  // Approximate year toggle
-  approxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 4,
-  },
-  approxCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: 'rgba(0,0,0,0.15)',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approxCheckboxActive: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
-  approxCheckmark: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 13,
-    color: '#fff',
-  },
-  approxLabel: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: colors.textDark,
-  },
+  yearHeader: { paddingHorizontal: GRID_PADDING, paddingTop: 20, paddingBottom: 8 },
+  yearHeaderText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
+  yearHeaderSuffix: { fontSize: 10 },
 
-  // Full-screen media preview modal
-  fullPreviewBackdrop: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  fullPreviewClose: {
-    position: 'absolute',
-    top: isIOS ? 56 : 20,
-    right: 18,
-    zIndex: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fullPreviewScroll: {
-    flex: 1,
-  },
-  fullPreviewContent: {
-    flexGrow: 1,
-  },
-  fullPreviewImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH,
-    backgroundColor: '#111',
-  },
-  fullPreviewMediaFallback: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 0.6,
-    backgroundColor: '#1a1a1a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  fullPreviewKindLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 15,
-    color: '#aaa',
-  },
-  fullPreviewDetails: {
-    backgroundColor: colors.neutral,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginTop: -24,
-    padding: 24,
-    paddingBottom: 48,
-    gap: 8,
-  },
-  fullPreviewYear: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 26,
-    color: colors.primary,
-  },
-  fullPreviewCategory: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  fullPreviewNote: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 16,
-    color: colors.textDark,
-    lineHeight: 24,
-  },
-  fullPreviewName: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 22,
-    color: colors.textDark,
-  },
-  fullPreviewRelationship: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 16,
-    color: colors.textMuted,
-  },
-  fullPreviewMeta: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  fullPreviewUploaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  fullPreviewUploader: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
+  approxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  approxCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.15)', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  approxCheckboxActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
+  approxCheckmark: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: '#fff' },
+  approxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
 
-  // Quiz mode selector
-  quizSelectorWrapper: {
-    paddingHorizontal: 4,
-    paddingTop: 8,
-    paddingBottom: 16,
-    marginBottom: 12,
-    gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  quizSelectorLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  quizSelectorPills: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  quizPill: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: 50,
-    backgroundColor: colors.neutral,
-    borderWidth: 1.5,
-    borderColor: colors.secondary,
-  },
-  quizPillActive: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
-  quizPillLast: {
-    opacity: 0.5,
-  },
-  quizPillText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: colors.secondary,
-  },
-  quizPillTextActive: {
-    color: '#fff',
-  },
-
-  // Fullscreen memory preview (mirrors relive tab layout)
-  fsPreviewScreen: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  fsPreviewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  fsPreviewLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-  },
-  fsPreviewFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: colors.neutral,
-  },
-  fsPreviewKindLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  fsPreviewBackBtn: {
-    position: 'absolute',
-    top: isIOS ? 56 : 20,
-    left: 18,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fsPreviewDetails: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: isIOS ? 44 : 28,
-    gap: 5,
-  },
-  fsPreviewName: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 22,
-    color: '#fff',
-  },
-  fsPreviewRelationship: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  fsPreviewYear: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
-    color: '#fff',
-  },
-  fsPreviewCategory: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.65)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  fsPreviewNote: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.9)',
-    lineHeight: 22,
-    marginTop: 2,
-  },
-  fsPreviewEditBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  fsPreviewEditText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: '#fff',
-  },
+  fsPreviewScreen: { flex: 1, backgroundColor: '#000' },
+  fsPreviewImage: { width: '100%', height: '100%' },
+  fsPreviewLoadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
+  fsPreviewFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.neutral },
+  fsPreviewKindLabel: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
+  fsPreviewBackBtn: { position: 'absolute', top: isIOS ? 56 : 20, left: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' },
+  fsPreviewDetails: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 56, paddingBottom: isIOS ? 44 : 28, gap: 5 },
+  fsPreviewName: { fontFamily: typography.fontFamily.bold, fontSize: 22, color: '#fff' },
+  fsPreviewRelationship: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: 'rgba(255,255,255,0.7)' },
+  fsPreviewYear: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: '#fff' },
+  fsPreviewCategory: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: 0.5 },
+  fsPreviewNote: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: 'rgba(255,255,255,0.9)', lineHeight: 22, marginTop: 2 },
+  fsPreviewEditBtn: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: 'rgba(255,255,255,0.18)' },
+  fsPreviewEditText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#fff' },
 });
-
-

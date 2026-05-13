@@ -5,10 +5,11 @@ import { AppIcon } from './AppIcon';
 
 interface Props {
   visible: boolean;
+  message?: string;
   onDismiss: () => void;
 }
 
-export function QuizSuccessOverlay({ visible, onDismiss }: Props) {
+export function QuizSuccessOverlay({ visible, message = 'Well done.', onDismiss }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.96)).current;
   const onDismissRef = useRef(onDismiss);
@@ -81,7 +82,7 @@ export function QuizSuccessOverlay({ visible, onDismiss }: Props) {
         <View style={styles.iconWrap}>
           <AppIcon iosName="checkmark" androidFallback="check" size={20} color="#1E4D30" />
         </View>
-        <Text style={styles.message}>Well done.</Text>
+        <Text style={styles.message}>{message}</Text>
       </Animated.View>
     </Animated.View>
   );

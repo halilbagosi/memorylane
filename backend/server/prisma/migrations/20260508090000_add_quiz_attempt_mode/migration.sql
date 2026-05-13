@@ -1,0 +1,2 @@
+ALTER TABLE "quiz_attempts"
+ADD COLUMN "mode" TEXT NOT NULL DEFAULT 'NAME';

@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   RefreshControl,
   Switch,
-  ActionSheetIOS,
-  Modal,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { getCaregiverInfo, getToken } from '../../src/utils/auth';
@@ -23,9 +24,15 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
-import { getQuizModes, QuizMode, updateQuizModes } from '../../src/services/media';
+import { CareLevel, getQuizSettings, QuizDifficulty, QuizMode, updateQuizModes } from '../../src/services/media';
+import { getPlanLimits } from '../../src/utils/subscription';
 
 const isIOS = Platform.OS === 'ios';
+
+// Enable LayoutAnimation on Android
+if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface PatientItem {
   id: string;
@@ -34,7 +41,7 @@ interface PatientItem {
   isPrimary: boolean;
 }
 
-type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+type Difficulty = QuizDifficulty;
 
 const MODE_OPTIONS: { key: QuizMode; label: string; icon: string; subtitle: string }[] = [
   { key: 'NAME', label: 'Name', icon: 'person.fill', subtitle: 'Patient guesses each person\'s name' },
@@ -43,9 +50,14 @@ const MODE_OPTIONS: { key: QuizMode; label: string; icon: string; subtitle: stri
 ];
 
 const DIFFICULTY_OPTIONS: { key: Difficulty; label: string; helper: string; icon: string }[] = [
-  { key: 'EASY', label: 'Easy', helper: 'Fewer decoys, more forgiving', icon: 'face.smiling' },
-  { key: 'MEDIUM', label: 'Medium', helper: 'Balanced challenge', icon: 'gauge.with.dots.needle.50percent' },
-  { key: 'HARD', label: 'Hard', helper: 'More decoys, greater challenge', icon: 'flame.fill' },
+  { key: 'EASY', label: 'Easy', helper: '2 decoys (3 total choices) + hints active', icon: 'face.smiling' },
+  { key: 'MEDIUM', label: 'Medium', helper: '3 decoys (4 total choices)', icon: 'gauge.with.dots.needle.50percent' },
+  { key: 'HARD', label: 'Hard', helper: '4 decoys (5 total choices)', icon: 'flame.fill' },
+];
+
+const CARE_LEVEL_OPTIONS: { key: CareLevel; label: string; helper: string; icon: string }[] = [
+  { key: 'PREVENTATIVE', label: 'Preventative', helper: 'Higher challenge with mixed name, age, and relationship questions.', icon: 'brain.head.profile' },
+  { key: 'DEMENTIA', label: 'Dementia', helper: 'Gentler practice with question types kept separate.', icon: 'heart.fill' },
 ];
 
 export default function CreateTab() {
@@ -55,11 +67,16 @@ export default function CreateTab() {
   const [activeSection, setActiveSection] = useState<'builder' | 'library'>('builder');
   const [selectedModes, setSelectedModes] = useState<QuizMode[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
-  const [premiumEnabled, setPremiumEnabled] = useState(false);
+  const [careLevel, setCareLevel] = useState<CareLevel>('DEMENTIA');
+  const [aiAdaptiveEnabled, setAiAdaptiveEnabled] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [libraryModalVisible, setLibraryModalVisible] = useState(false);
+  
+  // Custom Dropdown State
+  const [isPatientDropdownOpen, setIsPatientDropdownOpen] = useState(false);
+
   const [dialog, setDialog] = useState<{
     visible: boolean;
     title: string;
@@ -77,6 +94,11 @@ export default function CreateTab() {
     () => patients.find((patient) => patient.id === selectedPatientId) ?? null,
     [patients, selectedPatientId],
   );
+  const canUseAiAdaptive = getPlanLimits(isSubscribed).aiDifficultyEnabled;
+
+  const animate = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  };
 
   const loadPatients = useCallback(async () => {
     const token = await getToken();
@@ -92,6 +114,8 @@ export default function CreateTab() {
     try {
       const caregiver = await getCaregiverInfo();
       setMyId(caregiver?.id ?? '');
+      const nextIsSubscribed = caregiver?.isSubscribed === true;
+      setIsSubscribed(nextIsSubscribed);
 
       const res = await fetch(`${API_BASE_URL}/patients/my-list`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -110,9 +134,18 @@ export default function CreateTab() {
 
       if (fallbackId) {
         try {
-          const modes = await getQuizModes(fallbackId);
-          setSelectedModes(modes);
+          const settings = await getQuizSettings(fallbackId);
+          setDifficulty(settings.quizDifficulty);
+          setCareLevel(settings.careLevel);
+          setAiAdaptiveEnabled(nextIsSubscribed && settings.aiAdaptiveEnabled);
+
+          if (settings.careLevel === 'DEMENTIA') {
+            setSelectedModes(settings.quizModes.length > 0 ? [settings.quizModes[0]] : ['NAME']);
+          } else {
+            setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
+          }
         } catch {
+          setCareLevel('PREVENTATIVE');
           setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
         }
       } else {
@@ -132,13 +165,22 @@ export default function CreateTab() {
       return;
     }
     try {
-      const modes = await getQuizModes(patientId);
-      setSelectedModes(modes);
+      const settings = await getQuizSettings(patientId);
+      setDifficulty(settings.quizDifficulty);
+      setCareLevel(settings.careLevel);
+      setAiAdaptiveEnabled(canUseAiAdaptive && settings.aiAdaptiveEnabled);
+
+      if (settings.careLevel === 'DEMENTIA') {
+        setSelectedModes(settings.quizModes.length > 0 ? [settings.quizModes[0]] : ['NAME']);
+      } else {
+        setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
+      }
     } catch {
       showDialog('Error', 'Unable to load existing quiz modes.', [{ label: 'OK', onPress: dismissDialog }]);
-      setSelectedModes([]);
+      setCareLevel('PREVENTATIVE');
+      setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
     }
-  }, []);
+  }, [canUseAiAdaptive]);
 
   useFocusEffect(
     useCallback(() => {
@@ -152,49 +194,44 @@ export default function CreateTab() {
   };
 
   const toggleMode = (mode: QuizMode) => {
-    setSelectedModes((prev) => {
-      if (prev.includes(mode)) return prev.filter((entry) => entry !== mode);
-      return [...prev, mode];
-    });
+    animate();
+    if (careLevel === 'DEMENTIA') {
+      setSelectedModes([mode]);
+    } else {
+      setSelectedModes((prev) => {
+        if (prev.includes(mode)) return prev.filter((entry) => entry !== mode);
+        return [...prev, mode];
+      });
+    }
+  };
+
+  const handleCareLevelSelect = (newLevel: CareLevel) => {
+    animate();
+    setCareLevel(newLevel);
+    if (newLevel === 'DEMENTIA') {
+      setSelectedModes((prev) => (prev.length > 0 ? [prev[0]] : ['NAME']));
+    } else if (newLevel === 'PREVENTATIVE') {
+      setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
+    }
+  };
+
+  const handleAiAdaptiveToggle = (value: boolean) => {
+    if (value && !canUseAiAdaptive) {
+      showDialog('Premium Feature', 'AI adaptive difficulty is available with Premium.', [
+        { label: 'Not now', onPress: dismissDialog },
+        { label: 'Upgrade', onPress: () => { dismissDialog(); router.push('/account'); } },
+      ]);
+      return;
+    }
+    animate();
+    setAiAdaptiveEnabled(value);
   };
 
   const selectPatient = async (patientId: string) => {
+    animate();
     setSelectedPatientId(patientId);
+    setIsPatientDropdownOpen(false);
     await loadQuizModesForPatient(patientId);
-  };
-
-  // Native patient picker using ActionSheet (iOS) / M3Dialog (Android)
-  const showPatientPicker = () => {
-    if (patients.length === 0) return;
-
-    const patientNames = patients.map((p) => `${p.name} ${p.surname}`);
-
-    if (isIOS) {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...patientNames, 'Cancel'],
-          cancelButtonIndex: patientNames.length,
-          title: 'Select Patient',
-        },
-        (buttonIndex) => {
-          if (buttonIndex < patients.length) {
-            selectPatient(patients[buttonIndex].id);
-          }
-        },
-      );
-    } else {
-      // Use M3Dialog instead of default Android Alert
-      showDialog('Select Patient', 'Choose a patient for this quiz configuration.', [
-        ...patients.map((patient) => ({
-          label: `${patient.name} ${patient.surname}`,
-          onPress: () => {
-            dismissDialog();
-            selectPatient(patient.id);
-          },
-        })),
-        { label: 'Cancel', onPress: dismissDialog },
-      ]);
-    }
   };
 
   const saveConfiguration = async () => {
@@ -213,10 +250,14 @@ export default function CreateTab() {
 
     setSaving(true);
     try {
-      await updateQuizModes(selectedPatientId, selectedModes);
+      const adaptiveEnabledForSave = canUseAiAdaptive && aiAdaptiveEnabled;
+      await updateQuizModes(selectedPatientId, selectedModes, difficulty, {
+        careLevel,
+        aiAdaptiveEnabled: adaptiveEnabledForSave,
+      });
       showDialog(
         'Quiz Created',
-        `Saved for ${selectedPatient?.name ?? 'patient'} with ${difficulty.toLowerCase()} difficulty${premiumEnabled ? ' and Premium adaptive mode enabled.' : '.'}`,
+        `Saved for ${selectedPatient?.name ?? 'patient'} with ${adaptiveEnabledForSave ? 'AI adaptive difficulty' : `${difficulty.toLowerCase()} difficulty`}.`,
         [{ label: 'Done', onPress: dismissDialog }],
       );
     } catch {
@@ -227,22 +268,18 @@ export default function CreateTab() {
   };
 
   const handleSectionChange = (section: 'builder' | 'library') => {
-    if (section === 'library') {
-      if (!selectedPatient) {
-        showDialog('Select Patient', 'Please select a patient first to open the media library.', [
-          { label: 'OK', onPress: dismissDialog },
-        ]);
-        return;
-      }
-      setLibraryModalVisible(true);
-    } else {
-      setActiveSection('builder');
+    if (section === 'library' && !selectedPatient) {
+      showDialog('Select Patient', 'Please select a patient first to open the media library.', [
+        { label: 'OK', onPress: dismissDialog },
+      ]);
+      return;
     }
+    animate();
+    setActiveSection(section);
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header — matches Patients & Inbox tabs */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Create</Text>
@@ -251,7 +288,6 @@ export default function CreateTab() {
         <CaregiverAvatarButton />
       </View>
 
-      {/* Top-level segmented control */}
       <View style={styles.segmentedWrap}>
         <View style={styles.segmented}>
           <TouchableOpacity
@@ -259,12 +295,6 @@ export default function CreateTab() {
             onPress={() => handleSectionChange('builder')}
             activeOpacity={0.75}
           >
-            <AppIcon
-              iosName="plus.circle.fill"
-              androidFallback="+"
-              size={16}
-              color={activeSection === 'builder' ? '#FFFFFF' : colors.textMuted}
-            />
             <Text style={[styles.segmentText, activeSection === 'builder' && styles.segmentTextActive]}>
               Quiz Builder
             </Text>
@@ -274,12 +304,6 @@ export default function CreateTab() {
             onPress={() => handleSectionChange('library')}
             activeOpacity={0.75}
           >
-            <AppIcon
-              iosName="photo.on.rectangle"
-              androidFallback="📷"
-              size={16}
-              color={activeSection === 'library' ? '#FFFFFF' : colors.textMuted}
-            />
             <Text style={[styles.segmentText, activeSection === 'library' && styles.segmentTextActive]}>
               Media Library
             </Text>
@@ -287,190 +311,289 @@ export default function CreateTab() {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Patient Selector Card */}
-        <AdaptiveCard style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionIconWrap}>
-              <AppIcon iosName="person.fill" androidFallback="P" size={16} color={colors.secondary} />
-            </View>
-            <Text style={styles.sectionTitle}>Patient</Text>
-          </View>
-          {isLoading ? (
-            <Text style={styles.helperText}>Loading patients…</Text>
-          ) : patients.length === 0 ? (
-            <Text style={styles.helperText}>No patients found yet. Add one from the Patients tab.</Text>
-          ) : (
-            <TouchableOpacity
-              style={styles.patientSelector}
-              onPress={showPatientPicker}
-              activeOpacity={0.75}
-            >
-              <View style={styles.patientSelectorLeft}>
-                <View style={styles.patientInitialCircle}>
-                  <Text style={styles.patientInitialText}>
-                    {selectedPatient?.name?.[0]?.toUpperCase() ?? '?'}
-                  </Text>
-                </View>
-                <View>
-                  <Text style={styles.patientSelectorName}>
-                    {selectedPatient ? `${selectedPatient.name} ${selectedPatient.surname}` : 'Choose patient'}
-                  </Text>
-                  {selectedPatient && (
-                    <Text style={styles.patientSelectorRole}>
-                      {selectedPatient.isPrimary ? 'Primary caregiver' : 'Supporting caregiver'}
-                    </Text>
-                  )}
-                </View>
+      {activeSection === 'builder' ? (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Patient Selector Card - Animated Dropdown */}
+          <AdaptiveCard style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <AppIcon iosName="person.fill" androidFallback="P" size={16} color={colors.secondary} />
               </View>
-              <AppIcon
-                iosName="chevron.right"
-                androidFallback="›"
-                size={14}
-                color={colors.textMuted}
-              />
-            </TouchableOpacity>
-          )}
-        </AdaptiveCard>
-
-        {/* Quiz Modes */}
-        <AdaptiveCard style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionIconWrap}>
-              <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={colors.secondary} />
+              <Text style={styles.sectionTitle}>Patient</Text>
             </View>
-            <View style={styles.sectionHeaderText}>
-              <Text style={styles.sectionTitle}>Quiz Modes</Text>
-              <Text style={styles.helperTextInline}>Choose one or more</Text>
-            </View>
-          </View>
-          <View style={styles.modeList}>
-            {MODE_OPTIONS.map((mode) => {
-              const active = selectedModes.includes(mode.key);
-              return (
+            
+            {isLoading ? (
+              <Text style={styles.helperText}>Loading patients…</Text>
+            ) : patients.length === 0 ? (
+              <Text style={styles.helperText}>No patients found yet. Add one from the Patients tab.</Text>
+            ) : (
+              <View style={styles.dropdownContainer}>
                 <TouchableOpacity
-                  key={mode.key}
-                  style={[styles.modeCard, active && styles.modeCardActive]}
-                  onPress={() => toggleMode(mode.key)}
-                  activeOpacity={0.8}
+                  style={[styles.patientSelector, isPatientDropdownOpen && styles.patientSelectorOpen]}
+                  onPress={() => {
+                    animate();
+                    setIsPatientDropdownOpen(!isPatientDropdownOpen);
+                  }}
+                  activeOpacity={0.75}
                 >
-                  <View style={styles.modeLeft}>
+                  <View style={styles.patientSelectorLeft}>
+                    <View style={styles.patientInitialCircle}>
+                      <Text style={styles.patientInitialText}>
+                        {selectedPatient?.name?.[0]?.toUpperCase() ?? '?'}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={styles.patientSelectorName}>
+                        {selectedPatient ? `${selectedPatient.name} ${selectedPatient.surname}` : 'Choose patient'}
+                      </Text>
+                      {selectedPatient && (
+                        <Text style={styles.patientSelectorRole}>
+                          {selectedPatient.isPrimary ? 'Primary caregiver' : 'Supporting caregiver'}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <AppIcon
+                    iosName={isPatientDropdownOpen ? 'chevron.up' : 'chevron.down'}
+                    androidFallback={isPatientDropdownOpen ? '↑' : '↓'}
+                    size={14}
+                    color={colors.textMuted}
+                  />
+                </TouchableOpacity>
+
+                {/* Animated Expanding List */}
+                {isPatientDropdownOpen && (
+                  <View style={styles.dropdownList}>
+                    {patients.map((patient) => (
+                      <TouchableOpacity
+                        key={patient.id}
+                        style={styles.dropdownItem}
+                        onPress={() => selectPatient(patient.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.patientInitialCircleSmall}>
+                          <Text style={styles.patientInitialTextSmall}>
+                            {patient.name[0]?.toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={styles.dropdownItemText}>
+                          {patient.name} {patient.surname}
+                        </Text>
+                        {selectedPatientId === patient.id && (
+                          <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={colors.secondary} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </AdaptiveCard>
+
+          {/* Care Level */}
+          <AdaptiveCard style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <AppIcon iosName="person.crop.circle.badge.checkmark" androidFallback="C" size={16} color={colors.secondary} />
+              </View>
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.sectionTitle}>Care Level</Text>
+                <Text style={styles.helperTextInline}>Therapeutic pacing</Text>
+              </View>
+            </View>
+            <View style={styles.careLevelList}>
+              {CARE_LEVEL_OPTIONS.map((option) => {
+                const active = careLevel === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[styles.careLevelCard, active && styles.careLevelCardActive]}
+                    onPress={() => handleCareLevelSelect(option.key)}
+                    activeOpacity={0.78}
+                  >
                     <View style={[styles.modeIconWrap, active && styles.modeIconWrapActive]}>
                       <AppIcon
-                        iosName={mode.icon as any}
-                        androidFallback={mode.label[0]}
+                        iosName={option.icon as any}
+                        androidFallback={option.label[0]}
                         size={16}
                         color={active ? '#FFFFFF' : colors.secondary}
                       />
                     </View>
                     <View style={styles.modeTextWrap}>
-                      <Text style={[styles.modeTitle, active && styles.modeTitleActive]}>{mode.label}</Text>
-                      <Text style={styles.modeSubtitle}>{mode.subtitle}</Text>
+                      <Text style={[styles.modeTitle, active && styles.modeTitleActive]}>{option.label}</Text>
+                      <Text style={styles.modeSubtitle}>{option.helper}</Text>
                     </View>
-                  </View>
-                  {active && (
-                    <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={20} color={colors.secondary} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </AdaptiveCard>
-
-        {/* Difficulty */}
-        <AdaptiveCard style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionIconWrap}>
-              <AppIcon iosName="chart.bar.fill" androidFallback="D" size={16} color={colors.secondary} />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-            <Text style={styles.sectionTitle}>Difficulty</Text>
-          </View>
-          <View style={styles.difficultyRow}>
-            {DIFFICULTY_OPTIONS.map((option) => {
-              const active = difficulty === option.key;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[styles.difficultyPill, active && styles.difficultyPillActive]}
-                  onPress={() => setDifficulty(option.key)}
-                  activeOpacity={0.75}
-                >
-                  <AppIcon
-                    iosName={option.icon as any}
-                    androidFallback={option.label[0]}
-                    size={18}
-                    color={active ? '#FFFFFF' : colors.textMuted}
-                  />
-                  <Text style={[styles.difficultyLabel, active && styles.difficultyLabelActive]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <Text style={styles.difficultyHelper}>
-            {DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.helper}
-          </Text>
-        </AdaptiveCard>
+          </AdaptiveCard>
 
-        {/* Premium Adaptive Mode */}
-        <AdaptiveCard style={styles.sectionCard}>
-          <View style={styles.premiumRow}>
-            <View style={styles.premiumLeft}>
-              <View style={[styles.sectionIconWrap, styles.premiumIconWrap]}>
-                <AppIcon iosName="sparkles" androidFallback="AI" size={16} color="#D4A843" />
+          {/* Quiz Modes */}
+          <AdaptiveCard style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={colors.secondary} />
               </View>
-              <View style={styles.premiumTextWrap}>
-                <Text style={styles.premiumTitle}>Premium Adaptive</Text>
-                <Text style={styles.premiumSubtitle}>
-                  AI-powered dynamic difficulty (upcoming)
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.sectionTitle}>Quiz Modes</Text>
+                <Text style={styles.helperTextInline}>
+                  {careLevel === 'DEMENTIA' ? 'Choose one type' : 'Choose one or more'}
                 </Text>
               </View>
             </View>
-            <Switch
-              value={premiumEnabled}
-              onValueChange={setPremiumEnabled}
-              trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
-              thumbColor={premiumEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
-              ios_backgroundColor="rgba(0,0,0,0.12)"
-            />
-          </View>
-        </AdaptiveCard>
+            <View style={styles.modeList}>
+              {MODE_OPTIONS.map((mode) => {
+                const active = selectedModes.includes(mode.key);
+                return (
+                  <TouchableOpacity
+                    key={mode.key}
+                    style={[styles.modeCard, active && styles.modeCardActive]}
+                    onPress={() => toggleMode(mode.key)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.modeLeft}>
+                      <View style={[styles.modeIconWrap, active && styles.modeIconWrapActive]}>
+                        <AppIcon
+                          iosName={mode.icon as any}
+                          androidFallback={mode.label[0]}
+                          size={16}
+                          color={active ? '#FFFFFF' : colors.secondary}
+                        />
+                      </View>
+                      <View style={styles.modeTextWrap}>
+                        <Text style={[styles.modeTitle, active && styles.modeTitleActive]}>{mode.label}</Text>
+                        <Text style={styles.modeSubtitle}>{mode.subtitle}</Text>
+                      </View>
+                    </View>
+                    {active && (
+                      <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={20} color={colors.secondary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </AdaptiveCard>
 
-        {/* Create Button */}
-        <AdaptiveButton
-          title="Create Quiz"
-          loading={saving}
-          loadingText="Saving…"
-          onPress={saveConfiguration}
-          disabled={!selectedPatientId || selectedModes.length === 0}
-          style={styles.saveButton}
-        />
-      </ScrollView>
+          {/* Difficulty */}
+          <AdaptiveCard style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrap}>
+                <AppIcon iosName="chart.bar.fill" androidFallback="D" size={16} color={colors.secondary} />
+              </View>
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.sectionTitle}>Manual Difficulty</Text>
+                <Text style={styles.helperTextInline}>{aiAdaptiveEnabled ? 'AI manages this' : 'Caregiver selected'}</Text>
+              </View>
+            </View>
+            <View style={styles.difficultyRow}>
+              {DIFFICULTY_OPTIONS.map((option) => {
+                const active = difficulty === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.difficultyPill,
+                      active && styles.difficultyPillActive,
+                      aiAdaptiveEnabled && styles.difficultyPillDisabled,
+                    ]}
+                    onPress={() => {
+                      animate();
+                      setDifficulty(option.key);
+                    }}
+                    activeOpacity={aiAdaptiveEnabled ? 1 : 0.75}
+                    disabled={aiAdaptiveEnabled}
+                  >
+                    <AppIcon
+                      iosName={option.icon as any}
+                      androidFallback={option.label[0]}
+                      size={18}
+                      color={active && !aiAdaptiveEnabled ? '#FFFFFF' : colors.textMuted}
+                    />
+                    <Text style={[styles.difficultyLabel, active && !aiAdaptiveEnabled && styles.difficultyLabelActive]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.difficultyHelper}>
+              {aiAdaptiveEnabled
+                ? 'Safety fallback still uses Easy below 70%, Medium from 70-90%, and Hard above 90%.'
+                : DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.helper}
+            </Text>
+          </AdaptiveCard>
 
-      {/* Media Library Full-Screen Modal */}
-      <Modal
-        visible={libraryModalVisible}
-        animationType="slide"
-        presentationStyle={isIOS ? 'formSheet' : 'fullScreen'}
-        onRequestClose={() => setLibraryModalVisible(false)}
-      >
-        <SafeAreaView style={styles.libraryModalSafeArea} edges={isIOS ? [] : ['top']}>
+          {/* AI Adaptive Mode */}
+          <AdaptiveCard
+            style={{
+              ...styles.sectionCard,
+              ...(!canUseAiAdaptive ? styles.premiumLockedCard : {}),
+            }}
+          >
+            <View style={styles.premiumRow}>
+              <View style={styles.premiumLeft}>
+                <View style={[styles.sectionIconWrap, styles.premiumIconWrap]}>
+                  <AppIcon iosName="brain.head.profile" androidFallback="AI" size={16} color="#D4A843" />
+                </View>
+                <View style={styles.premiumTextWrap}>
+                  <View style={styles.premiumTitleRow}>
+                    <Text style={styles.premiumTitle}>AI Adaptive Difficulty</Text>
+                  </View>
+                  <Text style={styles.premiumSubtitle}>
+                    {canUseAiAdaptive
+                      ? 'Adjusts difficulty using the patient’s answers, response time, time of day, and selected care level.'
+                      : 'Upgrade to adapt quiz difficulty using patient performance and care level.'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={canUseAiAdaptive && aiAdaptiveEnabled}
+                onValueChange={handleAiAdaptiveToggle}
+                disabled={!canUseAiAdaptive}
+                trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
+                thumbColor={canUseAiAdaptive && aiAdaptiveEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
+                ios_backgroundColor="rgba(0,0,0,0.12)"
+              />
+            </View>
+            {!canUseAiAdaptive && (
+              <TouchableOpacity
+                style={styles.upgradeButton}
+                onPress={() => router.push('/account')}
+                activeOpacity={0.78}
+              >
+                <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+              </TouchableOpacity>
+            )}
+          </AdaptiveCard>
+
+          {/* Create Button */}
+          <AdaptiveButton
+            title="Create Quiz"
+            loading={saving}
+            loadingText="Saving…"
+            onPress={saveConfiguration}
+            disabled={!selectedPatientId || selectedModes.length === 0}
+            style={styles.saveButton}
+          />
+        </ScrollView>
+      ) : (
+        <KeyboardAvoidingView
+          style={styles.libraryContainer}
+          behavior={isIOS ? 'padding' : undefined}
+          keyboardVerticalOffset={isIOS ? 85 : 0}
+        >
           {selectedPatient && (
             <MemoryLibrarySheetContent
               patientId={selectedPatient.id}
-              patientName={`${selectedPatient.name} ${selectedPatient.surname}`.trim()}
-              isPrimary={selectedPatient.isPrimary}
-              myId={myId}
-              onBack={() => setLibraryModalVisible(false)}
             />
           )}
-        </SafeAreaView>
-      </Modal>
+        </KeyboardAvoidingView>
+      )}
 
       <M3Dialog
         visible={dialog.visible}
@@ -486,7 +609,6 @@ export default function CreateTab() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.neutral },
 
-  // Header — matches Patients & Inbox tabs
   header: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -508,7 +630,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Top-level segmented control
   segmentedWrap: {
     paddingHorizontal: 24,
     paddingBottom: 8,
@@ -543,14 +664,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // Content
   content: {
     paddingHorizontal: 24,
     paddingBottom: 100,
     gap: 12,
   },
 
-  // Section cards
   sectionCard: {
     padding: 16,
     borderRadius: isIOS ? 20 : 24,
@@ -592,17 +711,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Native patient selector
-  patientSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  dropdownContainer: {
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
     backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    overflow: 'hidden',
+  },
+  patientSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+  patientSelectorOpen: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   patientSelectorLeft: {
     flexDirection: 'row',
@@ -634,8 +759,38 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 1,
   },
+  dropdownList: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0,0,0,0.04)',
+    gap: 12,
+  },
+  patientInitialCircleSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientInitialTextSmall: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.textDark,
+  },
+  dropdownItemText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: colors.textDark,
+  },
 
-  // Quiz mode cards
   modeList: {
     gap: 8,
   },
@@ -688,8 +843,24 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
+  careLevelList: {
+    gap: 8,
+  },
+  careLevelCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: isIOS ? 14 : 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    padding: 12,
+  },
+  careLevelCardActive: {
+    borderColor: 'rgba(45,79,62,0.3)',
+    backgroundColor: 'rgba(45,79,62,0.08)',
+  },
 
-  // Difficulty pills
   difficultyRow: {
     flexDirection: 'row',
     gap: 8,
@@ -708,6 +879,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(45,79,62,0.3)',
     backgroundColor: colors.secondary,
   },
+  difficultyPillDisabled: {
+    opacity: 0.58,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+  },
   difficultyLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
@@ -724,11 +899,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // Premium toggle
   premiumRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  premiumLockedCard: {
+    borderColor: 'rgba(212,168,67,0.28)',
   },
   premiumLeft: {
     flexDirection: 'row',
@@ -743,6 +920,12 @@ const styles = StyleSheet.create({
   premiumTextWrap: {
     flex: 1,
   },
+  premiumTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   premiumTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
@@ -754,15 +937,31 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
+  upgradeButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(212,168,67,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(123,90,0,0.18)',
+  },
+  upgradeButtonText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: '#7B5A00',
+  },
 
-  // Save button
   saveButton: {
     marginTop: 4,
     marginBottom: 16,
   },
 
-  // Media Library modal
-  libraryModalSafeArea: {
+  libraryContainer: {
     flex: 1,
     backgroundColor: colors.neutral,
   },
