@@ -16,6 +16,7 @@
     "@react-native-google-signin/google-signin": "^16.1.2",
     "expo": "~54.0.33",
     "expo-apple-authentication": "~8.0.8",
+    "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",

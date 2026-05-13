@@ -189,6 +189,31 @@ async function createUploadIntent(input: {
   return jsonOrThrow(res);
 }
 
+async function createPatientUploadIntent(input: {
+  patientId: string;
+  kind: MediaKind;
+  contentType: string;
+  byteSize: number;
+  metadata?: MediaMetadataInput;
+  contentHash?: string;
+}): Promise<UploadIntentResponse> {
+  const res = await fetch(`${API_BASE_URL}/media/patient/upload-intent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      patientId: input.patientId,
+      kind: input.kind,
+      contentType: input.contentType,
+      byteSize: input.byteSize,
+      ...(input.metadata ?? {}),
+      ...(input.contentHash ? { contentHash: input.contentHash } : {}),
+    }),
+  });
+  return jsonOrThrow(res);
+}
+
 export type QuizMode = 'NAME' | 'AGE' | 'RELATIONSHIP';
 
 export async function getQuizModes(patientId: string): Promise<QuizMode[]> {
@@ -230,6 +255,16 @@ async function completeUpload(publicId: string): Promise<{ publicId: string; sta
     {
       method: 'POST',
       headers: { ...(await authHeaders()) },
+    },
+  );
+  return jsonOrThrow(res);
+}
+
+async function completePatientUpload(publicId: string): Promise<{ publicId: string; status: MediaStatus }> {
+  const res = await fetch(
+    `${API_BASE_URL}/media/patient/${encodeURIComponent(publicId)}/complete`,
+    {
+      method: 'POST',
     },
   );
   return jsonOrThrow(res);
@@ -316,4 +351,46 @@ export async function uploadPatientMedia(
   }
 
   return completeUpload(intent.publicId);
+}
+
+/**
+ * Patient-initiated upload flow (for Quiz tab notes with media):
+ *  1) request signed PUT URL from backend (using patient endpoints)
+ *  2) PUT raw bytes to that URL
+ *  3) confirm completion
+ */
+export async function uploadMediaByPatient(
+  options: UploadOptions,
+): Promise<{ publicId: string; status: MediaStatus }> {
+  const contentHash = options.kind === 'PHOTO'
+    ? await computeContentHash(options.hashUri ?? options.fileUri)
+    : undefined;
+
+  const intent = await createPatientUploadIntent({
+    patientId: options.patientId,
+    kind: options.kind,
+    contentType: options.contentType,
+    byteSize: options.byteSize,
+    metadata: options.metadata,
+    contentHash,
+  });
+
+  if (options.byteSize > intent.maxByteSize) {
+    throw new Error(
+      `File is too large (${options.byteSize} bytes; limit ${intent.maxByteSize}).`,
+    );
+  }
+
+  const blob = await fetchLocalBlob(options.fileUri);
+
+  const putRes = await fetch(intent.uploadUrl, {
+    method: intent.uploadMethod,
+    headers: { ...intent.uploadHeaders },
+    body: blob,
+  });
+  if (!putRes.ok) {
+    throw new Error(`Upload failed (${putRes.status})`);
+  }
+
+  return completePatientUpload(intent.publicId);
 }
