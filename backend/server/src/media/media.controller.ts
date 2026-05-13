@@ -65,6 +65,22 @@ export class MediaController {
     return this.mediaService.createUploadIntent(req.user.userId, dto, this.apiBaseUrl(req));
   }
 
+  @Post('patient/upload-intent')
+  async createPatientUploadIntent(
+    @Body() dto: CreateUploadIntentDto,
+    @Req() req: Request,
+  ) {
+    return this.mediaService.createUploadIntent(null, dto, this.apiBaseUrl(req));
+  }
+
+  @Post('patient/:publicId/complete')
+  async completePatient(
+    @Param('publicId') publicId: string,
+    @Req() req: Request,
+  ) {
+    return this.mediaService.completeUpload(null, publicId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post(':publicId/complete')
   async complete(

@@ -124,9 +124,9 @@ export class MediaService {
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
-  /** Caregiver requests permission to upload a new media file. */
+  /** Caregiver or Patient requests permission to upload a new media file. */
   async createUploadIntent(
-    caregiverId: string,
+    caregiverId: string | null,
     dto: CreateUploadIntentDto,
     apiBaseUrl: string,
   ): Promise<UploadIntentResponse> {
@@ -177,7 +177,7 @@ export class MediaService {
     const created = await this.prisma.media.create({
       data: {
         patientId: dto.patientId,
-        caregiverId,
+        caregiverId: caregiverId ?? null,
         kind,
         status: 'PENDING_UPLOAD',
         ...metadata,
@@ -298,10 +298,10 @@ export class MediaService {
     });
   }
 
-  /** Caregiver confirms the upload finished and asks the server to verify
+  /** Caregiver or Patient confirms the upload finished and asks the server to verify
    *  the stored object before flipping the media to READY. */
-  async completeUpload(caregiverId: string, publicId: string) {
-    const media = await this.requireCaregiverMedia(caregiverId, publicId);
+  async completeUpload(caregiverId: string | null, publicId: string) {
+    const media = await this.requireAccessToMedia(caregiverId, publicId);
     if (media.status === 'READY') {
       return { publicId: media.publicId, status: media.status };
     }
@@ -379,7 +379,7 @@ export class MediaService {
     publicId: string,
     apiBaseUrl: string,
   ): Promise<AccessUrlResponse> {
-    const media = await this.requireCaregiverMedia(caregiverId, publicId);
+    const media = await this.requireAccessToMedia(caregiverId, publicId);
     if (media.status !== 'READY') {
       throw new BadRequestException('Media is not ready');
     }
@@ -422,7 +422,7 @@ export class MediaService {
   /** Caregiver removes a media item. Primary caregivers can delete any item;
    *  secondaries can only delete their own uploads. */
   async deleteMedia(caregiverId: string, publicId: string) {
-    const media = await this.requireCaregiverMedia(caregiverId, publicId);
+    const media = await this.requireAccessToMedia(caregiverId, publicId);
 
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId: media.patientId } },
@@ -573,7 +573,7 @@ export class MediaService {
   // ─── Internal helpers ─────────────────────────────────────────────────────
 
   async updateMetadata(caregiverId: string, publicId: string, dto: UpdateMediaMetadataDto) {
-    const media = await this.requireCaregiverMedia(caregiverId, publicId);
+    const media = await this.requireAccessToMedia(caregiverId, publicId);
     const metadata = this.normalizeMetadata({ ...media, ...dto });
     if (metadata.collection === 'QUIZ' && media.kind === 'PHOTO') {
       await this.assertUniqueQuizPhotoName(media.patientId, metadata.firstName, media.id);
@@ -699,7 +699,13 @@ export class MediaService {
     };
   }
 
-  private async assertCaregiverAccess(caregiverId: string, patientId: string): Promise<void> {
+  private async assertCaregiverAccess(caregiverId: string | null, patientId: string): Promise<void> {
+    if (!caregiverId) {
+      // For patient-initiated uploads, just verify the patient exists and is paired
+      const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, select: { paired: true } });
+      if (!patient || !patient.paired) throw new ForbiddenException('Invalid or unpaired patient');
+      return;
+    }
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId } },
       select: { caregiverId: true },
@@ -709,7 +715,7 @@ export class MediaService {
     }
   }
 
-  private async requireCaregiverMedia(caregiverId: string, publicId: string) {
+  private async requireAccessToMedia(caregiverId: string | null, publicId: string) {
     if (typeof publicId !== 'string' || publicId.length === 0) {
       throw new BadRequestException('Invalid media id');
     }
@@ -719,6 +725,10 @@ export class MediaService {
     if (!media) throw new NotFoundException('Media not found');
     await this.assertCaregiverAccess(caregiverId, media.patientId);
     return media;
+  }
+
+  private async requireCaregiverMedia(caregiverId: string, publicId: string) {
+    return this.requireAccessToMedia(caregiverId, publicId);
   }
 
   private generateStorageKey(): string {
