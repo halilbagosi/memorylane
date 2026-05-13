@@ -72,6 +72,7 @@ function IOSDialogProxy({ visible, title, body, actions, onDismiss }: M3DialogPr
 function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogProps) {
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const isStacked = actions.length >= 3;
 
   useEffect(() => {
     if (visible) {
@@ -99,12 +100,12 @@ function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogPro
             <Animated.View style={[styles.dialog, { transform: [{ scale }], opacity }]}>
               <Text style={styles.title}>{title}</Text>
               <Text style={styles.body}>{body}</Text>
-              <View style={styles.actionRow}>
+              <View style={isStacked ? styles.actionColumn : styles.actionRow}>
                 {actions.map((action, i) => (
                   <Pressable
                     key={i}
                     style={({ pressed }) => [
-                      styles.actionBtn,
+                      isStacked ? styles.actionBtnStacked : styles.actionBtn,
                       pressed && { backgroundColor: 'rgba(0,0,0,0.04)' },
                     ]}
                     onPress={action.onPress}
@@ -165,11 +166,22 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 4,
   },
+  actionColumn: {
+    flexDirection: 'column',
+    gap: 2,
+  },
   actionBtn: {
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  actionBtnStacked: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    alignItems: 'center',
   },
   actionLabel: {
     fontFamily: typography.fontFamily.bold,

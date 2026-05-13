@@ -6,7 +6,7 @@
  */
 
 export const FREE_PLAN_LIMITS = {
-  maxSecondaryCaregiversPerPatient: 1,
+  maxSecondaryCaregiversPerPatient: 2,
   maxPatientsPerCaregiver: 2,
   maxSimultaneousSessions: 2,
   allowedMediaKinds: ['PHOTO'] as readonly string[],
