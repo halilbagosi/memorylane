@@ -6,13 +6,13 @@ import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 
-export default function AnalyticsTab() {
+export default function InsightsTab() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Analytics</Text>
-          <Text style={styles.headerSubtitle}>Monitor patient progress</Text>
+          <Text style={styles.headerTitle}>Insights</Text>
+          <Text style={styles.headerSubtitle}>Care recommendations</Text>
         </View>
         <CaregiverAvatarButton />
       </View>
@@ -20,13 +20,13 @@ export default function AnalyticsTab() {
       <View style={styles.center}>
         <View style={styles.iconCircle}>
           <AppIcon
-            iosName="chart.bar.fill"
-            androidFallback="A"
+            iosName="lightbulb.fill"
+            androidFallback="!"
             size={48}
             color={colors.secondary}
           />
         </View>
-        <Text style={styles.title}>Analytics</Text>
+        <Text style={styles.title}>Insights</Text>
         <Text style={styles.subtitle}>Coming soon</Text>
       </View>
     </SafeAreaView>

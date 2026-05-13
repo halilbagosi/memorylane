@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, Platform, Modal, TextInput, Image, Alert, Linking,
   KeyboardAvoidingView,
 } from 'react-native';
@@ -16,7 +16,6 @@ import {
 import { AppIcon } from '../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
 import { ManageDeletionSheet } from '../src/components/ManageDeletionSheet';
-import { getPlanName, FREE_PLAN_LIMITS } from '../src/utils/subscription';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -198,27 +197,15 @@ export default function AccountScreen() {
   // ─── Avatar ────────────────────────────────────────────────────────────────
 
   const showAvatarOptions = () => {
-    if (isIOS) {
-      const options: any[] = [
-        { text: 'Take Photo', onPress: () => pickImage('camera') },
-        { text: 'Choose from Library', onPress: () => pickImage('library') },
-      ];
-      if (profile?.avatarUrl) {
-        options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
-      }
-      options.push({ text: 'Cancel', style: 'cancel' });
-      Alert.alert('Edit Photo', undefined, options);
-    } else {
-      const actions: M3DialogAction[] = [
-        { label: 'Take Photo', onPress: () => { dismissDialog(); pickImage('camera'); } },
-        { label: 'Choose from Library', onPress: () => { dismissDialog(); pickImage('library'); } },
-      ];
-      if (profile?.avatarUrl) {
-        actions.push({ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); removeAvatar(); } });
-      }
-      actions.push({ label: 'Cancel', onPress: dismissDialog });
-      showDialog('Edit Photo', 'Update your profile picture.', actions);
+    const options: any[] = [
+      { text: 'Take Photo', onPress: () => pickImage('camera') },
+      { text: 'Choose from Library', onPress: () => pickImage('library') },
+    ];
+    if (profile?.avatarUrl) {
+      options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
     }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Edit Photo', undefined, options);
   };
 
   const pickImage = async (source: 'camera' | 'library') => {
@@ -587,7 +574,8 @@ export default function AccountScreen() {
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.ok) {
-                  scheduleLogoutAfterDeletion();
+                  await clearAuth();
+                  navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
                 }
               } catch { /* ignore */ }
             } },
@@ -604,30 +592,7 @@ export default function AccountScreen() {
     }
   };
 
-  // ─── Subscription toggle ───────────────────────────────────────────────────
 
-  const toggleSubscription = async (value: boolean) => {
-    if (!token) return;
-    // Optimistic update
-    setProfile(prev => prev ? { ...prev, isSubscribed: value } : prev);
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ isSubscribed: value }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(prev => prev ? { ...prev, ...data } : prev);
-        await saveCaregiverInfo({ ...profile!, isSubscribed: value });
-      } else {
-        // Revert on failure
-        setProfile(prev => prev ? { ...prev, isSubscribed: !value } : prev);
-      }
-    } catch {
-      setProfile(prev => prev ? { ...prev, isSubscribed: !value } : prev);
-    }
-  };
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -672,43 +637,8 @@ export default function AccountScreen() {
                 <AppIcon iosName="pencil" androidFallback="✎" size={13} color="#fff" />
               </View>
             </TouchableOpacity>
-            <Text style={styles.avatarName}>
-              {profile?.name} {profile?.surname}
-              {profile?.isSubscribed && (
-                <Text style={styles.premiumBadge}> Premium</Text>
-              )}
-            </Text>
+            <Text style={styles.avatarName}>{profile?.name} {profile?.surname}</Text>
             <Text style={styles.avatarEmail}>{profile?.email}</Text>
-          </View>
-
-          {/* ── Subscription Plan ── */}
-          <View style={[styles.subscriptionCard, profile?.isSubscribed && styles.subscriptionCardPremium]}>
-            <View style={styles.subscriptionCardHeader}>
-              <View style={[styles.rowIcon, { backgroundColor: profile?.isSubscribed ? 'rgba(255,193,7,0.18)' : 'rgba(0,0,0,0.05)' }]}>
-                <AppIcon iosName="star.fill" androidFallback="⭐" size={18} color={profile?.isSubscribed ? '#FFC107' : colors.textMuted} />
-              </View>
-              <View style={styles.subscriptionCardInfo}>
-                <Text style={styles.subscriptionCardTitle}>{getPlanName(profile?.isSubscribed ?? false)} Plan</Text>
-                <Text style={styles.subscriptionCardSubtitle}>
-                  {profile?.isSubscribed
-                    ? 'Unlimited patients, caregivers, and all media types'
-                    : `Up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients · Photos only`
-                  }
-                </Text>
-              </View>
-            </View>
-            <View style={styles.subscriptionToggleRow}>
-              <Text style={styles.subscriptionToggleLabel}>
-                {profile?.isSubscribed ? 'Active' : 'Upgrade'}
-              </Text>
-              <Switch
-                value={profile?.isSubscribed ?? false}
-                onValueChange={toggleSubscription}
-                trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-                thumbColor={profile?.isSubscribed ? colors.secondary : isIOS ? '#fff' : '#f4f4f4'}
-                ios_backgroundColor="rgba(0,0,0,0.08)"
-              />
-            </View>
           </View>
 
           {/* ── Profile ── */}
@@ -1153,12 +1083,16 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalCard: {
-    backgroundColor: colors.neutral,
-    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     padding: 24,
     width: '100%',
     maxWidth: 380,
-    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
   },
   modalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: colors.textDark, marginBottom: 6 },
   modalSubtitle: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, marginBottom: 16 },
@@ -1201,57 +1135,5 @@ const styles = StyleSheet.create({
   modalCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
   modalSaveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
   modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#FFFFFF' },
-
-  // Subscription
-  premiumBadge: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 13,
-    color: '#D4A017',
-  },
-  subscriptionCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
-    borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.08)',
-  },
-  subscriptionCardPremium: {
-    borderColor: 'rgba(212,160,23,0.35)',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,248,225,0.6)' : '#FFFDE7',
-  },
-  subscriptionCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  subscriptionCardInfo: {
-    flex: 1,
-  },
-  subscriptionCardTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: colors.textDark,
-    marginBottom: 2,
-  },
-  subscriptionCardSubtitle: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  subscriptionToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
-  },
-  subscriptionToggleLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
 
 });

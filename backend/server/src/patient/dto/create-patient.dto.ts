@@ -1,11 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString, IsDateString, IsEnum, Matches } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsDateString, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
-
-export enum DementiaLevel {
-  MILD = 'MILD',
-  MODERATE = 'MODERATE',
-  SEVERE = 'SEVERE',
-}
 
 export class CreatePatientDto {
   @IsNotEmpty()
@@ -31,8 +25,4 @@ export class CreatePatientDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
-
-  @IsOptional()
-  @IsEnum(DementiaLevel, { message: 'dementiaLevel must be MILD, MODERATE, or SEVERE' })
-  dementiaLevel?: DementiaLevel;
 }

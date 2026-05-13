@@ -8,7 +8,6 @@ import {
   Platform,
   ScrollView,
   KeyboardAvoidingView,
-  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -55,16 +54,6 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
       ]).start();
     }
   }, [visible]);
-
-  // Intercept Android back button when sheet is open
-  useEffect(() => {
-    if (!visible || isIOS) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [visible, onClose]);
 
   if (isIOS) {
     return (

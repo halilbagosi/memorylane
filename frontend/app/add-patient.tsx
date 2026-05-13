@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  TouchableOpacity, Modal, Image, Linking, Animated, Easing,
+  TouchableOpacity, Modal, Image, Alert, Linking, Animated, Easing,
   TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,8 +12,7 @@ import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
-import { getToken, getCaregiverInfo } from '../src/utils/auth';
-import { canAddPatient, FREE_PLAN_LIMITS } from '../src/utils/subscription';
+import { getToken } from '../src/utils/auth';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
@@ -60,7 +59,6 @@ export default function AddPatientScreen() {
   const [errors, setErrors] = useState<{ name?: string; surname?: string; dateOfBirth?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
-  const [dementiaLevel, setDementiaLevel] = useState<'MILD' | 'MODERATE' | 'SEVERE' | null>(null);
 
   // Backdrop animation for iOS date picker
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -142,13 +140,12 @@ export default function AddPatientScreen() {
   };
 
   const showAvatarOptions = () => {
-    const actions: M3DialogAction[] = [
-      { label: 'Take Photo', onPress: () => { dismissDialog(); pickAvatar('camera'); } },
-      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickAvatar('library'); } },
-      ...(avatarBase64 ? [{ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); setAvatarBase64(null); } }] : []),
-      { label: 'Skip for Now', onPress: dismissDialog },
-    ];
-    showDialog('Profile Picture', 'Add a photo for this patient', actions);
+    Alert.alert('Profile Picture', 'Add a photo for this patient', [
+      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
+      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
+      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
+      { text: 'Skip for Now', style: 'cancel' },
+    ]);
   };
 
   const handleNameChange = (text: string) => {
@@ -231,24 +228,6 @@ export default function AddPatientScreen() {
     setApiError('');
 
     try {
-      // ── Subscription gate: check patient limit before calling API ──
-      const caregiverInfo = await getCaregiverInfo();
-      const isSubscribed = caregiverInfo?.isSubscribed ?? false;
-      if (!isSubscribed) {
-        // Fetch current patient count from API to get accurate number
-        const countRes = await fetch(`${API_BASE_URL}/patients`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (countRes.ok) {
-          const patients = await countRes.json();
-          if (!canAddPatient(isSubscribed, Array.isArray(patients) ? patients.length : 0)) {
-            setApiError(`Free plan allows up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients. Upgrade to Premium for unlimited patients.`);
-            setIsLoading(false);
-            return;
-          }
-        }
-      }
-
       const avatarUrl = avatarBase64 ? `data:image/jpeg;base64,${avatarBase64}` : undefined;
 
       const response = await fetch(`${API_BASE_URL}/patients`, {
@@ -262,7 +241,6 @@ export default function AddPatientScreen() {
           surname: surname.trim(),
           dateOfBirth: toISODate(dateOfBirth),
           ...(avatarUrl ? { avatarUrl } : {}),
-          ...(dementiaLevel ? { dementiaLevel } : {}),
         }),
       });
 
@@ -379,44 +357,6 @@ export default function AddPatientScreen() {
               )}
             </TouchableOpacity>
             {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
-          </View>
-
-          {/* Alzheimer's / Dementia Severity */}
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, !isIOS && styles.androidFieldLabel]}>
-              Alzheimer's / Dementia Severity
-            </Text>
-            <Text style={styles.severityHint}>Optional — helps tailor the experience</Text>
-            <View style={styles.severityRow}>
-              {(['MILD', 'MODERATE', 'SEVERE'] as const).map((level) => {
-                const labels: Record<string, string> = {
-                  MILD: 'Mild',
-                  MODERATE: 'Moderate',
-                  SEVERE: 'Severe',
-                };
-                const selected = dementiaLevel === level;
-                return (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.severityChip,
-                      selected && styles.severityChipSelected,
-                    ]}
-                    onPress={() => setDementiaLevel(selected ? null : level)}
-                    activeOpacity={0.75}
-                  >
-                    <Text
-                      style={[
-                        styles.severityChipText,
-                        selected && styles.severityChipTextSelected,
-                      ]}
-                    >
-                      {labels[level]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {/* Android: M3 date picker modal */}
@@ -624,40 +564,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
     color: colors.secondary,
-  },
-
-  severityHint: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 10,
-    marginTop: -2,
-  },
-  severityRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  severityChip: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : colors.neutralLight,
-    borderWidth: isIOS ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: 'rgba(0,0,0,0.10)',
-  },
-  severityChipSelected: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
-  severityChipText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  severityChipTextSelected: {
-    color: '#fff',
   },
 
   errorText: {

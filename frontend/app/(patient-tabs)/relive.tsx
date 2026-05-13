@@ -13,14 +13,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CommonActions } from '@react-navigation/native';
-import { useNavigation } from 'expo-router';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '../../src/components/AppIcon';
 import { ZoomableImage } from '../../src/components/ZoomableImage';
-import { deletePatientInfo, getPatientInfo, PatientInfo } from '../../src/utils/auth';
+import { getPatientInfo, PatientInfo } from '../../src/utils/auth';
 import { getPatientTimeline, type TimelineItem } from '../../src/services/media';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -70,7 +68,6 @@ function groupByDecade(items: TimelineItem[]): ListRow[] {
 
 export default function ReliveTab() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
   const [patient, setPatient] = useState<PatientInfo | null>(null);
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,13 +113,6 @@ export default function ReliveTab() {
 
   const filters: KindFilter[] = ['ALL', 'PHOTO', 'VIDEO', 'AUDIO', 'DOCUMENT'];
   const openPreview = useCallback((item: TimelineItem) => setPreview(item), []);
-  const handleDebugLogout = useCallback(async () => {
-    await deletePatientInfo();
-    navigation.dispatch(
-      CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }),
-    );
-  }, [navigation]);
-
   const handleImageLoadError = useCallback(
     (publicId: string) => {
       if (imageRetryIds.has(publicId)) {
@@ -145,20 +135,15 @@ export default function ReliveTab() {
           </Text>
           <Text style={styles.subtitle}>Life Timeline</Text>
         </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleDebugLogout} style={styles.logoutBtn} activeOpacity={0.7}>
-            <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color="#C0392B" />
-          </TouchableOpacity>
-          {patient?.avatarUrl ? (
-            <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
-          ) : (
-            <View style={styles.headerAvatarFallback}>
-              <Text style={styles.headerAvatarText}>
-                {patient?.name?.[0]?.toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </View>
+        {patient?.avatarUrl ? (
+          <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
+        ) : (
+          <View style={styles.headerAvatarFallback}>
+            <Text style={styles.headerAvatarText}>
+              {patient?.name?.[0]?.toUpperCase() || '?'}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Kind filter chips */}
@@ -437,19 +422,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  logoutBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(192,57,43,0.1)',
   },
   headerAvatarFallback: {
     width: 40,

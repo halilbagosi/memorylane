@@ -922,10 +922,14 @@ const styles = StyleSheet.create({
   },
   reasonModalCard: {
     width: '100%',
-    backgroundColor: colors.neutral,
-    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 22,
-    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 10,
   },
   reasonModalTitle: {
     fontFamily: typography.fontFamily.bold,
