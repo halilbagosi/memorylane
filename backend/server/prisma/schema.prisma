@@ -139,7 +139,6 @@ model Patient {
   
   paired             Boolean             @default(false)
   biometricRecoveryEnabled Boolean       @default(false) @map("biometric_recovery_enabled")
-  quizReminderTimes  String[]            @default([]) @map("quiz_reminder_times")
   quizModes          String[]            @default(["NAME", "AGE", "RELATIONSHIP"]) @map("quiz_modes")
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
@@ -151,8 +150,20 @@ model Patient {
   analyticsSnapshots  AnalyticsSnapshot[]
   delegationRequests  DelegationRequest[]
   roleRequests        RoleRequest[]
+  notes               Note[]
 
   @@map("patients")
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  patientId String   @map("patient_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("notes")
 }
 
 model PatientCaregiver {

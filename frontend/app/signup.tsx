@@ -132,13 +132,12 @@ export default function SignupScreen() {
   };
 
   const showAvatarOptions = () => {
-    const actions: M3DialogAction[] = [
-      { label: 'Take Photo', onPress: () => { dismissDialog(); pickAvatar('camera'); } },
-      { label: 'Choose from Library', onPress: () => { dismissDialog(); pickAvatar('library'); } },
-      ...(avatarBase64 ? [{ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); setAvatarBase64(null); } }] : []),
-      { label: 'Skip for Now', onPress: dismissDialog },
-    ];
-    showDialog('Profile Picture', 'Add a photo so your care team can recognise you', actions);
+    Alert.alert('Profile Picture', 'Add a photo so your care team can recognise you', [
+      { text: 'Take Photo', onPress: () => pickAvatar('camera') },
+      { text: 'Choose from Library', onPress: () => pickAvatar('library') },
+      ...(avatarBase64 ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setAvatarBase64(null) }] : []),
+      { text: 'Skip for Now', style: 'cancel' },
+    ]);
   };
 
   const handleSignup = async () => {

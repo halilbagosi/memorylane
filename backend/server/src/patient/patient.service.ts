@@ -369,24 +369,6 @@ export class PatientService {
     return { biometricRecoveryEnabled: enabled };
   }
 
-  async setQuizReminders(patientId: string, caregiverId: string, times: string[]) {
-    const link = await this.prisma.patientCaregiver.findUnique({
-      where: { caregiverId_patientId: { caregiverId, patientId } },
-    });
-    if (!link) throw new NotFoundException('Patient not found');
-    if (!link.isPrimary) throw new ForbiddenException('Only the primary caregiver can set quiz reminder times');
-
-    const uniqueTimes = Array.from(new Set(times.map((t) => t.trim()))).sort();
-
-    const updated = await this.prisma.patient.update({
-      where: { id: patientId },
-      data: { quizReminderTimes: uniqueTimes },
-      select: { quizReminderTimes: true },
-    });
-
-    return { quizReminderTimes: updated.quizReminderTimes };
-  }
-
   async updatePatient(patientId: string, caregiverId: string, data: { name?: string; surname?: string; avatarUrl?: string | null }) {
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId } },
@@ -468,5 +450,27 @@ export class PatientService {
         surname: patient.creator.surname,
       },
     };
+  }
+
+  async getNotes(patientId: string) {
+    const notes = await this.prisma.note.findMany({
+      where: { patientId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return notes;
+  }
+
+  async addNote(patientId: string, content: string) {
+    if (!content || content.trim().length === 0) {
+      throw new BadRequestException('Note content cannot be empty');
+    }
+
+    const note = await this.prisma.note.create({
+      data: {
+        patientId,
+        content: content.trim(),
+      },
+    });
+    return note;
   }
 }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -11,7 +12,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Pressable,
   View,
   ScrollView,
 } from 'react-native';
@@ -448,11 +448,11 @@ export default function PatientMediaScreen() {
 
   const showAddOptions = () => {
     if (!patientId) return;
-    showDialog('Add Memory', 'Choose a source for this memory', [
-      { label: 'Take Photo', onPress: () => { dismissDialog(); handlePickAndUpload('camera'); } },
-      { label: 'Photo/Video Library', onPress: () => { dismissDialog(); handlePickAndUpload('library'); } },
-      { label: 'Browse Files (Audio/Docs)', onPress: () => { dismissDialog(); handlePickAndUpload('document'); } },
-      { label: 'Cancel', onPress: dismissDialog },
+    Alert.alert('Add Memory', 'Choose a source for this memory', [
+      { text: 'Take Photo', onPress: () => handlePickAndUpload('camera') },
+      { text: 'Photo/Video Library', onPress: () => handlePickAndUpload('library') },
+      { text: 'Browse Files (Audio/Docs)', onPress: () => handlePickAndUpload('document') },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
@@ -512,10 +512,7 @@ export default function PatientMediaScreen() {
       )}
 
       <ScrollView style={styles.managerPanel} contentContainerStyle={styles.managerContent}>
-        <View style={styles.managerTitleRow}>
-          <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={18} color={colors.secondary} />
-          <Text style={styles.managerTitle}>Media Manager</Text>
-        </View>
+        <Text style={styles.managerTitle}>Media Manager</Text>
         <SegmentedControl
           value={form.mode}
           options={[
@@ -563,11 +560,12 @@ export default function PatientMediaScreen() {
         )}
       </ScrollView>
 
+      <Text style={styles.helpText}>
+        Quiz media stores a person photo or voice with their relationship to the patient. Memory media saves stories, years, and categories with the encrypted file.
+      </Text>
+
       <View style={styles.libraryTabsWrap}>
-        <View style={styles.libraryTitleRow}>
-          <AppIcon iosName="rectangle.stack.fill" androidFallback="L" size={16} color={colors.secondary} />
-          <Text style={styles.libraryTitle}>Library</Text>
-        </View>
+        <Text style={styles.libraryTitle}>Library</Text>
         <SegmentedControl
           value={libraryTab}
           options={[
@@ -595,13 +593,13 @@ export default function PatientMediaScreen() {
       ) : filteredTiles.length === 0 ? (
         <View style={styles.empty}>
           <View style={styles.emptyIconWrap}>
-            <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={32} color={colors.textMuted} />
+            <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={36} color={colors.textMuted} />
           </View>
-          <Text style={styles.emptyTitle}>No memories yet</Text>
+          <Text style={styles.emptyTitle}>No memories found</Text>
           <Text style={styles.emptyBody}>
             {libraryTab === 'MEMORY'
-              ? "Tap + to add a memory photo, video, or note."
-              : 'Tap + to add quiz photos or audio with person details.'}
+              ? "Add a memory photo, video, or note to build this patient's story library."
+              : 'Add quiz photos or audio with the person details.'}
           </Text>
         </View>
       ) : (
@@ -613,10 +611,6 @@ export default function PatientMediaScreen() {
           columnWrapperStyle={styles.gridRow}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          removeClippedSubviews
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
           renderItem={({ item }) => (
             <MediaTile item={item} onPress={() => setSelectedItem(item)} onLongPress={() => handleDelete(item)} />
           )}
@@ -624,18 +618,18 @@ export default function PatientMediaScreen() {
       )}
 
       {/* Floating Action Button */}
-      <Pressable 
+      <TouchableOpacity 
         style={[styles.fab, (!patientId || uploading) && styles.fabDisabled]} 
         onPress={() => showAddOptionsRef.current()}
+        activeOpacity={0.8}
         disabled={!patientId || uploading}
-        android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: true }}
       >
         {uploading ? (
           <ActivityIndicator size="small" color={colors.textLight} />
         ) : (
           <AppIcon iosName="plus" androidFallback="+" size={24} color={colors.textLight} weight="medium" />
         )}
-      </Pressable>
+      </TouchableOpacity>
 
       <M3Dialog
         visible={dialog.visible}
@@ -925,11 +919,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 12,
   },
-  managerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   managerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
@@ -938,28 +927,27 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: 'row',
     padding: 3,
-    borderRadius: isIOS ? 14 : 18,
-    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    backgroundColor: colors.neutralLight,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
-    gap: 4,
   },
   segment: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: isIOS ? 11 : 14,
+    paddingVertical: 9,
+    borderRadius: 9,
   },
   segmentActive: {
     backgroundColor: colors.secondary,
   },
   segmentText: {
-    fontFamily: typography.fontFamily.bold,
+    fontFamily: typography.fontFamily.medium,
     fontSize: 13,
     color: colors.textMuted,
   },
   segmentTextActive: {
-    color: '#FFFFFF',
+    color: colors.textLight,
   },
   formBlock: {
     gap: 10,
@@ -1054,16 +1042,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textLight,
   },
+  helpText: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingHorizontal: GRID_PADDING,
+    paddingTop: 12,
+    paddingBottom: 8,
+    lineHeight: 18,
+  },
   libraryTabsWrap: {
     paddingHorizontal: GRID_PADDING,
-    paddingTop: 8,
     marginBottom: 14,
     gap: 8,
-  },
-  libraryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   libraryTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1119,8 +1110,8 @@ const styles = StyleSheet.create({
   emptyIconWrap: {
     width: 72,
     height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: isIOS ? 36 : 24,
+    backgroundColor: isIOS ? 'rgba(180, 174, 232, 0.12)' : 'rgba(180, 174, 232, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 4,
@@ -1172,7 +1163,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
-    elevation: 3,
+    elevation: 8,
   },
   fabDisabled: {
     opacity: 0.6,
