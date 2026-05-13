@@ -15,6 +15,7 @@ import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
 import { getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
+import { FREE_PLAN_LIMITS } from '../../src/utils/subscription';
 import { AdaptiveCard } from '../../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../../src/components/AdaptiveBadge';
 import { AppIcon } from '../../src/components/AppIcon';
@@ -422,6 +423,36 @@ export default function PatientsTab() {
     }
   };
 
+  const handleAddPatientPress = () => {
+    if (!caregiver?.isSubscribed && patients.length >= FREE_PLAN_LIMITS.maxPatientsPerCaregiver) {
+      showDialog(
+        'Upgrade Required',
+        `The Free plan allows up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients total.\n\nUpgrade to Premium for unlimited patients and caregivers.`,
+        [
+          { label: 'Cancel', onPress: dismissDialog },
+          { label: 'Upgrade', onPress: () => { dismissDialog(); router.push('/account'); } }
+        ]
+      );
+    } else {
+      router.push('/add-patient');
+    }
+  };
+
+  const handleLinkPatientPress = () => {
+    if (!caregiver?.isSubscribed && patients.length >= FREE_PLAN_LIMITS.maxPatientsPerCaregiver) {
+      showDialog(
+        'Upgrade Required',
+        `The Free plan allows up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients total.\n\nUpgrade to Premium for unlimited patients and caregivers.`,
+        [
+          { label: 'Cancel', onPress: dismissDialog },
+          { label: 'Upgrade', onPress: () => { dismissDialog(); router.push('/account'); } }
+        ]
+      );
+    } else {
+      router.push('/join-patient');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
@@ -471,7 +502,7 @@ export default function PatientsTab() {
       <View style={styles.actionsRow}>
         <Pressable
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
-          onPress={() => router.push('/add-patient')}
+          onPress={handleAddPatientPress}
           android_ripple={{ color: 'rgba(45, 79, 62, 0.12)', borderless: false }}
         >
           <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
@@ -482,7 +513,7 @@ export default function PatientsTab() {
 
         <Pressable
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
-          onPress={() => router.push('/join-patient')}
+          onPress={handleLinkPatientPress}
           android_ripple={{ color: 'rgba(180, 140, 100, 0.15)', borderless: false }}
         >
           <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>

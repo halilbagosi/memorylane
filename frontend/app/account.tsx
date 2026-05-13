@@ -691,7 +691,7 @@ export default function AccountScreen() {
                 <Text style={styles.subscriptionCardTitle}>{getPlanName(profile?.isSubscribed ?? false)} Plan</Text>
                 <Text style={styles.subscriptionCardSubtitle}>
                   {profile?.isSubscribed
-                    ? 'Unlimited patients, caregivers, and all media types'
+                    ? 'Unlimited patients, caregivers, all media types, and AI adaptive difficulty'
                     : `Up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients · Photos only`
                   }
                 </Text>

@@ -7,7 +7,7 @@
 
 export const FREE_PLAN_LIMITS = {
   /** Maximum number of secondary caregivers per patient */
-  maxSecondaryCaregiversPerPatient: 2,
+  maxSecondaryCaregiversPerPatient: 1,
   /** Maximum number of patients a caregiver can manage */
   maxPatientsPerCaregiver: 2,
   /** Maximum number of concurrent login sessions */
