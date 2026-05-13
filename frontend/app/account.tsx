@@ -198,15 +198,27 @@ export default function AccountScreen() {
   // ─── Avatar ────────────────────────────────────────────────────────────────
 
   const showAvatarOptions = () => {
-    const options: any[] = [
-      { text: 'Take Photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from Library', onPress: () => pickImage('library') },
-    ];
-    if (profile?.avatarUrl) {
-      options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
+    if (isIOS) {
+      const options: any[] = [
+        { text: 'Take Photo', onPress: () => pickImage('camera') },
+        { text: 'Choose from Library', onPress: () => pickImage('library') },
+      ];
+      if (profile?.avatarUrl) {
+        options.push({ text: 'Remove Photo', style: 'destructive', onPress: removeAvatar });
+      }
+      options.push({ text: 'Cancel', style: 'cancel' });
+      Alert.alert('Edit Photo', undefined, options);
+    } else {
+      const actions: M3DialogAction[] = [
+        { label: 'Take Photo', onPress: () => { dismissDialog(); pickImage('camera'); } },
+        { label: 'Choose from Library', onPress: () => { dismissDialog(); pickImage('library'); } },
+      ];
+      if (profile?.avatarUrl) {
+        actions.push({ label: 'Remove Photo', destructive: true, onPress: () => { dismissDialog(); removeAvatar(); } });
+      }
+      actions.push({ label: 'Cancel', onPress: dismissDialog });
+      showDialog('Edit Photo', 'Update your profile picture.', actions);
     }
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Edit Photo', undefined, options);
   };
 
   const pickImage = async (source: 'camera' | 'library') => {
@@ -575,8 +587,7 @@ export default function AccountScreen() {
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.ok) {
-                  await clearAuth();
-                  navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+                  scheduleLogoutAfterDeletion();
                 }
               } catch { /* ignore */ }
             } },
@@ -664,7 +675,7 @@ export default function AccountScreen() {
             <Text style={styles.avatarName}>
               {profile?.name} {profile?.surname}
               {profile?.isSubscribed && (
-                <Text style={styles.premiumBadge}> ⭐ Premium</Text>
+                <Text style={styles.premiumBadge}> Premium</Text>
               )}
             </Text>
             <Text style={styles.avatarEmail}>{profile?.email}</Text>
@@ -680,7 +691,7 @@ export default function AccountScreen() {
                 <Text style={styles.subscriptionCardTitle}>{getPlanName(profile?.isSubscribed ?? false)} Plan</Text>
                 <Text style={styles.subscriptionCardSubtitle}>
                   {profile?.isSubscribed
-                    ? 'Unlimited patients, caregivers, all media types, and AI adaptive difficulty'
+                    ? 'Unlimited patients, caregivers, and all media types'
                     : `Up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients · Photos only`
                   }
                 </Text>
@@ -1142,16 +1153,12 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: colors.neutral,
+    borderRadius: 28,
     padding: 24,
     width: '100%',
     maxWidth: 380,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 12,
+    elevation: 3,
   },
   modalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: colors.textDark, marginBottom: 6 },
   modalSubtitle: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, marginBottom: 16 },
