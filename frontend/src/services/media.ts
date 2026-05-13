@@ -263,6 +263,15 @@ export interface QuizResultAttempt {
   hadHint: boolean;
 }
 
+/** Payload item for `recordPatientQuizSession` (patient device). */
+export interface QuizAttemptInput {
+  mediaPublicId: string;
+  firstTapCorrect: boolean;
+  totalTaps: number;
+  timeToCorrectMs: number;
+  attemptedAt: string;
+}
+
 /** Public — no JWT required. Called from the patient device. */
 export async function getPatientQuizData(patientId: string): Promise<PatientQuizData> {
   const res = await fetch(

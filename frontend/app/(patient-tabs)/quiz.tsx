@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   AppState,
   AppStateStatus,
@@ -11,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -28,11 +30,10 @@ import { Audio } from 'expo-av';
 import { API_BASE_URL } from '../../src/config/api';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
 import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
-import { getPatientNotes, addPatientNote, type Note } from '../../src/services/notes';
+import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
 import * as FileSystem from 'expo-file-system';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
-import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
 import {
   CareLevel,
   getPatientQuizData,
@@ -163,6 +164,9 @@ export default function QuizTab() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }, []);
+
   const [phase, setPhase] = useState<Phase>({ type: 'loading' });
   const [enabledModes, setEnabledModes] = useState<QuizMode[]>([]);
   const [quizDifficulty, setQuizDifficulty] = useState<QuizDifficulty>('MEDIUM');
@@ -199,6 +203,38 @@ export default function QuizTab() {
   const quizAttemptRecordsRef = useRef<QuizAttemptInput[]>([]);
 
   const photoSize = useMemo(() => Math.min(width - 56, height * 0.38, 360), [height, width]);
+
+  const combinedFeed = useMemo(() => {
+    const memoryRows = memories
+      .filter((m) => !isPatientJournalTimelineNote(m.note))
+      .map((m) => ({
+        type: 'MEMORY' as const,
+        id: m.publicId,
+        createdAt: m.createdAt,
+        kind: m.kind,
+        downloadUrl: m.downloadUrl,
+        note: m.note,
+      }));
+    const noteRows = notes.map((n) => ({
+      type: 'NOTE' as const,
+      id: (n as { id: string }).id,
+      createdAt: (n as { createdAt: string }).createdAt,
+      content: (n as { content: string }).content,
+    }));
+    return [...memoryRows, ...noteRows].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [memories, notes]);
+
+  const leaveMemoriesScrollGap = useMemo(
+    () => ({ minHeight: Math.max(88, Math.floor(height * 0.28)) }),
+    [height],
+  );
+
+  const introPrimaryMinHeight = useMemo(
+    () => Math.max(360, Math.floor(height * 0.52)),
+    [height],
+  );
 
   useEffect(() => { questionIndexRef.current = questionIndex; }, [questionIndex]);
   useEffect(() => { questionsLenRef.current = questions.length; }, [questions.length]);
@@ -650,6 +686,152 @@ export default function QuizTab() {
       setIsSubmitting(false);
     }
   };
+
+  const renderLeaveMemoriesSection = () => (
+    <View style={styles.leaveMemoriesSection}>
+      <View style={[styles.leaveMemoriesSpacer, leaveMemoriesScrollGap]} />
+      <View style={styles.scrollHintCard}>
+        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={FOREST_GREEN} />
+        <Text style={styles.scrollHintTitle}>Leave a memory for family</Text>
+        <Text style={styles.scrollHintBody}>
+          Keep scrolling on this page — below your practice area you can write a note or share a photo, video, or voice
+          message with loved ones.
+        </Text>
+      </View>
+
+      <View style={styles.noteInputCard}>
+        <Text style={styles.sectionTitle}>{"What's on your mind?"}</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Write a note or share a memory..."
+          placeholderTextColor={colors.textMuted}
+          multiline
+          value={newNote}
+          onChangeText={setNewNote}
+        />
+
+        {selectedMedia && (
+          <View style={styles.mediaPreview}>
+            {selectedMedia.kind === 'PHOTO' ? (
+              <Image source={{ uri: selectedMedia.uri }} style={styles.previewImage} />
+            ) : (
+              <View style={styles.mediaPlaceholder}>
+                <AppIcon
+                  iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
+                  androidFallback="M"
+                  size={24}
+                  color={colors.primary}
+                />
+                <Text style={styles.mediaPlaceholderText}>
+                  {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setSelectedMedia(null)}>
+              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color="#E74C3C" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.mediaButtons}>
+          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
+            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={colors.primary} />
+            <Text style={styles.mediaBtnText}>Photo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('VIDEO')}>
+            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={colors.primary} />
+            <Text style={styles.mediaBtnText}>Video</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.mediaBtn, isRecording && styles.recordingBtn]}
+            onPressIn={handleStartRecording}
+            onPressOut={handleStopRecording}
+          >
+            <AppIcon
+              iosName={isRecording ? 'stop.fill' : 'mic.fill'}
+              androidFallback="A"
+              size={20}
+              color={isRecording ? '#fff' : colors.primary}
+            />
+            <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
+              {isRecording ? 'Recording...' : 'Voice'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.saveBtn,
+            ((!newNote.trim() && !selectedMedia) || isSubmitting) && styles.saveBtnDisabled,
+          ]}
+          onPress={handleSaveMemory}
+          disabled={(!newNote.trim() && !selectedMedia) || isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.saveBtnText}>Share with Family</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {combinedFeed.length > 0 ? (
+        <>
+          <Text style={styles.recentMemoriesHeading}>Recent activity</Text>
+          {combinedFeed.map((item) => (
+            <View key={item.id} style={styles.feedListItem}>
+              <View style={styles.feedItemHeader}>
+                <AppIcon
+                  iosName={
+                    item.type === 'NOTE'
+                      ? 'note.text'
+                      : (item as { kind?: string }).kind === 'AUDIO'
+                        ? 'mic.fill'
+                        : (item as { kind?: string }).kind === 'VIDEO'
+                          ? 'video.fill'
+                          : 'photo.fill'
+                  }
+                  androidFallback={item.type === 'NOTE' ? 'N' : 'P'}
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={styles.feedItemDate}>
+                  {new Date(item.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </Text>
+              </View>
+              {item.type === 'MEMORY' &&
+                (item as { kind?: string }).kind === 'PHOTO' &&
+                (item as { downloadUrl?: string }).downloadUrl && (
+                  <Image
+                    source={{ uri: (item as { downloadUrl: string }).downloadUrl }}
+                    style={styles.feedImage}
+                  />
+                )}
+              {item.type === 'MEMORY' &&
+                ((item as { kind?: string }).kind === 'VIDEO' ||
+                  (item as { kind?: string }).kind === 'AUDIO') && (
+                  <View style={styles.mediaIndicator}>
+                    <Text style={styles.mediaIndicatorText}>
+                      {(item as { kind?: string }).kind === 'VIDEO' ? '▶ Video Clip' : '🎤 Voice Message'}
+                    </Text>
+                  </View>
+                )}
+              <Text style={styles.feedContent}>
+                {item.type === 'NOTE' ? (item as { content: string }).content : (item as { note?: string | null }).note}
+              </Text>
+            </View>
+          ))}
+        </>
+      ) : null}
+    </View>
+  );
+
   // We keep ALL the new UI screens that were added in alpha
   const renderLoading = () => (
     <View style={styles.centerFill}>
@@ -686,14 +868,22 @@ export default function QuizTab() {
   );
 
   const renderIntro = () => (
-    <View style={styles.introContent}>
-      <Text style={styles.introText}>
-        Good morning{patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!
-      </Text>
-      <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
-        <Text style={styles.startButtonText}>Start</Text>
-      </TouchableOpacity>
-    </View>
+    <ScrollView
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.introContent, { minHeight: introPrimaryMinHeight }]}>
+        <Text style={styles.introText}>
+          {`Good morning${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
+        </Text>
+        <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
+          <Text style={styles.startButtonText}>Start</Text>
+        </TouchableOpacity>
+      </View>
+      {renderLeaveMemoriesSection()}
+    </ScrollView>
   );
 
   const renderResumePrompt = () => (
@@ -715,7 +905,12 @@ export default function QuizTab() {
   );
 
   const renderModeSelect = () => (
-    <ScrollView contentContainerStyle={styles.modeSelectContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.modeSelectContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
       <View style={styles.modeButtonsCol}>
         {enabledModes.map((mode) => {
@@ -736,9 +931,10 @@ export default function QuizTab() {
               />
               <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
             </TouchableOpacity>
-          ); // <-- make sure this maps correctly based on your file
+          );
         })}
       </View>
+      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
@@ -804,92 +1000,6 @@ export default function QuizTab() {
           </View>
         </View>
 
-        {/* Notes Input Section */}
-        <View style={styles.noteInputCard}>
-          <Text style={styles.sectionTitle}>What's on your mind?</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Write a note or share a memory..."
-            placeholderTextColor={colors.textMuted}
-            multiline
-            value={newNote}
-            onChangeText={setNewNote}
-          />
-
-          {selectedMedia && (
-            <View style={styles.mediaPreview}>
-              {selectedMedia.kind === 'PHOTO' ? (
-                <Image source={{ uri: selectedMedia.uri }} style={styles.previewImage} />
-              ) : (
-                <View style={styles.mediaPlaceholder}>
-                  <AppIcon 
-                    iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'} 
-                    androidFallback="M" 
-                    size={24} 
-                    color={colors.primary} 
-                  />
-                  <Text style={styles.mediaPlaceholderText}>
-                    {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
-                  </Text>
-                </View>
-              )}
-              <TouchableOpacity 
-                style={styles.removeMediaBtn} 
-                onPress={() => setSelectedMedia(null)}
-              >
-                <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color="#E74C3C" />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={styles.mediaButtons}>
-            <TouchableOpacity 
-              style={styles.mediaBtn} 
-              onPress={() => handlePickMedia('PHOTO')}
-            >
-              <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={colors.primary} />
-              <Text style={styles.mediaBtnText}>Photo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.mediaBtn} 
-              onPress={() => handlePickMedia('VIDEO')}
-            >
-              <AppIcon iosName="video.fill" androidFallback="V" size={20} color={colors.primary} />
-              <Text style={styles.mediaBtnText}>Video</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.mediaBtn, isRecording && styles.recordingBtn]} 
-              onPressIn={handleStartRecording}
-              onPressOut={handleStopRecording}
-            >
-              <AppIcon 
-                iosName={isRecording ? "stop.fill" : "mic.fill"} 
-                androidFallback="A" 
-                size={20} 
-                color={isRecording ? "#fff" : colors.primary} 
-              />
-              <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
-                {isRecording ? 'Recording...' : 'Voice'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.saveBtn,
-              ((!newNote.trim() && !selectedMedia) || isSubmitting) && styles.saveBtnDisabled,
-            ]}
-            onPress={handleSaveMemory}
-            disabled={(!newNote.trim() && !selectedMedia) || isSubmitting}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.saveBtnText}>Share with Family</Text>
-            )}
-          </TouchableOpacity>
         <View style={styles.choiceGrid}>
           {q.choices.map((choice) => {
             const isWrong = wrongTaps.has(choice);
@@ -924,7 +1034,12 @@ export default function QuizTab() {
   };
 
   const renderSummary = () => (
-    <ScrollView contentContainerStyle={styles.summaryContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.summaryContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.summaryMessageBlock}>
         <Text style={styles.summaryTitle}>
           Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
@@ -952,6 +1067,7 @@ export default function QuizTab() {
           );
         })}
       </View>
+      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
@@ -971,46 +1087,6 @@ export default function QuizTab() {
           {patient.avatarUrl ? (
             <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
           ) : (
-            combinedFeed.map((item) => (
-              <View key={item.id || (item as any).publicId} style={styles.feedItem}>
-                <View style={styles.feedItemHeader}>
-                  <AppIcon
-                    iosName={
-                      item.type === 'NOTE' 
-                        ? 'note.text' 
-                        : (item as any).kind === 'AUDIO' 
-                          ? 'mic.fill' 
-                          : (item as any).kind === 'VIDEO' 
-                            ? 'video.fill' 
-                            : 'photo.fill'
-                    }
-                    androidFallback={item.type === 'NOTE' ? 'N' : 'P'}
-                    size={16}
-                    color={colors.primary}
-                  />
-                  <Text style={styles.feedItemDate}>
-                    {new Date(item.createdAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </Text>
-                </View>
-                {item.type === 'MEMORY' && (item as any).kind === 'PHOTO' && (item as any).downloadUrl && (
-                  <Image source={{ uri: (item as any).downloadUrl }} style={styles.feedImage} />
-                )}
-                {item.type === 'MEMORY' && ((item as any).kind === 'VIDEO' || (item as any).kind === 'AUDIO') && (
-                  <View style={styles.mediaIndicator}>
-                    <Text style={styles.mediaIndicatorText}>
-                      {(item as any).kind === 'VIDEO' ? '▶ Video Clip' : '🎤 Voice Message'}
-                    </Text>
-                  </View>
-                )}
-                <Text style={styles.feedContent}>
-                  {item.type === 'NOTE' ? (item as any).content : (item as any).note}
-                </Text>
-              </View>
-            ))
             <View style={styles.headerAvatarFallback}>
               <Text style={styles.headerAvatarText}>{patient.name?.[0]?.toUpperCase() || '?'}</Text>
             </View>
@@ -1050,6 +1126,66 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: QUIZ_BACKGROUND,
     paddingHorizontal: 24,
+  },
+  phaseScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  introScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
+  },
+  leaveMemoriesSection: {
+    width: '100%',
+    alignSelf: 'stretch',
+    paddingHorizontal: 0,
+    marginTop: 8,
+  },
+  leaveMemoriesSpacer: {
+    width: '100%',
+  },
+  scrollHintCard: {
+    width: '100%',
+    backgroundColor: 'rgba(252, 254, 249, 0.95)',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(30, 77, 48, 0.2)',
+    gap: 8,
+    alignItems: 'center',
+  },
+  scrollHintTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 17,
+    color: FOREST_GREEN,
+    textAlign: 'center',
+  },
+  scrollHintBody: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: FOREST_GREEN,
+    textAlign: 'center',
+    lineHeight: 20,
+    opacity: 0.92,
+  },
+  recentMemoriesHeading: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: FOREST_GREEN,
+    marginBottom: 10,
+    marginTop: 4,
+    width: '100%',
+  },
+  feedListItem: {
+    width: '100%',
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.neutral,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(30, 77, 48, 0.12)',
   },
   topRow: {
     flexDirection: 'row',
@@ -1125,12 +1261,12 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   introContent: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 36,
     paddingHorizontal: 8,
-    paddingBottom: 48,
+    paddingBottom: 24,
+    width: '100%',
   },
   introText: {
     fontFamily: typography.fontFamily.bold,
@@ -1224,8 +1360,9 @@ const styles = StyleSheet.create({
   modeSelectContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 32,
+    paddingBottom: 48,
     alignItems: 'center',
+    width: '100%',
   },
   modeSelectTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1405,11 +1542,11 @@ const styles = StyleSheet.create({
   },
   summaryContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    paddingTop: 64,
-    paddingBottom: 44,
+    paddingTop: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 24,
+    width: '100%',
   },
   summaryMessageBlock: {
     paddingHorizontal: 4,
@@ -1530,6 +1667,73 @@ const styles = StyleSheet.create({
     right: -10,
     backgroundColor: '#fff',
     borderRadius: 12,
+  },
+  noteInputCard: {
+    width: '100%',
+    backgroundColor: CREAM,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(30, 77, 48, 0.15)',
+  },
+  sectionTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 17,
+    color: FOREST_GREEN,
+    marginBottom: 10,
+  },
+  textInput: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 16,
+    color: FOREST_GREEN,
+    minHeight: 88,
+    textAlignVertical: 'top',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(30, 77, 48, 0.2)',
+    padding: 12,
+    marginBottom: 14,
+    backgroundColor: colors.neutral,
+  },
+  saveBtn: {
+    borderRadius: 999,
+    backgroundColor: FOREST_GREEN,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  saveBtnDisabled: {
+    opacity: 0.45,
+  },
+  saveBtnText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: CREAM,
+  },
+  feedItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 8,
+  },
+  feedItemDate: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  feedImage: {
+    width: '100%',
+    height: 72,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  feedContent: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: FOREST_GREEN,
+    lineHeight: 16,
   },
   mediaIndicator: {
     backgroundColor: colors.neutral,
