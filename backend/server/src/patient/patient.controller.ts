@@ -4,7 +4,6 @@ import { DashboardService } from './dashboard/dashboard.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { JoinPatientDto } from './dto/join-patient.dto';
-import { SetQuizRemindersDto } from './dto/set-quiz-reminders.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ManagementService } from './management/management.service';
 
@@ -63,47 +62,9 @@ export class PatientController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get(':id/progress')
-  async getQuizProgress(@Param('id') patientId: string, @Req() req: any) {
-    return this.patientService.getQuizProgress(patientId, req.user.userId);
-  }
-
-  @Post(':id/quiz-sessions')
-  async recordQuizSession(@Param('id') patientId: string, @Body() body: any) {
-    return this.patientService.recordQuizSession(patientId, body);
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Patch(':id/quiz-modes')
-  async updateQuizModes(
-    @Param('id') patientId: string,
-    @Body() body: { modes: string[]; difficulty?: string; careLevel?: string; aiAdaptiveEnabled?: boolean },
-    @Req() req: any,
-  ) {
-    return this.patientService.updateQuizModes(
-      patientId,
-      req.user.userId,
-      body.modes,
-      body.difficulty,
-      body.careLevel,
-      body.aiAdaptiveEnabled,
-    );
-  }
-
-  @Post(':id/quiz-results')
-  async recordQuizResults(
-    @Param('id') patientId: string,
-    @Body() body: { attempts?: Array<{
-      publicId: string;
-      mode?: string;
-      difficulty?: string;
-      firstTapCorrect: boolean;
-      totalTaps: number;
-      timeToCorrectMs: number;
-      hadHint?: boolean;
-    }> },
-  ) {
-    return this.patientService.recordQuizResults(patientId, body.attempts ?? []);
+  async updateQuizModes(@Param('id') patientId: string, @Body() body: { modes: string[] }, @Req() req: any) {
+    return this.patientService.updateQuizModes(patientId, req.user.userId, body.modes);
   }
 
   @Patch(':id/biometric-recovery')
@@ -142,12 +103,6 @@ export class PatientController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch(':id/quiz-reminders')
-  async setQuizReminders(@Param('id') patientId: string, @Body() body: SetQuizRemindersDto, @Req() req: any) {
-    return this.patientService.setQuizReminders(patientId, req.user.userId, body.times ?? []);
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Delete(':id/caregivers/:caregiverId')
   async removeCaregiver(@Param('id') patientId: string, @Param('caregiverId') caregiverId: string, @Req() req: any) {
     return this.patientService.removeCaregiver(patientId, req.user.userId, caregiverId);
@@ -157,5 +112,15 @@ export class PatientController {
   @Delete(':id')
   async remove(@Param('id') patientId: string, @Req() req: any) {
     return this.managementService.deletePatient(patientId, req.user.userId);
+  }
+
+  @Get(':id/notes')
+  async getNotes(@Param('id') patientId: string) {
+    return this.patientService.getNotes(patientId);
+  }
+
+  @Post(':id/notes')
+  async addNote(@Param('id') patientId: string, @Body() body: { content: string }) {
+    return this.patientService.addNote(patientId, body.content);
   }
 }

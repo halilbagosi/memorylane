@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity, Pressable
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -49,7 +49,6 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSocialLoading, setIsSocialLoading] = useState(false);
-  const [googleConfigured, setGoogleConfigured] = useState(false);
   const [apiError, setApiError] = useState('');
   const [deactivated, setDeactivated] = useState<DeactivatedState | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -71,31 +70,12 @@ export default function LoginScreen() {
   };
 
   useEffect(() => {
-    if (!GoogleSignin) return;
-    let mounted = true;
-    (async () => {
-      try {
-        // On iOS, RNGoogleSignin requires either GoogleService-Info.plist
-        // or an explicit iosClientId in configure().
-        const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-        const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-        if (Platform.OS === 'ios' && !iosClientId) {
-          if (mounted) setGoogleConfigured(false);
-          return;
-        }
-        await GoogleSignin.configure({
-          webClientId,
-          iosClientId,
-        });
-        if (mounted) setGoogleConfigured(true);
-      } catch {
-        if (mounted) setGoogleConfigured(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
+    if (GoogleSignin) {
+      GoogleSignin.configure({
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+        iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      });
+    }
   }, []);
 
   const handleSocialLogin = async (provider: 'google' | 'apple', idToken: string, fullName?: string) => {
@@ -152,12 +132,10 @@ export default function LoginScreen() {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!GoogleSignin || !googleConfigured) {
+    if (!GoogleSignin) {
       showDialog(
-        'Google Sign-In Unavailable',
-        Platform.OS === 'ios'
-          ? 'Google Sign-In is not configured for iOS yet. Add EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID or include GoogleService-Info.plist in the iOS build.'
-          : 'Google Sign-In is not available in this build yet. Rebuild the app after configuring Google auth.',
+        'Development Build Required',
+        'Google Sign-In requires a development build. Run "npx expo prebuild" and rebuild the app.',
         [{ label: 'OK', onPress: dismissDialog }],
       );
       return;
@@ -495,19 +473,15 @@ export default function LoginScreen() {
               </TouchableOpacity>
             )}
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.googleButton,
-                !isIOS && pressed && { opacity: 0.92 },
-                isIOS && pressed && { opacity: 0.7 },
-              ]}
+            <TouchableOpacity
+              style={styles.googleButton}
               onPress={handleGoogleSignIn}
-              disabled={isSocialLoading || !GoogleSignin || !googleConfigured}
-              android_ripple={{ color: 'rgba(0,0,0,0.1)', borderless: false }}
+              activeOpacity={0.8}
+              disabled={isSocialLoading}
             >
               <MaterialCommunityIcons name="google" size={24} color="#333" />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.linkRow}>

@@ -41,7 +41,6 @@ export class DashboardService {
           isPrimary: relation.isPrimary,
           patientJoinCode: patient.patientJoinCode,
           paired: patient.paired,
-          quizReminderTimes: patient.quizReminderTimes ?? [],
           createdAt: patient.createdAt,
           primaryCaregiver: primaryLink
             ? {

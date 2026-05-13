@@ -39,20 +39,10 @@ export class UpdateMediaMetadataDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(4)
+  @ArrayMaxSize(3)
   @IsString({ each: true })
   @MaxLength(80, { each: true })
   decoyNames?: string[];
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(240)
-  hint?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  nickname?: string;
 
   @IsOptional()
   @IsString()

@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { GothicA1_700Bold } from '@expo-google-fonts/gothic-a1';
 import * as SplashScreen from 'expo-splash-screen';
-import { Platform, StatusBar } from 'react-native';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { registerTranslation, en } from 'react-native-paper-dates';
@@ -57,13 +57,6 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      {isAndroid && (
-        <StatusBar
-          barStyle="dark-content"
-          backgroundColor={colors.neutral}
-          translucent={false}
-        />
-      )}
       <PaperProvider theme={paperTheme}>
         <Stack
           screenOptions={{
