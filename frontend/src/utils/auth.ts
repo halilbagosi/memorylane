@@ -1,4 +1,10 @@
-import { File, Paths } from 'expo-file-system';
+import {
+  deleteAsync,
+  documentDirectory,
+  getInfoAsync,
+  readAsStringAsync,
+  writeAsStringAsync,
+} from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -30,7 +36,6 @@ export interface CaregiverInfo {
   email: string;
   avatarUrl?: string | null;
   status?: CaregiverStatus;
-  isSubscribed?: boolean;
 }
 
 async function writeProfileFile(fileName: string, webKey: string, json: string): Promise<void> {
@@ -38,7 +43,9 @@ async function writeProfileFile(fileName: string, webKey: string, json: string):
     if (typeof localStorage !== 'undefined') localStorage.setItem(webKey, json);
     return;
   }
-  new File(Paths.document, fileName).write(json);
+  const dir = documentDirectory;
+  if (!dir) return;
+  await writeAsStringAsync(`${dir}${fileName}`, json);
 }
 
 async function readProfileFile(fileName: string, webKey: string): Promise<string | null> {
@@ -46,9 +53,12 @@ async function readProfileFile(fileName: string, webKey: string): Promise<string
     if (typeof localStorage === 'undefined') return null;
     return localStorage.getItem(webKey);
   }
-  const file = new File(Paths.document, fileName);
-  if (!file.exists) return null;
-  return file.text();
+  const dir = documentDirectory;
+  if (!dir) return null;
+  const uri = `${dir}${fileName}`;
+  const info = await getInfoAsync(uri);
+  if (!info.exists) return null;
+  return readAsStringAsync(uri);
 }
 
 async function deleteProfileFile(fileName: string, webKey: string): Promise<void> {
@@ -56,8 +66,9 @@ async function deleteProfileFile(fileName: string, webKey: string): Promise<void
     if (typeof localStorage !== 'undefined') localStorage.removeItem(webKey);
     return;
   }
-  const file = new File(Paths.document, fileName);
-  if (file.exists) file.delete();
+  const dir = documentDirectory;
+  if (!dir) return;
+  await deleteAsync(`${dir}${fileName}`, { idempotent: true }).catch(() => undefined);
 }
 
 // ─── Token ───
