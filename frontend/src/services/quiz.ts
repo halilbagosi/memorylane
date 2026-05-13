@@ -148,11 +148,11 @@ function buildQuestion(
 
   const decoyCount = decoyCountForDifficulty(difficulty);
   const rawDecoys = buildDecoys(media, allMedia, mode, rawCorrect, decoyCount);
-  if (rawDecoys.length < decoyCount) return null;
+  if (rawDecoys.length === 0) return null;
 
   const correctAnswer = formatAnswer(rawCorrect, mode);
   const choices = shuffle([...new Set([correctAnswer, ...rawDecoys.map(d => formatAnswer(d, mode))])]);
-  if (choices.length < decoyCount + 1) return null;
+  if (choices.length < 2) return null;
 
   return {
     media,
@@ -194,6 +194,11 @@ export function buildQuizSet(
     const q = buildQuestion(media, allMedia, mode, imageUrl, difficulty);
     if (q) questions.push(q);
   }
+  
+  if (questions.length === 0 && pool.length > 0) {
+    console.log(`[buildQuizSet] Warning: All questions were filtered out for mode ${mode}. Falling back to name mode.`);
+  }
+
   return questions;
 }
 

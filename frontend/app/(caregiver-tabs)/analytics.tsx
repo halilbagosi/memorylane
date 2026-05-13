@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useRouter } from 'expo-router';
@@ -57,10 +57,11 @@ type FilterOption = {
   label: string;
 };
 
-type PatientListItem = {
+type PatientItem = {
   id: string;
   name: string;
   surname: string;
+  isPrimary: boolean;
 };
 
 type ProgressResponse = {
@@ -85,6 +86,9 @@ const FILTERS: FilterOption[] = [
 ];
 
 const isIOS = Platform.OS === 'ios';
+if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 const TODAY = new Date();
 const CAREGIVER_REGISTERED_AT = new Date(2024, 0, 12);
 
@@ -446,12 +450,18 @@ export default function AnalyticsTab() {
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [patientOptions, setPatientOptions] = useState<DateOption[]>([]);
+  const [patients, setPatients] = useState<PatientItem[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [isPatientDropdownOpen, setIsPatientDropdownOpen] = useState(false);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [progressLoading, setProgressLoading] = useState(false);
   const [quizTypes, setQuizTypes] = useState<QuizTypeReport[]>([]);
   const [caregiverName, setCaregiverName] = useState('Caregiver');
   const [exporting, setExporting] = useState(false);
+
+  const animate = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  };
 
   const allQuizzes = useMemo(
     () => quizTypes.flatMap((type) => type.quizzes),
@@ -472,7 +482,10 @@ export default function AnalyticsTab() {
   const draftDateLabel = getFilterScopeLabel(draftFilter, draftDateValue, draftCustomFrom, draftCustomTo);
   const selectedQuiz = visibleDetailQuizzes.find((quiz) => quiz.id === selectedQuizId) ?? null;
   const selectedQuizSummary = selectedQuiz ? summarize([selectedQuiz]) : null;
-  const selectedPatient = patientOptions.find((patient) => patient.value === selectedPatientId) ?? null;
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.id === selectedPatientId) ?? null,
+    [patients, selectedPatientId]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -505,13 +518,14 @@ export default function AnalyticsTab() {
         }
 
         const data = await res.json();
-        const list: PatientListItem[] = Array.isArray(data) ? data : (data.patients || []);
+        const list: PatientItem[] = Array.isArray(data) ? data : (data.patients || []);
         const options = list.map((patient) => ({
           label: `${patient.name} ${patient.surname}`,
           value: patient.id,
         }));
 
         if (!cancelled) {
+          setPatients(list);
           setPatientOptions(options);
           setSelectedPatientId((current) => current ?? options[0]?.value ?? null);
         }
@@ -590,6 +604,15 @@ export default function AnalyticsTab() {
       cancelled = true;
     };
   }, [router, selectedPatientId]);
+
+  const selectPatient = (patientId: string) => {
+    animate();
+    setSelectedPatientId(patientId);
+    setIsPatientDropdownOpen(false);
+    setSelectedTypeId(null);
+    setSelectedQuizId(null);
+    setFilterOpen(false);
+  };
 
   const handleFilterChange = (filter: FilterKey) => {
     setDraftFilter(filter);
@@ -743,17 +766,66 @@ export default function AnalyticsTab() {
               {patientsLoading ? (
                 <Text style={styles.emptyText}>Loading patients...</Text>
               ) : patientOptions.length > 0 ? (
-                <SelectDropdown
-                  value={selectedPatientId ?? ''}
-                  label={selectedPatient?.label ?? 'Choose patient'}
-                  options={patientOptions}
-                  onSelect={(value) => {
-                    setSelectedPatientId(value);
-                    setSelectedTypeId(null);
-                    setSelectedQuizId(null);
-                    setFilterOpen(false);
-                  }}
-                />
+                <View style={styles.dropdownContainer}>
+                  <TouchableOpacity
+                    style={[styles.patientSelector, isPatientDropdownOpen && styles.patientSelectorOpen]}
+                    onPress={() => {
+                      animate();
+                      setIsPatientDropdownOpen(!isPatientDropdownOpen);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.patientSelectorLeft}>
+                      <View style={styles.patientInitialCircle}>
+                        <Text style={styles.patientInitialText}>
+                          {selectedPatient?.name?.[0]?.toUpperCase() ?? '?'}
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={styles.patientSelectorName}>
+                          {selectedPatient ? `${selectedPatient.name} ${selectedPatient.surname}` : 'Choose patient'}
+                        </Text>
+                        {selectedPatient && (
+                          <Text style={styles.patientSelectorRole}>
+                            {selectedPatient.isPrimary ? 'Primary caregiver' : 'Supporting caregiver'}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <AppIcon
+                      iosName={isPatientDropdownOpen ? 'chevron.up' : 'chevron.down'}
+                      androidFallback={isPatientDropdownOpen ? '↑' : '↓'}
+                      size={14}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+
+                  {/* Animated Expanding List */}
+                  {isPatientDropdownOpen && (
+                    <View style={styles.dropdownList}>
+                      {patients.map((patient) => (
+                        <TouchableOpacity
+                          key={patient.id}
+                          style={styles.dropdownItem}
+                          onPress={() => selectPatient(patient.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.patientInitialCircleSmall}>
+                            <Text style={styles.patientInitialTextSmall}>
+                              {patient.name[0]?.toUpperCase()}
+                            </Text>
+                          </View>
+                          <Text style={styles.dropdownItemText}>
+                            {patient.name} {patient.surname}
+                          </Text>
+                          {selectedPatientId === patient.id && (
+                            <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={colors.secondary} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
               ) : (
                 <Text style={styles.emptyText}>No patients found for this caregiver account.</Text>
               )}
@@ -1494,6 +1566,85 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     zIndex: 1000,
     elevation: 1000,
+  },
+  dropdownContainer: {
+    borderRadius: isIOS ? 14 : 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    overflow: 'hidden',
+  },
+  patientSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  patientSelectorOpen: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  patientSelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  patientInitialCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(45,79,62,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientInitialText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: colors.secondary,
+  },
+  patientSelectorName: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 15,
+    color: colors.textDark,
+  },
+  patientSelectorRole: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  dropdownList: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0,0,0,0.04)',
+    gap: 12,
+  },
+  patientInitialCircleSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  patientInitialTextSmall: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.textDark,
+  },
+  dropdownItemText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: colors.textDark,
   },
   emptyText: {
     fontFamily: typography.fontFamily.medium,

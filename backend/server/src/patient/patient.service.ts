@@ -446,23 +446,46 @@ export class PatientService {
     const validAttempts = attempts.filter((attempt) => mediaByPublicId.has(attempt.publicId));
     if (validAttempts.length === 0) throw new BadRequestException('No valid quiz media found for results');
 
-    await this.prisma.quizSession.create({
-      data: {
-        patientId,
-        endedAt: new Date(),
-        quizAttempts: {
-          create: validAttempts.map((attempt) => ({
-            mediaId: mediaByPublicId.get(attempt.publicId)!,
-            firstTapCorrect: attempt.firstTapCorrect === true,
-            totalTaps: Math.max(1, Math.min(10, Number(attempt.totalTaps) || 1)),
-            timeToCorrectMs: Math.max(250, Math.min(120000, Number(attempt.timeToCorrectMs) || 8000)),
-            difficulty: ['EASY', 'MEDIUM', 'HARD'].includes(attempt.difficulty ?? '') ? attempt.difficulty : patient.quizDifficulty,
-            questionMode: ['NAME', 'AGE', 'RELATIONSHIP'].includes(attempt.mode ?? '') ? attempt.mode : null,
-            hadHint: attempt.hadHint === true,
-            endAttemptAt: new Date(),
-          })),
+    const now = new Date();
+    const correctCount = validAttempts.filter((a) => a.firstTapCorrect === true).length;
+    const totalAttemptsCount = validAttempts.length;
+    const averageTimeMsForSession = Math.round(
+      validAttempts.reduce((sum, a) => sum + (Number(a.timeToCorrectMs) || 0), 0) / totalAttemptsCount,
+    );
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const session = await tx.quizSession.create({
+        data: {
+          patientId,
+          endedAt: now,
+          quizAttempts: {
+            create: validAttempts.map((attempt) => ({
+              mediaId: mediaByPublicId.get(attempt.publicId)!,
+              firstTapCorrect: attempt.firstTapCorrect === true,
+              totalTaps: Math.max(1, Math.min(10, Number(attempt.totalTaps) || 1)),
+              timeToCorrectMs: Math.max(250, Math.min(120000, Number(attempt.timeToCorrectMs) || 8000)),
+              difficulty: ['EASY', 'MEDIUM', 'HARD'].includes(attempt.difficulty ?? '') ? attempt.difficulty : patient.quizDifficulty,
+              questionMode: ['NAME', 'AGE', 'RELATIONSHIP'].includes(attempt.mode ?? '') ? attempt.mode : 'NAME',
+              hadHint: attempt.hadHint === true,
+              endAttemptAt: now,
+            })),
+          },
         },
-      },
+      });
+
+      await tx.analyticsSnapshot.create({
+        data: {
+          patientId,
+          date: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+          totalCorrect: correctCount,
+          totalIncorrect: totalAttemptsCount - correctCount,
+          totalAttempts: totalAttemptsCount,
+          accuracyPercentage: totalAttemptsCount > 0 ? (correctCount / totalAttemptsCount) * 100 : 0,
+          averageTimeMs: averageTimeMsForSession,
+        },
+      });
+
+      return session;
     });
 
     const lastAttempts = await this.prisma.quizAttempt.findMany({
@@ -584,7 +607,7 @@ export class PatientService {
         data: sanitized.map((attempt) => ({
           sessionId: session.id,
           mediaId: attempt.mediaId,
-          mode: attempt.mode,
+          questionMode: attempt.mode,
           firstTapCorrect: attempt.firstTapCorrect,
           totalTaps: attempt.totalTaps,
           timeToCorrectMs: attempt.timeToCorrectMs,
@@ -650,7 +673,7 @@ export class PatientService {
         select: {
           id: true,
           mediaId: true,
-          mode: true,
+          questionMode: true,
           firstTapCorrect: true,
           totalTaps: true,
           timeToCorrectMs: true,
@@ -663,7 +686,7 @@ export class PatientService {
 
     const attemptsByKey = new Map<string, typeof attemptRows>();
     for (const attempt of attemptRows as any[]) {
-      const key = `${attempt.mode ?? 'NAME'}:${attempt.mediaId}`;
+      const key = `${attempt.questionMode ?? 'NAME'}:${attempt.mediaId}`;
       const list = attemptsByKey.get(key) ?? [];
       list.push(attempt);
       attemptsByKey.set(key, list);
