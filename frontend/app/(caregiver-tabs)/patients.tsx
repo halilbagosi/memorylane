@@ -15,6 +15,7 @@ import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
 import { getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
+import { FREE_PLAN_LIMITS } from '../../src/utils/subscription';
 import { AdaptiveCard } from '../../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../../src/components/AdaptiveBadge';
 import { AppIcon } from '../../src/components/AppIcon';
@@ -399,6 +400,59 @@ export default function PatientsTab() {
     );
   };
 
+  const handleSaveQuizReminders = async (patient: PatientItem, times: string[]) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/quiz-reminders`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ times }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showDialog('Error', data.message || 'Could not save quiz reminder times', [{ label: 'OK', onPress: dismissDialog }]);
+        return false;
+      }
+      const data = await res.json();
+      const updatedTimes = Array.isArray(data.quizReminderTimes) ? data.quizReminderTimes : times;
+      setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, quizReminderTimes: updatedTimes } : p));
+      setSelectedPatient(prev => prev?.id === patient.id ? { ...prev, quizReminderTimes: updatedTimes } : prev);
+      return true;
+    } catch {
+      showDialog('Error', 'Failed to connect to the backend', [{ label: 'OK', onPress: dismissDialog }]);
+      return false;
+    }
+  };
+
+  const handleAddPatientPress = () => {
+    if (!caregiver?.isSubscribed && patients.length >= FREE_PLAN_LIMITS.maxPatientsPerCaregiver) {
+      showDialog(
+        'Upgrade Required',
+        `The Free plan allows up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients total.\n\nUpgrade to Premium for unlimited patients and caregivers.`,
+        [
+          { label: 'Cancel', onPress: dismissDialog },
+          { label: 'Upgrade', onPress: () => { dismissDialog(); router.push('/account'); } }
+        ]
+      );
+    } else {
+      router.push('/add-patient');
+    }
+  };
+
+  const handleLinkPatientPress = () => {
+    if (!caregiver?.isSubscribed && patients.length >= FREE_PLAN_LIMITS.maxPatientsPerCaregiver) {
+      showDialog(
+        'Upgrade Required',
+        `The Free plan allows up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients total.\n\nUpgrade to Premium for unlimited patients and caregivers.`,
+        [
+          { label: 'Cancel', onPress: dismissDialog },
+          { label: 'Upgrade', onPress: () => { dismissDialog(); router.push('/account'); } }
+        ]
+      );
+    } else {
+      router.push('/join-patient');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
@@ -448,8 +502,8 @@ export default function PatientsTab() {
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
-          onPress={() => router.push('/add-patient')}
-          activeOpacity={0.85}
+          onPress={handleAddPatientPress}
+          android_ripple={{ color: 'rgba(45, 79, 62, 0.12)', borderless: false }}
         >
           <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
             <AppIcon iosName="plus" androidFallback="+" size={22} color={colors.secondary} weight="semibold" />
@@ -459,8 +513,8 @@ export default function PatientsTab() {
 
         <TouchableOpacity
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
-          onPress={() => router.push('/join-patient')}
-          activeOpacity={0.85}
+          onPress={handleLinkPatientPress}
+          android_ripple={{ color: 'rgba(180, 140, 100, 0.15)', borderless: false }}
         >
           <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>
             <AppIcon iosName="qrcode.viewfinder" androidFallback="QR" size={22} color="#8B7355" />

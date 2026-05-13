@@ -20,6 +20,7 @@ model Caregiver {
   email             String          @unique
   passwordHash      String          @map("password_hash")
   avatarUrl         String?         @map("avatar_url") @db.Text
+  isSubscribed      Boolean         @default(false) @map("is_subscribed")
   pushToken         String?         @map("push_token") @db.Text
   status            CaregiverStatus @default(ACTIVE)
   scheduledDeleteAt DateTime?       @map("scheduled_delete_at")

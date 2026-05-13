@@ -25,6 +25,8 @@ import { colors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { AppIcon } from '../src/components/AppIcon';
 import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
+import { getCaregiverInfo } from '../src/utils/auth';
+import { canUploadMediaKind } from '../src/utils/subscription';
 import {
   deleteMedia,
   getAccessUrl,
@@ -270,6 +272,12 @@ export default function PatientMediaScreen() {
     if (contentType.startsWith('image/')) kind = 'PHOTO';
     else if (contentType.startsWith('video/')) kind = 'VIDEO';
     else if (contentType.startsWith('audio/')) kind = 'AUDIO';
+
+    // ── Subscription gate: free users can only upload photos ──
+    const caregiverInfo = await getCaregiverInfo();
+    if (!canUploadMediaKind(caregiverInfo?.isSubscribed ?? false, kind)) {
+      throw new Error(`${kind.charAt(0) + kind.slice(1).toLowerCase()} uploads require a Premium subscription. Upgrade to unlock video, audio, and document uploads.`);
+    }
 
     if (form.mode === 'QUIZ' && kind !== 'PHOTO' && kind !== 'AUDIO') {
       throw new Error('Quiz media needs a photo or audio file.');

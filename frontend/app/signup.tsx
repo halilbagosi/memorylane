@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, Platform,
-  ScrollView, TouchableOpacity, Image, Alert, Linking,
+  View, Text, StyleSheet, Platform, Switch,
+  ScrollView, TouchableOpacity, Image, Linking,
 } from 'react-native';
 import * as Device from 'expo-device';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,6 +56,7 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
@@ -159,6 +160,7 @@ export default function SignupScreen() {
           surname: surname.trim(),
           email,
           password,
+          isSubscribed,
           ...(avatarUrl ? { avatarUrl } : {}),
           deviceLabel: Device.modelName ?? undefined,
         }),
@@ -284,6 +286,23 @@ export default function SignupScreen() {
               )}
             </View>
           )}
+
+          {/* Subscription toggle */}
+          <View style={styles.subscriptionCard}>
+            <View style={styles.subscriptionInfo}>
+              <Text style={styles.subscriptionTitle}>⭐ Premium Plan</Text>
+              <Text style={styles.subscriptionDesc}>
+                Unlock unlimited patients, caregivers, video/audio uploads, and AI-powered features.
+              </Text>
+            </View>
+            <Switch
+              value={isSubscribed}
+              onValueChange={setIsSubscribed}
+              trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
+              thumbColor={isSubscribed ? colors.secondary : isIOS ? '#fff' : '#f4f4f4'}
+              ios_backgroundColor="rgba(0,0,0,0.08)"
+            />
+          </View>
 
           {apiError ? <Text style={styles.apiErrorText}>{apiError}</Text> : null}
 
@@ -423,5 +442,33 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     textTransform: 'none',
     letterSpacing: 0,
+  },
+
+  // Subscription toggle
+  subscriptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    marginBottom: 18,
+    borderRadius: 16,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
+    borderColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.08)',
+    gap: 12,
+  },
+  subscriptionInfo: {
+    flex: 1,
+  },
+  subscriptionTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: colors.textDark,
+    marginBottom: 3,
+  },
+  subscriptionDesc: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 17,
   },
 });

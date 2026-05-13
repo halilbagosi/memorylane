@@ -15,6 +15,7 @@ import { OAuth2Client } from 'google-auth-library';
 import * as jwksRsa from 'jwks-rsa';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+import { getPlanLimits } from './subscription.constants';
 import { SignupDto } from '../dto/signup.dto';
 import { LoginDto } from '../dto/login.dto';
 import { SocialLoginDto } from '../dto/social-login.dto';
@@ -59,6 +60,23 @@ export class AuthService {
   }
 
   private async createSessionToken(caregiverId: string, email: string, deviceLabel?: string | null) {
+    // ── Subscription: enforce session limit for free-plan users ──
+    const caregiver = await this.prisma.caregiver.findUnique({ where: { id: caregiverId }, select: { isSubscribed: true } });
+    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
+    const activeSessions = await this.prisma.authSession.count({
+      where: { caregiverId, revokedAt: null, expiresAt: { gt: new Date() } },
+    });
+    if (activeSessions >= limits.maxSimultaneousSessions) {
+      // Revoke the oldest session to make room
+      const oldest = await this.prisma.authSession.findFirst({
+        where: { caregiverId, revokedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (oldest) {
+        await this.prisma.authSession.update({ where: { id: oldest.id }, data: { revokedAt: new Date() } });
+      }
+    }
+
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
     const session = await this.prisma.authSession.create({
@@ -179,6 +197,7 @@ export class AuthService {
         email: caregiver.email,
         avatarUrl: caregiver.avatarUrl,
         status: caregiver.status,
+        isSubscribed: caregiver.isSubscribed,
       },
     };
   }
@@ -230,7 +249,7 @@ export class AuthService {
   }
 
   async signup(signupDto: SignupDto) {
-    const { name, surname, email, password, avatarUrl, deviceLabel } = signupDto;
+    const { name, surname, email, password, avatarUrl, deviceLabel, isSubscribed } = signupDto;
 
     const existing = await this.prisma.caregiver.findUnique({ where: { email } });
     if (existing) throw new ConflictException('Email already exists');
@@ -238,7 +257,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await this.prisma.caregiver.create({
-      data: { name, surname, email, passwordHash: hashedPassword, avatarUrl: avatarUrl ?? null },
+      data: { name, surname, email, passwordHash: hashedPassword, avatarUrl: avatarUrl ?? null, isSubscribed: isSubscribed ?? false },
     });
 
     await this.prisma.passwordHistory.create({
@@ -256,6 +275,7 @@ export class AuthService {
         surname: user.surname,
         email: user.email,
         avatarUrl: user.avatarUrl,
+        isSubscribed: user.isSubscribed,
       },
     };
   }
@@ -284,6 +304,7 @@ export class AuthService {
         email: caregiver.email,
         avatarUrl: caregiver.avatarUrl,
         status: caregiver.status,
+        isSubscribed: caregiver.isSubscribed,
       },
     };
   }
@@ -310,6 +331,7 @@ export class AuthService {
       email: caregiver.email,
       avatarUrl: caregiver.avatarUrl,
       status: caregiver.status,
+      isSubscribed: caregiver.isSubscribed,
     };
   }
 
@@ -318,6 +340,7 @@ export class AuthService {
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.surname !== undefined) data.surname = dto.surname;
     if ('avatarUrl' in dto) data.avatarUrl = dto.avatarUrl ?? null;
+    if (dto.isSubscribed !== undefined) data.isSubscribed = dto.isSubscribed;
 
     const caregiver = await this.prisma.caregiver.update({
       where: { id: caregiverId },
@@ -330,6 +353,7 @@ export class AuthService {
       surname: caregiver.surname,
       email: caregiver.email,
       avatarUrl: caregiver.avatarUrl,
+      isSubscribed: caregiver.isSubscribed,
     };
   }
 
