@@ -25,6 +25,7 @@ import {
   MediaKindValue,
 } from './media.constants';
 import { STORAGE_SERVICE, StorageService } from './storage/storage.interface';
+import { getPlanLimits } from '../auth/subscription.constants';
 
 export interface UploadIntentResponse {
   publicId: string;
