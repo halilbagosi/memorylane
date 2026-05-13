@@ -235,7 +235,7 @@ export default function AddPatientScreen() {
       const isSubscribed = caregiverInfo?.isSubscribed ?? false;
       if (!isSubscribed) {
         // Fetch current patient count from API to get accurate number
-        const countRes = await fetch(`${API_BASE_URL}/patients`, {
+        const countRes = await fetch(`${API_BASE_URL}/patients/my-list`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (countRes.ok) {

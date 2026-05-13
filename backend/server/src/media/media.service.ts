@@ -23,6 +23,7 @@ import {
   MediaKindValue,
 } from './media.constants';
 import { STORAGE_SERVICE, StorageService } from './storage/storage.interface';
+import { getPlanLimits } from '../auth/subscription.constants';
 
 export interface UploadIntentResponse {
   publicId: string;
@@ -127,7 +128,6 @@ export class MediaService {
       where: { id: caregiverId },
       select: { isSubscribed: true },
     });
-    const { getPlanLimits } = await import('../auth/subscription.constants');
     const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
     if (!limits.allowedMediaKinds.includes(kind)) {
       throw new ForbiddenException(
