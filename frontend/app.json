@@ -1,0 +1,89 @@
+{
+  "expo": {
+    "name": "frontend",
+    "slug": "frontend",
+    "scheme": "memorylane",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.memorylane.app",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account.",
+        "NSFaceIDUsageDescription": "MemoryLane uses Face ID to help the patient get back to their photos easily.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.memorylane.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MemoryLane needs your camera to scan the QR code and link to a patient's account."
+        }
+      ],
+      [
+        "@react-native-community/datetimepicker",
+        {
+          "android": {
+            "datePicker": {
+              "colorAccent": {
+                "light": "#2D4F3E"
+              },
+              "colorControlActivated": {
+                "light": "#2D4F3E"
+              },
+              "textColorPrimary": {
+                "light": "#1A1A1A"
+              },
+              "textColorSecondary": {
+                "light": "#666666"
+              },
+              "windowBackground": {
+                "light": "#F2F0E6"
+              }
+            }
+          }
+        }
+      ],
+      "./plugins/withAndroidGradleJvm.js",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
+        }
+      ]
+    ]
+  }
+}
