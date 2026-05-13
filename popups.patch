@@ -82,8 +82,8 @@ index 05fd010..039b562 100644
    const handleNameChange = (text: string) => {
 diff --git a/frontend/app/patient-media.tsx b/frontend/app/patient-media.tsx
 index d911418..8c71b13 100644
---- a/frontend/app/patient-media.tsx
-+++ b/frontend/app/patient-media.tsx
+--- a/frontend/app/.tsx
++++ b/frontend/app/.tsx
 @@ -1,7 +1,6 @@
  import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
  import {
