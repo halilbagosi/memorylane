@@ -139,7 +139,14 @@ model Patient {
   
   paired             Boolean             @default(false)
   biometricRecoveryEnabled Boolean       @default(false) @map("biometric_recovery_enabled")
+  dementia_level      DementiaLevel?
+  quiz_reminder_times String[]            @default([])
   quizModes          String[]            @default(["NAME", "AGE", "RELATIONSHIP"]) @map("quiz_modes")
+  quiz_difficulty     String              @default("MEDIUM")
+  care_level          CareLevel           @default(DEMENTIA)
+  ai_adaptive_enabled Boolean             @default(false)
+  success_rate        Float               @default(0)
+  ai_difficulty_model Json?
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
 
@@ -150,6 +157,7 @@ model Patient {
   analyticsSnapshots  AnalyticsSnapshot[]
   delegationRequests  DelegationRequest[]
   roleRequests        RoleRequest[]
+  aiTrainingSamples   AiTrainingSample[]
   notes               Note[]
 
   @@map("patients")
@@ -213,6 +221,8 @@ model Media {
   relationshipType String?  @map("relationship_type")
   birthYear        Int?     @map("birth_year")
   decoyNames       String[] @default([]) @map("decoy_names")
+  hint             String?
+  nickname         String?
 
   // Memory story data. Used by the caregiver Media Manager.
   note               String?  @db.Text
@@ -270,9 +280,13 @@ model QuizAttempt {
   id              String      @id @default(uuid())
   sessionId       String      @map("session_id")
   mediaId         String      @map("media_id")
+  mode            String      @default("NAME")
   firstTapCorrect Boolean     @map("first_tap_correct")
   totalTaps       Int         @map("total_taps")
   timeToCorrectMs Int         @map("time_to_correct_ms")
+  difficulty      String?
+  question_mode   String?
+  had_hint        Boolean     @default(false)
   attemptedAt     DateTime    @default(now()) @map("attempted_at")
   endAttemptAt    DateTime?   @map("end_attempt_at")
 
@@ -323,4 +337,31 @@ model AnalyticsSnapshot {
   patient            Patient  @relation(fields: [patientId], references: [id])
 
   @@map("analytics_snapshots")
+}
+
+model AiTrainingSample {
+  id                       String   @id @default(uuid())
+  patientId               String?  @map("patient_id")
+  accuracy                 Float
+  responseTimeNormalized   Float    @map("response_time_normalized")
+  timeOfDay               Float    @map("time_of_day")
+  currentDifficulty       Float    @map("current_difficulty")
+  targetComplexity        Float    @map("target_complexity")
+  firstTapCorrect         Boolean  @map("first_tap_correct")
+  createdAt               DateTime @default(now()) @map("created_at")
+  patient                 Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, createdAt])
+  @@map("ai_training_samples")
+}
+
+enum CareLevel {
+  PREVENTATIVE
+  DEMENTIA
+}
+
+enum DementiaLevel {
+  MILD
+  MODERATE
+  SEVERE
 }
