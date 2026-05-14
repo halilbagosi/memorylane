@@ -659,7 +659,7 @@ export default function AccountScreen() {
             <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.8} style={styles.avatarWrapper}>
               {uploadingAvatar ? (
                 <View style={styles.avatarCircle}>
-                  <ActivityIndicator color={colors.textLight} />
+                  <ActivityIndicator color={colors.onAccent} />
                 </View>
               ) : profile?.avatarUrl ? (
                 <Image source={{ uri: profile.avatarUrl }} style={styles.avatarCircle} />
@@ -669,7 +669,7 @@ export default function AccountScreen() {
                 </View>
               )}
               <View style={styles.avatarEditBadge}>
-                <AppIcon iosName="pencil" androidFallback="✎" size={13} color="#fff" />
+                <AppIcon iosName="pencil" androidFallback="✎" size={13} color={colors.onAccent} />
               </View>
             </TouchableOpacity>
             <Text style={styles.avatarName}>
@@ -684,8 +684,8 @@ export default function AccountScreen() {
           {/* ── Subscription Plan ── */}
           <View style={[styles.subscriptionCard, profile?.isSubscribed && styles.subscriptionCardPremium]}>
             <View style={styles.subscriptionCardHeader}>
-              <View style={[styles.rowIcon, { backgroundColor: profile?.isSubscribed ? 'rgba(255,193,7,0.18)' : 'rgba(0,0,0,0.05)' }]}>
-                <AppIcon iosName="star.fill" androidFallback="⭐" size={18} color={profile?.isSubscribed ? '#FFC107' : colors.textMuted} />
+              <View style={[styles.rowIcon, { backgroundColor: profile?.isSubscribed ? colors.warningContainer : colors.surfaceMuted }]}>
+                <AppIcon iosName="star.fill" androidFallback="⭐" size={18} color={profile?.isSubscribed ? colors.warning : colors.textMuted} />
               </View>
               <View style={styles.subscriptionCardInfo}>
                 <Text style={styles.subscriptionCardTitle}>{getPlanName(profile?.isSubscribed ?? false)} Plan</Text>
@@ -704,9 +704,9 @@ export default function AccountScreen() {
               <Switch
                 value={profile?.isSubscribed ?? false}
                 onValueChange={toggleSubscription}
-                trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-                thumbColor={profile?.isSubscribed ? colors.secondary : isIOS ? '#fff' : '#f4f4f4'}
-                ios_backgroundColor="rgba(0,0,0,0.08)"
+                trackColor={{ false: colors.surfaceMuted, true: colors.secondaryContainer }}
+                thumbColor={profile?.isSubscribed ? colors.secondary : colors.textMuted}
+                ios_backgroundColor={colors.surfaceMuted}
               />
             </View>
           </View>
@@ -715,7 +715,7 @@ export default function AccountScreen() {
           <Text style={styles.sectionLabel}>Personal Information</Text>
           <View style={styles.card}>
             <TouchableOpacity style={styles.row} onPress={openEditName} activeOpacity={0.7}>
-              <View style={[styles.rowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
+              <View style={[styles.rowIcon, { backgroundColor: colors.secondaryContainer }]}>
                 <AppIcon iosName="person" androidFallback="👤" size={18} color={colors.secondary} />
               </View>
               <View style={styles.rowContent}>
@@ -728,7 +728,7 @@ export default function AccountScreen() {
             <View style={styles.separator} />
 
             <TouchableOpacity style={styles.row} onPress={openEmailModal} activeOpacity={0.7}>
-              <View style={[styles.rowIcon, { backgroundColor: 'rgba(180,174,232,0.2)' }]}>
+              <View style={[styles.rowIcon, { backgroundColor: colors.lavenderContainer }]}>
                 <AppIcon iosName="envelope" androidFallback="✉" size={18} color={colors.primary} />
               </View>
               <View style={styles.rowContent}>
@@ -741,8 +741,8 @@ export default function AccountScreen() {
             <View style={styles.separator} />
 
             <TouchableOpacity style={styles.row} onPress={openPasswordModal} activeOpacity={0.7}>
-              <View style={[styles.rowIcon, { backgroundColor: 'rgba(62,210,180,0.12)' }]}>
-                <AppIcon iosName="lock" androidFallback="🔒" size={18} color="#3ED2B4" />
+              <View style={[styles.rowIcon, { backgroundColor: colors.primaryContainer }]}>
+                <AppIcon iosName="lock" androidFallback="🔒" size={18} color={colors.primary} />
               </View>
               <View style={styles.rowContent}>
                 <Text style={styles.rowLabel}>Change Password</Text>
@@ -767,7 +767,7 @@ export default function AccountScreen() {
                     {index > 0 && <View style={styles.separator} />}
                     <View style={styles.sessionRow}>
                       <View style={[styles.rowIcon, {
-                        backgroundColor: isCurrent ? 'rgba(45,79,62,0.1)' : 'rgba(0,0,0,0.05)',
+                        backgroundColor: isCurrent ? colors.secondaryContainer : colors.surfaceMuted,
                       }]}>
                         <AppIcon iosName="iphone" androidFallback="📱" size={18}
                           color={isCurrent ? colors.secondary : colors.textMuted} />
@@ -801,11 +801,11 @@ export default function AccountScreen() {
           <Text style={styles.sectionLabel}>Danger Zone</Text>
           <View style={styles.card}>
             <TouchableOpacity style={styles.row} onPress={handleLogout} activeOpacity={0.7}>
-              <View style={[styles.rowIcon, { backgroundColor: 'rgba(231,76,60,0.08)' }]}>
-                <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#C0392B" />
+              <View style={[styles.rowIcon, { backgroundColor: colors.dangerContainer }]}>
+                <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color={colors.danger} />
               </View>
               <View style={styles.rowContent}>
-                <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Log Out</Text>
+                <Text style={[styles.rowLabel, { color: colors.danger }]}>Log Out</Text>
                 <Text style={styles.rowValue}>Log out of this device</Text>
               </View>
               <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
@@ -815,16 +815,16 @@ export default function AccountScreen() {
           <View style={styles.dangerCard}>
             {deletion.status === 'PENDING' || deletion.status === 'ALL_ACCEPTED' || deletion.status === 'SOME_DECLINED' ? (
               <TouchableOpacity style={styles.row} onPress={() => setDeletionModalVisible(true)} activeOpacity={0.7}>
-                <View style={[styles.rowIcon, { backgroundColor: deletion.status === 'ALL_ACCEPTED' ? 'rgba(39,174,96,0.1)' : 'rgba(226,223,207,0.8)' }]}>
+                <View style={[styles.rowIcon, { backgroundColor: deletion.status === 'ALL_ACCEPTED' ? colors.successContainer : colors.warningContainer }]}>
                   <AppIcon
                     iosName={deletion.status === 'ALL_ACCEPTED' ? 'checkmark.circle' : 'clock.badge.exclamationmark'}
                     androidFallback={deletion.status === 'ALL_ACCEPTED' ? '✓' : '⏳'}
                     size={18}
-                    color={deletion.status === 'ALL_ACCEPTED' ? '#27ae60' : '#4A4236'}
+                    color={deletion.status === 'ALL_ACCEPTED' ? colors.success : colors.warning}
                   />
                 </View>
                 <View style={styles.rowContent}>
-                  <Text style={[styles.rowLabel, { color: deletion.status === 'ALL_ACCEPTED' ? '#27ae60' : '#4A4236' }]}>
+                  <Text style={[styles.rowLabel, { color: deletion.status === 'ALL_ACCEPTED' ? colors.success : colors.warning }]}>
                     {deletion.status === 'ALL_ACCEPTED' ? 'Ready to Finalize' : 'Manage Deletion Process'}
                   </Text>
                   <Text style={styles.rowValue}>
@@ -835,22 +835,22 @@ export default function AccountScreen() {
                       : `Waiting for ${deletion.pendingRequests.length} caregiver(s) to accept`}
                   </Text>
                 </View>
-                <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={deletion.status === 'ALL_ACCEPTED' ? '#27ae60' : '#4A4236'} />
+                <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={deletion.status === 'ALL_ACCEPTED' ? colors.success : colors.warning} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.row} onPress={handleDeleteAccount} activeOpacity={0.7}>
-                <View style={[styles.rowIcon, { backgroundColor: 'rgba(231,76,60,0.08)' }]}>
-                  <AppIcon iosName="person.badge.minus" androidFallback="🗑" size={18} color="#C0392B" />
+                <View style={[styles.rowIcon, { backgroundColor: colors.dangerContainer }]}>
+                  <AppIcon iosName="person.badge.minus" androidFallback="🗑" size={18} color={colors.danger} />
                 </View>
                 <View style={styles.rowContent}>
-                  <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Delete Account</Text>
+                  <Text style={[styles.rowLabel, { color: colors.danger }]}>Delete Account</Text>
                   <Text style={styles.rowValue}>
                     {deletion.isPrimaryForAnyPatient
                       ? 'Transfer your primary roles, then delete'
                       : 'Permanently delete your account'}
                   </Text>
                 </View>
-                <AppIcon iosName="chevron.right" androidFallback="›" size={16} color="#C0392B" />
+                <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.danger} />
               </TouchableOpacity>
             )}
           </View>
@@ -1042,7 +1042,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 34,
-    color: colors.textLight,
+    color: colors.onAccent,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -1073,21 +1073,21 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.7)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: colors.border,
     ...CARD_SHADOW,
   },
   dangerCard: {
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.7)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(231,76,60,0.2)',
+    borderColor: colors.dangerContainer,
     ...CARD_SHADOW,
   },
 
@@ -1116,7 +1116,7 @@ const styles = StyleSheet.create({
   rowLabel: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: colors.textDark },
   rowValue: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, marginTop: 1 },
   currentBadge: { fontFamily: typography.fontFamily.medium, fontSize: 12, color: colors.secondary },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,0,0,0.07)', marginLeft: 64 },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 64 },
   emptySessionsText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
@@ -1129,25 +1129,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(231,76,60,0.08)',
+    backgroundColor: colors.dangerContainer,
   },
-  revokeBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#C0392B' },
+  revokeBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.danger },
 
   logoutOthersBtn: {
     marginBottom: 20,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(231,76,60,0.08)',
+    backgroundColor: colors.dangerContainer,
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(231,76,60,0.2)',
+    borderColor: colors.dangerContainer,
   },
-  logoutOthersText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#C0392B' },
+  logoutOthersText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.danger },
 
   // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -1166,20 +1166,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.12)',
+    borderColor: colors.border,
     borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    backgroundColor: colors.neutralLight,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.12)',
+    borderColor: colors.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     color: colors.textDark,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    backgroundColor: colors.neutralLight,
   },
   modalInputInner: {
     flex: 1,
@@ -1195,30 +1195,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: '#C0392B', marginTop: 8 },
+  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.danger, marginTop: 8 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 20 },
-  modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
+  modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.surfaceMuted },
   modalCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
   modalSaveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
-  modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#FFFFFF' },
+  modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.onAccent },
 
   // Subscription
   premiumBadge: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: '#D4A017',
+    color: colors.warning,
   },
   subscriptionCard: {
     borderRadius: 16,
     padding: 16,
     marginBottom: 24,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.08)',
+    borderColor: colors.border,
   },
   subscriptionCardPremium: {
-    borderColor: 'rgba(212,160,23,0.35)',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,248,225,0.6)' : '#FFFDE7',
+    borderColor: colors.warningContainer,
+    backgroundColor: colors.warningContainer,
   },
   subscriptionCardHeader: {
     flexDirection: 'row',
@@ -1246,7 +1246,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
+    borderTopColor: colors.border,
   },
   subscriptionToggleLabel: {
     fontFamily: typography.fontFamily.medium,

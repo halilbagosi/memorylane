@@ -420,7 +420,7 @@ export default function CreateTab() {
                         iosName={option.icon as any}
                         androidFallback={option.label[0]}
                         size={16}
-                        color={active ? '#FFFFFF' : colors.secondary}
+                        color={active ? colors.onAccent : colors.secondary}
                       />
                     </View>
                     <View style={styles.modeTextWrap}>
@@ -462,7 +462,7 @@ export default function CreateTab() {
                           iosName={mode.icon as any}
                           androidFallback={mode.label[0]}
                           size={16}
-                          color={active ? '#FFFFFF' : colors.secondary}
+                          color={active ? colors.onAccent : colors.secondary}
                         />
                       </View>
                       <View style={styles.modeTextWrap}>
@@ -512,7 +512,7 @@ export default function CreateTab() {
                       iosName={option.icon as any}
                       androidFallback={option.label[0]}
                       size={18}
-                      color={active && !aiAdaptiveEnabled ? '#FFFFFF' : colors.textMuted}
+                      color={active && !aiAdaptiveEnabled ? colors.onAccent : colors.textMuted}
                     />
                     <Text style={[styles.difficultyLabel, active && !aiAdaptiveEnabled && styles.difficultyLabelActive]}>
                       {option.label}
@@ -538,7 +538,7 @@ export default function CreateTab() {
             <View style={styles.premiumRow}>
               <View style={styles.premiumLeft}>
                 <View style={[styles.sectionIconWrap, styles.premiumIconWrap]}>
-                  <AppIcon iosName="brain.head.profile" androidFallback="AI" size={16} color="#D4A843" />
+                  <AppIcon iosName="brain.head.profile" androidFallback="AI" size={16} color={colors.warning} />
                 </View>
                 <View style={styles.premiumTextWrap}>
                   <View style={styles.premiumTitleRow}>
@@ -555,9 +555,9 @@ export default function CreateTab() {
                 value={canUseAiAdaptive && aiAdaptiveEnabled}
                 onValueChange={handleAiAdaptiveToggle}
                 disabled={!canUseAiAdaptive}
-                trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
-                thumbColor={canUseAiAdaptive && aiAdaptiveEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
-                ios_backgroundColor="rgba(0,0,0,0.12)"
+                trackColor={{ false: colors.surfaceMuted, true: colors.secondaryContainer }}
+                thumbColor={canUseAiAdaptive && aiAdaptiveEnabled ? colors.secondary : colors.textMuted}
+                ios_backgroundColor={colors.surfaceMuted}
               />
             </View>
             {!canUseAiAdaptive && (
@@ -638,9 +638,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 3,
     borderRadius: isIOS ? 14 : 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: colors.border,
     gap: 4,
   },
   segmentTab: {
@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   segmentTextActive: {
-    color: '#FFFFFF',
+    color: colors.onAccent,
   },
 
   content: {
@@ -690,7 +690,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -714,8 +714,8 @@ const styles = StyleSheet.create({
   dropdownContainer: {
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
     overflow: 'hidden',
   },
   patientSelector: {
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
   },
   patientSelectorOpen: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: colors.border,
   },
   patientSelectorLeft: {
     flexDirection: 'row',
@@ -739,7 +739,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -760,7 +760,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   dropdownList: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: colors.surface,
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -768,14 +768,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.04)',
+    borderTopColor: colors.border,
     gap: 12,
   },
   patientInitialCircleSmall: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -800,13 +800,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
     padding: 12,
   },
   modeCardActive: {
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.secondaryContainer,
   },
   modeLeft: {
     flexDirection: 'row',
@@ -818,7 +818,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -852,13 +852,13 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
     padding: 12,
   },
   careLevelCardActive: {
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.secondaryContainer,
   },
 
   difficultyRow: {
@@ -872,16 +872,16 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
   },
   difficultyPillActive: {
-    borderColor: 'rgba(45,79,62,0.3)',
+    borderColor: colors.borderStrong,
     backgroundColor: colors.secondary,
   },
   difficultyPillDisabled: {
     opacity: 0.58,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: colors.surfaceMuted,
   },
   difficultyLabel: {
     fontFamily: typography.fontFamily.bold,
@@ -889,7 +889,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   difficultyLabelActive: {
-    color: '#FFFFFF',
+    color: colors.onAccent,
   },
   difficultyHelper: {
     fontFamily: typography.fontFamily.regular,
@@ -905,7 +905,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   premiumLockedCard: {
-    borderColor: 'rgba(212,168,67,0.28)',
+    borderColor: colors.warningContainer,
   },
   premiumLeft: {
     flexDirection: 'row',
@@ -915,7 +915,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   premiumIconWrap: {
-    backgroundColor: 'rgba(212,168,67,0.12)',
+    backgroundColor: colors.warningContainer,
   },
   premiumTextWrap: {
     flex: 1,
@@ -946,14 +946,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(212,168,67,0.16)',
+    backgroundColor: colors.warningContainer,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(123,90,0,0.18)',
+    borderColor: colors.warningContainer,
   },
   upgradeButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: '#7B5A00',
+    color: colors.warning,
   },
 
   saveButton: {

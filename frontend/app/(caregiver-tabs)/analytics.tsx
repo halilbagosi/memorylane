@@ -486,6 +486,7 @@ export default function AnalyticsTab() {
     () => patients.find((p) => p.id === selectedPatientId) ?? null,
     [patients, selectedPatientId]
   );
+  const selectedPatientName = selectedPatient ? `${selectedPatient.name} ${selectedPatient.surname}`.trim() : 'No patient selected';
 
   useEffect(() => {
     let cancelled = false;
@@ -657,7 +658,7 @@ export default function AnalyticsTab() {
           summary,
           quizzes: selectedQuiz ? [selectedQuiz] : visibleDetailQuizzes,
           selectedQuiz,
-          patientName: selectedPatient?.label ?? 'No patient selected',
+          patientName: selectedPatientName,
           caregiverName,
           exportedAt,
         }),
@@ -1059,7 +1060,7 @@ function ActionRow({
         onPress={onExport}
         disabled={exporting}
       >
-        <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={colors.textLight} />
+        <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={colors.onAccent} />
         <Text style={styles.exportButtonText}>{exporting ? 'Creating PDF...' : 'Export as PDF'}</Text>
       </Pressable>
     </View>
@@ -1440,8 +1441,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
     paddingHorizontal: 14,
     marginHorizontal: 4,
     marginBottom: 8,
@@ -1451,8 +1452,8 @@ const styles = StyleSheet.create({
   },
   filterActionButtonActive: {
     justifyContent: 'flex-start',
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.secondaryContainer,
   },
   actionButtonText: {
     flexShrink: 1,
@@ -1471,7 +1472,7 @@ const styles = StyleSheet.create({
   exportButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textLight,
+    color: colors.onAccent,
     marginLeft: 8,
   },
   clearFilterButton: {
@@ -1494,16 +1495,16 @@ const styles = StyleSheet.create({
     left: 0,
     justifyContent: 'center',
     padding: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    backgroundColor: colors.scrim,
     zIndex: 100,
     elevation: 100,
   },
   filterModalCard: {
     borderRadius: isIOS ? 20 : 24,
     padding: 16,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.96)' : '#FFFFFF',
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: colors.border,
     zIndex: 60,
     elevation: 60,
   },
@@ -1524,7 +1525,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: colors.surfaceMuted,
   },
   modalCloseText: {
     fontFamily: typography.fontFamily.bold,
@@ -1545,7 +1546,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   modalCancelButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: colors.surfaceMuted,
   },
   modalApplyButton: {
     backgroundColor: colors.secondary,
@@ -1558,7 +1559,7 @@ const styles = StyleSheet.create({
   modalApplyText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textLight,
+    color: colors.onAccent,
   },
   patientPanel: {
     padding: 16,
@@ -1570,8 +1571,8 @@ const styles = StyleSheet.create({
   dropdownContainer: {
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
     overflow: 'hidden',
   },
   patientSelector: {
@@ -1583,7 +1584,7 @@ const styles = StyleSheet.create({
   },
   patientSelectorOpen: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: colors.border,
   },
   patientSelectorLeft: {
     flexDirection: 'row',
@@ -1595,7 +1596,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1616,7 +1617,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   dropdownList: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: colors.surface,
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -1624,14 +1625,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.04)',
+    borderTopColor: colors.border,
     gap: 12,
   },
   patientInitialCircleSmall: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1679,8 +1680,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.neutralLight,
     paddingHorizontal: 12,
   },
   selectDisabled: {
@@ -1710,7 +1711,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: colors.border,
     backgroundColor: colors.neutralLight,
     overflow: 'hidden',
     zIndex: 1200,
@@ -1724,10 +1725,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: colors.border,
   },
   selectOptionActive: {
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    backgroundColor: colors.secondaryContainer,
   },
   selectOptionText: {
     fontFamily: typography.fontFamily.medium,
@@ -1809,7 +1810,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1875,7 +1876,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 12,
     borderRadius: 6,
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    backgroundColor: colors.secondaryContainer,
     overflow: 'hidden',
   },
   scoreBar: {
@@ -1886,7 +1887,7 @@ const styles = StyleSheet.create({
   attemptBar: {
     height: '100%',
     borderRadius: 6,
-    backgroundColor: '#7AAE8A',
+    backgroundColor: colors.primary,
   },
   barValue: {
     width: 42,
@@ -1910,7 +1911,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 96,
     borderRadius: 8,
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    backgroundColor: colors.secondaryContainer,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
@@ -1936,9 +1937,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: isIOS ? 14 : 16,
     padding: 14,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: colors.border,
     marginBottom: 10,
   },
   rowPressed: {
@@ -1952,7 +1953,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -2022,16 +2023,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   statusCorrect: {
-    color: '#1E6F43',
-    backgroundColor: 'rgba(30, 111, 67, 0.12)',
+    color: colors.success,
+    backgroundColor: colors.successContainer,
   },
   statusWrong: {
-    color: '#A33A2A',
-    backgroundColor: 'rgba(163, 58, 42, 0.12)',
+    color: colors.danger,
+    backgroundColor: colors.dangerContainer,
   },
   statusSkipped: {
-    color: '#7A5A12',
-    backgroundColor: 'rgba(122, 90, 18, 0.12)',
+    color: colors.warning,
+    backgroundColor: colors.warningContainer,
   },
   questionMetaGrid: {
     flexDirection: 'row',

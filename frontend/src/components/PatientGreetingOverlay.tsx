@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { typography } from '../theme/typography';
+import { colors } from '../theme/colors';
 import { getPatientInfo } from '../utils/auth';
 
 const shownForPatientIds = new Set<string>();
@@ -73,7 +74,7 @@ export function PatientGreetingOverlay() {
     <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={dismiss}>
         <LinearGradient
-          colors={['#EAF4EE', '#C5DDD1', '#98BEA9']}
+          colors={[colors.neutral, colors.surface, colors.secondaryContainer]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.3, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -104,7 +105,7 @@ const styles = StyleSheet.create({
   quote: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 30,
-    color: '#1E4D30',
+    color: colors.textDark,
     textAlign: 'center',
     lineHeight: 46,
     letterSpacing: 0.2,
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
   tapCue: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: '#4A7C5E',
+    color: colors.textMuted,
     letterSpacing: 1.2,
     opacity: 0.7,
   },

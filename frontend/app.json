@@ -6,12 +6,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0E1712"
     },
     "ios": {
       "supportsTablet": true,
@@ -29,7 +29,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0E1712"
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
@@ -58,19 +58,24 @@
           "android": {
             "datePicker": {
               "colorAccent": {
-                "light": "#2D4F3E"
+                "light": "#9BE7B4",
+                "dark": "#9BE7B4"
               },
               "colorControlActivated": {
-                "light": "#2D4F3E"
+                "light": "#9BE7B4",
+                "dark": "#9BE7B4"
               },
               "textColorPrimary": {
-                "light": "#1A1A1A"
+                "light": "#F5FBF7",
+                "dark": "#F5FBF7"
               },
               "textColorSecondary": {
-                "light": "#666666"
+                "light": "#AEBDAF",
+                "dark": "#AEBDAF"
               },
               "windowBackground": {
-                "light": "#F2F0E6"
+                "light": "#17231D",
+                "dark": "#17231D"
               }
             }
           }

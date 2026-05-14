@@ -106,10 +106,10 @@ function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogPro
                     key={i}
                     style={({ pressed }) => [
                       isStacked ? styles.actionBtnStacked : styles.actionBtn,
-                      pressed && { backgroundColor: 'rgba(0,0,0,0.04)' },
+                      pressed && { backgroundColor: colors.surfaceMuted },
                     ]}
                     onPress={action.onPress}
-                    android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
+                    android_ripple={{ color: colors.surfaceMuted, borderless: false }}
                   >
                     <Text
                       style={[
@@ -133,7 +133,7 @@ function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogPro
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.32)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
@@ -147,6 +147,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     elevation: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
@@ -189,6 +191,6 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   actionLabelDestructive: {
-    color: '#C0392B',
+    color: colors.danger,
   },
 });

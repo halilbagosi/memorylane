@@ -138,7 +138,7 @@ export default function WelcomeScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.neutral} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.neutral} />
 
       <Animated.View style={[styles.orb, styles.orb1, { transform: [{ translateY: orb1Y }] }]} />
       <Animated.View style={[styles.orb, styles.orb2, { transform: [{ translateY: orb2Y }] }]} />
@@ -179,12 +179,13 @@ export default function WelcomeScreen() {
                 backgroundColor={colors.patientCardBg}
               >
                 <View style={styles.cardTopRow}>
-                  <View style={[styles.iconBubble, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>
-                    <AppIcon iosName="person.fill" androidFallback="P" size={22} color="#8B7355" />
+                  <View style={[styles.iconBubble, { backgroundColor: colors.patientAccentContainer }]}>
+                    <AppIcon iosName="person.fill" androidFallback="P" size={22} color={colors.patientAccent} />
                   </View>
                   <AdaptiveBadge
                     label="Daily Quiz"
-                    backgroundColor="rgba(180, 140, 100, 0.18)"
+                    color={colors.patientAccent}
+                    backgroundColor={colors.patientAccentContainer}
                   />
                 </View>
 
@@ -194,9 +195,9 @@ export default function WelcomeScreen() {
                 </Text>
 
                 <View style={styles.ctaRow}>
-                  <Text style={[styles.ctaText, { color: '#8B7355' }]}>Get Started</Text>
-                  <View style={[styles.ctaArrow, { backgroundColor: '#8B7355' }]}>
-                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color="#FFFFFF" weight="bold" />
+                  <Text style={[styles.ctaText, { color: colors.patientAccent }]}>Get Started</Text>
+                  <View style={[styles.ctaArrow, { backgroundColor: colors.patientAccent }]}>
+                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color={colors.onAccent} weight="bold" />
                   </View>
                 </View>
               </AdaptiveCard>
@@ -214,12 +215,13 @@ export default function WelcomeScreen() {
                 backgroundColor={colors.caregiverCardBg}
               >
                 <View style={styles.cardTopRow}>
-                  <View style={[styles.iconBubble, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
+                  <View style={[styles.iconBubble, { backgroundColor: colors.secondaryContainer }]}>
                     <AppIcon iosName="heart.text.clipboard" androidFallback="C" size={22} color={colors.secondary} />
                   </View>
                   <AdaptiveBadge
                     label="Dashboard"
-                    backgroundColor="rgba(45, 79, 62, 0.12)"
+                    color={colors.secondary}
+                    backgroundColor={colors.secondaryContainer}
                   />
                 </View>
 
@@ -231,7 +233,7 @@ export default function WelcomeScreen() {
                 <View style={styles.ctaRow}>
                   <Text style={[styles.ctaText, { color: colors.secondary }]}>Enter Dashboard</Text>
                   <View style={[styles.ctaArrow, { backgroundColor: colors.secondary }]}>
-                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color="#FFFFFF" weight="bold" />
+                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color={colors.onAccent} weight="bold" />
                   </View>
                 </View>
               </AdaptiveCard>
@@ -263,21 +265,21 @@ const styles = StyleSheet.create({
   orb1: {
     width: 180,
     height: 180,
-    backgroundColor: '#DCCFBB',
+    backgroundColor: 'rgba(240, 201, 135, 0.12)',
     top: -40,
     right: -60,
   },
   orb2: {
     width: 120,
     height: 120,
-    backgroundColor: '#C8D9CF',
+    backgroundColor: 'rgba(121, 219, 161, 0.12)',
     top: SCREEN_HEIGHT * 0.45,
     left: -50,
   },
   orb3: {
     width: 100,
     height: 100,
-    backgroundColor: '#E0D4C4',
+    backgroundColor: 'rgba(201, 195, 255, 0.10)',
     bottom: 60,
     right: -30,
   },

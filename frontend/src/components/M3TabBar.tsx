@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   outer: {
     backgroundColor: colors.neutralLight,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0, 0, 0, 0.06)',
+    borderTopColor: colors.border,
   },
   bar: {
     flexDirection: 'row',
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#C0392B',
+    backgroundColor: colors.dangerSolid,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 10,
-    color: '#fff',
+    color: colors.textLight,
     includeFontPadding: false,
   },
   label: {

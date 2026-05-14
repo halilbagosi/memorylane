@@ -72,7 +72,7 @@ export function AdaptiveInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           cursorColor={isIOS ? undefined : colors.secondary}
-          selectionColor={isIOS ? undefined : colors.secondary + '40'}
+          selectionColor={isIOS ? undefined : colors.secondaryContainer}
           {...inputProps}
         />
         {suffix && (
@@ -112,22 +112,22 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   iosInputWrapper: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0, 0, 0, 0.12)',
+    borderColor: colors.border,
     borderRadius: 14,
   },
   androidInputWrapper: {
     backgroundColor: colors.neutralLight,
     borderWidth: 2,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: colors.border,
     borderRadius: 16,
   },
   androidInputWrapperFocused: {
     borderColor: colors.secondary,
   },
   inputError: {
-    borderColor: '#C0392B',
+    borderColor: colors.danger,
   },
 
   input: {
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   },
 
   errorText: {
-    color: '#C0392B',
+    color: colors.danger,
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     marginTop: 4,

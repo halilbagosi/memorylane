@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
         lineHeight: 22,
     },
     apiErrorText: {
-        color: '#C0392B',
+        color: colors.danger,
         fontFamily: typography.fontFamily.regular,
         fontSize: 14,
         textAlign: 'center',
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
         width: 88,
         height: 88,
         borderRadius: 44,
-        backgroundColor: 'rgba(30, 77, 48, 0.08)',
+        backgroundColor: colors.primaryContainer,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 24,

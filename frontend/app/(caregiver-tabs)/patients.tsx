@@ -486,11 +486,11 @@ export default function PatientsTab() {
         >
           <View style={[
             styles.pillDot,
-            { backgroundColor: resignProgress.allAccepted ? '#6B8C6A' : resignProgress.hasDeclined ? '#C0392B' : '#6B6455' },
+            { backgroundColor: resignProgress.allAccepted ? colors.success : resignProgress.hasDeclined ? colors.danger : colors.warning },
           ]} />
           <Text style={[
             styles.pillText,
-            { color: resignProgress.allAccepted ? '#2E5233' : resignProgress.hasDeclined ? '#922B21' : '#4A4236' },
+            { color: resignProgress.allAccepted ? colors.success : resignProgress.hasDeclined ? colors.danger : colors.warning },
           ]}>
             {resignProgress.allAccepted
               ? 'Roles transferred · Ready to finalize'
@@ -502,7 +502,7 @@ export default function PatientsTab() {
             iosName="info.circle.fill"
             androidFallback="ⓘ"
             size={15}
-            color={resignProgress.allAccepted ? '#2E5233' : resignProgress.hasDeclined ? '#922B21' : '#4A4236'}
+            color={resignProgress.allAccepted ? colors.success : resignProgress.hasDeclined ? colors.danger : colors.warning}
           />
         </TouchableOpacity>
       )}
@@ -511,9 +511,9 @@ export default function PatientsTab() {
         <Pressable
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
           onPress={handleAddPatientPress}
-          android_ripple={{ color: 'rgba(45, 79, 62, 0.12)', borderless: false }}
+          android_ripple={{ color: colors.secondaryContainer, borderless: false }}
         >
-          <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
+          <View style={[styles.actionIconCircle, { backgroundColor: colors.secondaryContainer }]}>
             <AppIcon iosName="plus" androidFallback="+" size={22} color={colors.secondary} weight="semibold" />
           </View>
           <Text style={styles.actionLabel}>Add Patient</Text>
@@ -522,10 +522,10 @@ export default function PatientsTab() {
         <Pressable
           style={[styles.actionCard, isIOS ? styles.iosActionCard : styles.androidActionCard]}
           onPress={handleLinkPatientPress}
-          android_ripple={{ color: 'rgba(180, 140, 100, 0.15)', borderless: false }}
+          android_ripple={{ color: colors.patientAccentContainer, borderless: false }}
         >
-          <View style={[styles.actionIconCircle, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>
-            <AppIcon iosName="qrcode.viewfinder" androidFallback="QR" size={22} color="#8B7355" />
+          <View style={[styles.actionIconCircle, { backgroundColor: colors.patientAccentContainer }]}>
+            <AppIcon iosName="qrcode.viewfinder" androidFallback="QR" size={22} color={colors.patientAccent} />
           </View>
           <Text style={styles.actionLabel}>Link to Patient</Text>
         </Pressable>
@@ -533,7 +533,7 @@ export default function PatientsTab() {
 
       {/* Gradient fade — cards dissolve here instead of clipping */}
       <LinearGradient
-        colors={['#E8F5EC', '#E8F5EC00']}
+        colors={[colors.neutral, 'rgba(14, 23, 18, 0)']}
         style={styles.headerFade}
         pointerEvents="none"
       />
@@ -569,11 +569,11 @@ export default function PatientsTab() {
                   <Pressable
                     key={patient.id}
                     onPress={() => setSelectedPatient(patient)}
-                    android_ripple={{ color: 'rgba(45, 79, 62, 0.1)', borderless: false }}
+                    android_ripple={{ color: colors.secondaryContainer, borderless: false }}
                   >
                     <AdaptiveCard
                       style={styles.primaryPatientCard}
-                      backgroundColor={isIOS ? 'rgba(193, 234, 211, 0.88)' : '#C1EAD3'}
+                      backgroundColor={colors.surfaceElevated}
                     >
                       {/* Top row: avatar + name + delete */}
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -601,13 +601,13 @@ export default function PatientsTab() {
                           onPress={() => handleDelete(patient)}
                           activeOpacity={0.7}
                         >
-                          <AppIcon iosName="trash" androidFallback="X" size={18} color="#C0392B" />
+                          <AppIcon iosName="trash" androidFallback="X" size={18} color={colors.danger} />
                         </TouchableOpacity>
                       </View>
 
                       {/* Paired status row */}
                       <View style={styles.pairedRow}>
-                        <View style={[styles.pairedDot, { backgroundColor: patient.paired ? '#4CAF50' : '#FF9800' }]} />
+                        <View style={[styles.pairedDot, { backgroundColor: patient.paired ? colors.success : colors.warning }]} />
                         <Text style={styles.pairedText}>
                           {patient.paired ? 'Device linked' : 'Waiting for device'}
                         </Text>
@@ -640,11 +640,11 @@ export default function PatientsTab() {
                   <Pressable
                     key={patient.id}
                     onPress={() => setSelectedPatient(patient)}
-                    android_ripple={{ color: 'rgba(123, 115, 192, 0.1)', borderless: false }}
+                    android_ripple={{ color: colors.lavenderContainer, borderless: false }}
                   >
                     <AdaptiveCard
                       style={styles.secondaryPatientCard}
-                      backgroundColor={isIOS ? 'rgba(235, 232, 248, 0.7)' : '#EBE8F8'}
+                      backgroundColor={colors.surfaceElevated}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         {patient.avatarUrl ? (
@@ -663,8 +663,8 @@ export default function PatientsTab() {
                             </Text>
                             <AdaptiveBadge
                               label="Secondary"
-                              color="#7B73C0"
-                              backgroundColor="rgba(123, 115, 192, 0.15)"
+                              color={colors.lavender}
+                              backgroundColor={colors.lavenderContainer}
                             />
                           </View>
                           {patient.primaryCaregiver && (
@@ -673,14 +673,14 @@ export default function PatientsTab() {
                             </Text>
                           )}
                           <View style={[styles.pairedRow, { marginTop: 4 }]}>
-                            <View style={[styles.pairedDot, { backgroundColor: patient.paired ? '#4CAF50' : '#FF9800' }]} />
+                            <View style={[styles.pairedDot, { backgroundColor: patient.paired ? colors.success : colors.warning }]} />
                             <Text style={styles.pairedText}>
                               {patient.paired ? 'Device linked' : 'Waiting for device'}
                             </Text>
                           </View>
                         </View>
                         <View style={styles.secondaryArrow}>
-                          <AppIcon iosName="chevron.right" androidFallback="›" size={18} color="#7B73C0" />
+                          <AppIcon iosName="chevron.right" androidFallback="›" size={18} color={colors.lavender} />
                         </View>
                       </View>
                     </AdaptiveCard>
@@ -994,7 +994,7 @@ function PatientDetailContent({
             {patient.primaryCaregiver.avatarUrl ? (
               <Image source={{ uri: patient.primaryCaregiver.avatarUrl }} style={styles.careTeamMemberAvatarImg} />
             ) : (
-              <View style={[styles.careTeamMemberAvatar, { backgroundColor: colors.secondary }]}>
+              <View style={[styles.careTeamMemberAvatar, { backgroundColor: colors.secondaryContainer }]}>
                 <Text style={styles.careTeamMemberAvatarText}>
                   {patient.primaryCaregiver.name[0]?.toUpperCase()}
                 </Text>
@@ -1085,7 +1085,7 @@ function PatientDetailContent({
         </View>
 
         <Text style={styles.remindersSectionTitle}>Schedule</Text>
-        <AdaptiveCard style={styles.remindersCard} backgroundColor={isIOS ? 'rgba(255,255,255,0.6)' : '#FFFFFF'}>
+        <AdaptiveCard style={styles.remindersCard} backgroundColor={colors.neutralLight}>
           {reminderTimes.map((time, index) => (
             <View key={`${time}-${index}`} style={[styles.reminderRow, index === reminderTimes.length - 1 && reminderTimes.length < 6 && { borderBottomWidth: StyleSheet.hairlineWidth }]}>
               <TouchableOpacity 
@@ -1093,7 +1093,7 @@ function PatientDetailContent({
                 onPress={() => removeReminderTime(index)}
               >
                 <View style={styles.minusIconWrapper}>
-                  <AppIcon iosName="minus.circle.fill" androidFallback="-" size={22} color="#FF3B30" />
+                  <AppIcon iosName="minus.circle.fill" androidFallback="-" size={22} color={colors.danger} />
                 </View>
               </TouchableOpacity>
               
@@ -1116,7 +1116,7 @@ function PatientDetailContent({
               activeOpacity={0.6}
             >
               <View style={styles.plusIconWrapper}>
-                <AppIcon iosName="plus.circle.fill" androidFallback="+" size={22} color="#4CAF50" />
+                <AppIcon iosName="plus.circle.fill" androidFallback="+" size={22} color={colors.success} />
               </View>
               <Text style={styles.addReminderLabel}>Add Reminder</Text>
             </TouchableOpacity>
@@ -1157,7 +1157,7 @@ function PatientDetailContent({
                         is24Hour={true}
                         display="spinner"
                         onChange={onTimeChange}
-                        themeVariant="light"
+                        themeVariant="dark"
                         style={styles.iosPicker}
                       />
                     </View>
@@ -1237,7 +1237,7 @@ function PatientDetailContent({
           )}
           {patient.isPrimary && (
             <View style={styles.sheetAvatarBadge}>
-              <AppIcon iosName="camera.fill" androidFallback="📷" size={10} color="#fff" />
+              <AppIcon iosName="camera.fill" androidFallback="📷" size={10} color={colors.onAccent} />
             </View>
           )}
         </TouchableOpacity>
@@ -1253,7 +1253,7 @@ function PatientDetailContent({
 
       {/* Status */}
       <View style={styles.statusRow}>
-        <View style={[styles.statusDot, { backgroundColor: patient.paired ? '#4CAF50' : '#FF9800' }]} />
+        <View style={[styles.statusDot, { backgroundColor: patient.paired ? colors.success : colors.warning }]} />
         <Text style={styles.statusText}>
           {patient.paired ? 'Patient device linked' : 'Waiting for patient to scan code'}
         </Text>
@@ -1262,8 +1262,8 @@ function PatientDetailContent({
       {/* QR / restricted */}
       {patient.isPrimary ? (
         <View style={styles.qrSection}>
-          <AdaptiveCard style={styles.qrCard} backgroundColor={isIOS ? 'rgba(255,255,255,0.7)' : '#FFFFFF'}>
-            <QRCode value={patient.patientJoinCode} size={SCREEN_WIDTH * 0.45} backgroundColor="transparent" color={colors.textDark} />
+          <AdaptiveCard style={styles.qrCard} backgroundColor={colors.textLight}>
+            <QRCode value={patient.patientJoinCode} size={SCREEN_WIDTH * 0.45} backgroundColor="transparent" color={colors.onAccent} />
           </AdaptiveCard>
           <Text style={styles.qrLabel}>Scan this code on the patient's device</Text>
           <TouchableOpacity
@@ -1285,7 +1285,7 @@ function PatientDetailContent({
             </View>
             {codeCopied && (
               <Animated.View style={[styles.codeCopiedBadge, { opacity: codeCopiedOpacity }]}>
-                <AppIcon iosName="checkmark" androidFallback="✓" size={11} color="#2E5233" />
+                <AppIcon iosName="checkmark" androidFallback="✓" size={11} color={colors.success} />
                 <Text style={styles.codeCopiedText}>Copied!</Text>
               </Animated.View>
             )}
@@ -1306,7 +1306,7 @@ function PatientDetailContent({
 
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => switchView('reminders')}>
-            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(180, 174, 232, 0.2)' }]}>
+            <View style={[styles.actionRowIcon, { backgroundColor: colors.lavenderContainer }]}>
               <AppIcon iosName="bell.badge" androidFallback="🔔" size={18} color={colors.primary} />
             </View>
             <Text style={styles.actionRowLabel}>Quiz Reminder Times ({reminderTimes.length})</Text>
@@ -1316,17 +1316,17 @@ function PatientDetailContent({
 
         {patient.isPrimary && patient.paired && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onUnpair(patient)}>
-            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
-              <AppIcon iosName="iphone.slash" androidFallback="✕" size={18} color="#C0392B" />
+            <View style={[styles.actionRowIcon, { backgroundColor: colors.dangerContainer }]}>
+              <AppIcon iosName="iphone.slash" androidFallback="✕" size={18} color={colors.danger} />
             </View>
-            <Text style={[styles.actionRowLabel, { color: '#C0392B' }]}>Unpair Device</Text>
+            <Text style={[styles.actionRowLabel, { color: colors.danger }]}>Unpair Device</Text>
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
 
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => switchView('careTeam')}>
-            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
+            <View style={[styles.actionRowIcon, { backgroundColor: colors.secondaryContainer }]}>
               <AppIcon iosName="person.2" androidFallback="👥" size={18} color={colors.secondary} />
             </View>
             <Text style={styles.actionRowLabel}>Manage Care Team</Text>
@@ -1341,17 +1341,17 @@ function PatientDetailContent({
 
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => { onClose(); onDelete(patient); }}>
-            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
-              <AppIcon iosName="trash" androidFallback="🗑" size={18} color="#C0392B" />
+            <View style={[styles.actionRowIcon, { backgroundColor: colors.dangerContainer }]}>
+              <AppIcon iosName="trash" androidFallback="🗑" size={18} color={colors.danger} />
             </View>
-            <Text style={[styles.actionRowLabel, { color: '#C0392B' }]}>Delete Patient</Text>
+            <Text style={[styles.actionRowLabel, { color: colors.danger }]}>Delete Patient</Text>
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
 
         {!patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => switchView('careTeam')} activeOpacity={0.7}>
-            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(45,79,62,0.08)' }]}>
+            <View style={[styles.actionRowIcon, { backgroundColor: colors.secondaryContainer }]}>
               <AppIcon iosName="person.2" androidFallback="👥" size={18} color={colors.secondary} />
             </View>
             <Text style={styles.actionRowLabel}>Care Team</Text>
@@ -1366,10 +1366,10 @@ function PatientDetailContent({
 
         {!patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => onLeave(patient)}>
-            <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(231,76,60,0.1)' }]}>
-              <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color="#C0392B" />
+            <View style={[styles.actionRowIcon, { backgroundColor: colors.dangerContainer }]}>
+              <AppIcon iosName="arrow.right.square" androidFallback="←" size={18} color={colors.danger} />
             </View>
-            <Text style={[styles.actionRowLabel, { color: '#C0392B' }]}>Leave Care Team</Text>
+            <Text style={[styles.actionRowLabel, { color: colors.danger }]}>Leave Care Team</Text>
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
@@ -1422,9 +1422,9 @@ const styles = StyleSheet.create({
   },
   iosActionCard: {
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    backgroundColor: colors.neutralLight,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderColor: colors.borderStrong,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.06,
@@ -1432,10 +1432,10 @@ const styles = StyleSheet.create({
   },
   androidActionCard: {
     borderRadius: 28,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     elevation: 1,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   actionIconCircle: {
@@ -1462,7 +1462,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(180, 174, 232, 0.15)',
+    backgroundColor: colors.lavenderContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -1508,7 +1508,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textLight,
+    color: colors.onAccent,
   },
   patientDetails: { flex: 1 },
   patientName: {
@@ -1528,11 +1528,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(231, 76, 60, 0.08)',
+    backgroundColor: colors.dangerContainer,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  deleteBtnDisabled: { backgroundColor: 'rgba(0,0,0,0.03)' },
+  deleteBtnDisabled: { backgroundColor: colors.surfaceMuted },
 
   // Sheet content
   sheetContainer: {
@@ -1564,7 +1564,7 @@ const styles = StyleSheet.create({
   sheetAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textLight,
+    color: colors.onAccent,
   },
   sheetAvatarBadge: {
     position: 'absolute',
@@ -1577,7 +1577,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: colors.neutral,
   },
   sheetTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1597,7 +1597,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: isIOS ? 16 : 20,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.45)' : 'rgba(0, 0, 0, 0.04)',
+    backgroundColor: colors.surfaceMuted,
   },
   statusDot: {
     width: 10,
@@ -1646,11 +1646,11 @@ const styles = StyleSheet.create({
     width: 38,
     height: 44,
     borderRadius: isIOS ? 10 : 12,
-    backgroundColor: isIOS ? 'rgba(45, 79, 62, 0.08)' : 'rgba(45, 79, 62, 0.06)',
+    backgroundColor: colors.secondaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: isIOS ? StyleSheet.hairlineWidth : 1,
-    borderColor: 'rgba(45, 79, 62, 0.15)',
+    borderColor: colors.border,
   },
   codeChar: {
     fontFamily: typography.fontFamily.bold,
@@ -1664,7 +1664,7 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: isIOS ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.03)',
+    backgroundColor: colors.surfaceMuted,
     gap: 10,
   },
   qrRestrictedTitle: {
@@ -1703,7 +1703,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
+    borderTopColor: colors.border,
   },
   careTeamName: {
     fontFamily: typography.fontFamily.regular,
@@ -1715,7 +1715,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(45, 79, 62, 0.10)',
+    backgroundColor: colors.secondaryContainer,
   },
   makePrimaryText: {
     fontFamily: typography.fontFamily.medium,
@@ -1735,7 +1735,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: 'rgba(45, 79, 62, 0.07)',
+    backgroundColor: colors.secondaryContainer,
     marginBottom: 6,
   },
   careTeamPickerName: {
@@ -1762,9 +1762,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  pillAmber: { backgroundColor: '#E2DFCF' },
-  pillGreen: { backgroundColor: '#D8E8D8' },
-  pillRed: { backgroundColor: '#FADBD8' },
+  pillAmber: { backgroundColor: colors.warningContainer },
+  pillGreen: { backgroundColor: colors.successContainer },
+  pillRed: { backgroundColor: colors.dangerContainer },
   pillDot: {
     width: 7,
     height: 7,
@@ -1798,7 +1798,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(45,79,62,0.15)',
+    backgroundColor: colors.secondaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -1843,7 +1843,7 @@ const styles = StyleSheet.create({
   },
   careTeamDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: colors.border,
     marginTop: 12,
     marginBottom: 8,
   },
@@ -1857,7 +1857,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: colors.secondaryContainer,
   },
   careTeamPillText: {
     fontFamily: typography.fontFamily.medium,
@@ -1875,7 +1875,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(123,115,192,0.15)',
+    backgroundColor: colors.lavenderContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -1889,7 +1889,7 @@ const styles = StyleSheet.create({
   secondaryAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: '#7B73C0',
+    color: colors.lavender,
   },
   secondaryPatientName: {
     fontFamily: typography.fontFamily.bold,
@@ -1909,7 +1909,7 @@ const styles = StyleSheet.create({
   deleteAccountText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#C0392B',
+    color: colors.danger,
   },
 
   // Care Team nav view
@@ -1932,7 +1932,7 @@ const styles = StyleSheet.create({
       height: 40,
       borderRadius: 20,
       justifyContent: 'center',
-      backgroundColor: 'rgba(0,0,0,0.05)',
+      backgroundColor: colors.surfaceMuted,
     }),
   },
   backBtnText: {
@@ -1958,7 +1958,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: colors.secondaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -1980,9 +1980,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     borderRadius: isIOS ? 16 : 20,
     overflow: 'hidden',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.45)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.07)',
+    borderColor: colors.border,
   },
   actionRow: {
     flexDirection: 'row',
@@ -1991,7 +1991,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.07)',
+    borderBottomColor: colors.border,
   },
   actionRowIcon: {
     width: isIOS ? 34 : 40,
@@ -2010,7 +2010,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: colors.secondaryContainer,
     marginRight: 4,
   },
   careTeamCountText: {
@@ -2022,7 +2022,7 @@ const styles = StyleSheet.create({
   // Edit name modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
@@ -2049,7 +2049,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
   },
   modalCancelText: {
@@ -2067,7 +2067,7 @@ const styles = StyleSheet.create({
   modalSaveText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: colors.onAccent,
   },
 
   // Edit mode
@@ -2076,11 +2076,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textDark,
     borderWidth: 1,
-    borderColor: 'rgba(45,79,62,0.25)',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.6)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
   },
   editSaveBtn: {
     flex: 1,
@@ -2092,13 +2092,13 @@ const styles = StyleSheet.create({
   editSaveBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#FFFFFF',
+    color: colors.onAccent,
   },
   editCancelBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
   },
   editCancelBtnText: {
@@ -2110,7 +2110,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: colors.secondaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -2120,12 +2120,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: 'rgba(231,76,60,0.08)',
+    backgroundColor: colors.dangerContainer,
   },
   removeCaregiverText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: '#C0392B',
+    color: colors.danger,
   },
 
   careTeamRoleLabel: {
@@ -2143,7 +2143,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    backgroundColor: colors.secondaryContainer,
   },
   careTeamRequestText: {
     fontFamily: typography.fontFamily.medium,
@@ -2154,7 +2154,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: colors.surfaceMuted,
   },
   careTeamPendingText: {
     fontFamily: typography.fontFamily.medium,
@@ -2185,12 +2185,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: colors.secondaryContainer,
   },
   codeCopiedText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: '#2E5233',
+    color: colors.success,
   },
 
   // Deletion management sheet
@@ -2222,9 +2222,9 @@ const styles = StyleSheet.create({
   delList: {
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.03)',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.07)',
+    borderColor: colors.border,
     marginBottom: 14,
   },
   delRow: {
@@ -2234,13 +2234,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: colors.border,
   },
   delAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: colors.secondaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -2269,12 +2269,12 @@ const styles = StyleSheet.create({
   delBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: colors.textLight,
   },
   delReason: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: '#C0392B',
+    color: colors.danger,
     fontStyle: 'italic',
     marginTop: 2,
   },
@@ -2299,7 +2299,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
+    borderBottomColor: colors.border,
   },
   reminderDeleteBtn: {
     marginRight: 12,
@@ -2317,7 +2317,7 @@ const styles = StyleSheet.create({
     color: colors.textDark,
   },
   timePill: {
-    backgroundColor: isIOS ? 'rgba(0,0,0,0.05)' : 'rgba(45,79,62,0.08)',
+    backgroundColor: colors.secondaryContainer,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -2350,7 +2350,7 @@ const styles = StyleSheet.create({
   },
   pickerModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
@@ -2369,7 +2369,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
+    borderBottomColor: colors.border,
   },
   iosPickerCancel: {
     fontFamily: typography.fontFamily.regular,
@@ -2399,4 +2399,3 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 });
-

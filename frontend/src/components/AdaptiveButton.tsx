@@ -79,7 +79,7 @@ export function AdaptiveButton({
         {loading && (
           <ActivityIndicator
             size="small"
-            color={variant === 'filled' ? colors.textLight : baseColor}
+            color={variant === 'filled' ? colors.onAccent : baseColor}
             style={{ marginRight: 8 }}
           />
         )}
@@ -100,7 +100,7 @@ export function AdaptiveButton({
       disabled={disabled || loading}
       android_ripple={{
         color: variant === 'filled'
-          ? 'rgba(255,255,255,0.2)'
+          ? 'rgba(7,18,13,0.14)'
           : baseColor + '18',
         borderless: false,
       }}
@@ -108,7 +108,7 @@ export function AdaptiveButton({
       {loading && (
         <ActivityIndicator
           size="small"
-          color={variant === 'filled' ? colors.textLight : baseColor}
+          color={variant === 'filled' ? colors.onAccent : baseColor}
           style={{ marginRight: 8 }}
         />
       )}
@@ -139,11 +139,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   iosOutlined: {
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
   },
   iosDanger: {
-    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    backgroundColor: colors.dangerContainer,
     borderRadius: 20,
   },
 
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
   },
   androidDanger: {
-    backgroundColor: 'rgba(231, 76, 60, 0.08)',
+    backgroundColor: colors.dangerContainer,
     borderRadius: 28,
   },
   androidPressed: {
@@ -189,9 +189,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   filledLabel: {
-    color: colors.textLight,
+    color: colors.onAccent,
   },
   dangerLabel: {
-    color: '#C0392B',
+    color: colors.danger,
   },
 });

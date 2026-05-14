@@ -331,7 +331,7 @@ export default function LoginScreen() {
             <View style={styles.topSpacer} />
 
             <View style={styles.welcomeBackIconWrap}>
-              <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color="#4A7A5A" />
+              <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color={colors.success} />
             </View>
 
             <Text style={styles.restoreHeadline}>Welcome back,{'\n'}{restored.firstName}</Text>
@@ -387,7 +387,7 @@ export default function LoginScreen() {
             <View style={styles.topSpacer} />
 
             <View style={styles.restoreIconWrap}>
-              <AppIcon iosName="clock.badge.exclamationmark" androidFallback="⏰" size={48} color="#e67e22" />
+              <AppIcon iosName="clock.badge.exclamationmark" androidFallback="⏰" size={48} color={colors.warning} />
             </View>
 
             <Text style={styles.restoreHeadline}>Account Scheduled{'\n'}for Deletion</Text>
@@ -490,7 +490,7 @@ export default function LoginScreen() {
                 activeOpacity={0.8}
                 disabled={isSocialLoading}
               >
-                <MaterialCommunityIcons name="apple" size={24} color="#FFF" />
+                <MaterialCommunityIcons name="apple" size={24} color={colors.textDark} />
                 <Text style={styles.appleButtonText}>Continue with Apple</Text>
               </TouchableOpacity>
             )}
@@ -503,9 +503,9 @@ export default function LoginScreen() {
               ]}
               onPress={handleGoogleSignIn}
               disabled={isSocialLoading || !GoogleSignin || !googleConfigured}
-              android_ripple={{ color: 'rgba(0,0,0,0.1)', borderless: false }}
+              android_ripple={{ color: 'rgba(7,18,13,0.10)', borderless: false }}
             >
-              <MaterialCommunityIcons name="google" size={24} color="#333" />
+              <MaterialCommunityIcons name="google" size={24} color={colors.onAccent} />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </Pressable>
           </View>
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   apiErrorText: {
-    color: '#C0392B',
+    color: colors.danger,
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
   separatorLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: colors.border,
   },
   separatorText: {
     marginHorizontal: 16,
@@ -611,21 +611,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: colors.surfaceElevated,
     paddingVertical: 14,
     borderRadius: isIOS ? 20 : 28,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
   },
   appleButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.textDark,
     marginLeft: 8,
   },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.textLight,
     paddingVertical: 14,
     borderRadius: isIOS ? 20 : 28,
     borderWidth: 1,
@@ -634,7 +636,7 @@ const styles = StyleSheet.create({
   googleButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
-    color: '#333333',
+    color: colors.onAccent,
     marginLeft: 8,
   },
 
@@ -643,7 +645,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: 'rgba(230,126,34,0.1)',
+    backgroundColor: colors.warningContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -674,7 +676,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: 'rgba(74,122,90,0.1)',
+    backgroundColor: colors.successContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -685,7 +687,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: colors.border,
   },
   patientRoleName: {
     fontFamily: typography.fontFamily.bold,

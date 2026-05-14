@@ -1,16 +1,37 @@
-// Design system based on MemoryLane UI/UX spec
 import { Platform } from 'react-native';
 
 export const colors = {
-  primary: '#1E4D30', // Deep green: headings, CTAs, active nav
-  secondary: '#03573a', // Warm grey-green: secondary text, inactive elements
-  neutral: '#E8F5EC', // Near-white mint: background, breathing room
-  neutralLight: '#FFFFFF',
-  textDark: '#1A1A1A',
+  primary: '#9BE7B4',
+  secondary: '#79DBA1',
+  neutral: '#0E1712',
+  neutralLight: '#17231D',
+  surface: '#1C2A22',
+  surfaceElevated: '#223127',
+  textDark: '#F5FBF7',
   textLight: '#FFFFFF',
-  textMuted: '#666666',
+  textMuted: '#AEBDAF',
+  onAccent: '#07120D',
 
-  // Card backgrounds – translucent on iOS for vibrancy, solid on Android for clarity
-  patientCardBg: Platform.OS === 'ios' ? 'rgba(234, 224, 206, 0.7)' : '#EAE0CE',
-  caregiverCardBg: Platform.OS === 'ios' ? 'rgba(167, 215, 197, 0.7)' : '#A7D7C5',
+  border: 'rgba(235, 247, 239, 0.12)',
+  borderStrong: 'rgba(235, 247, 239, 0.22)',
+  surfaceMuted: 'rgba(235, 247, 239, 0.07)',
+  scrim: 'rgba(0, 0, 0, 0.58)',
+  handle: 'rgba(235, 247, 239, 0.28)',
+  primaryContainer: 'rgba(155, 231, 180, 0.16)',
+  secondaryContainer: 'rgba(121, 219, 161, 0.16)',
+  patientAccent: '#F0C987',
+  patientAccentContainer: 'rgba(240, 201, 135, 0.16)',
+  lavender: '#C9C3FF',
+  lavenderContainer: 'rgba(201, 195, 255, 0.16)',
+  danger: '#FFB4A8',
+  dangerSolid: '#B3261E',
+  dangerContainer: 'rgba(255, 180, 168, 0.15)',
+  success: '#8DE6A5',
+  successSolid: '#2E7D4F',
+  successContainer: 'rgba(141, 230, 165, 0.16)',
+  warning: '#F2C66D',
+  warningContainer: 'rgba(242, 198, 109, 0.16)',
+
+  patientCardBg: Platform.OS === 'ios' ? 'rgba(91, 69, 42, 0.72)' : '#2B2419',
+  caregiverCardBg: Platform.OS === 'ios' ? 'rgba(27, 79, 57, 0.68)' : '#183426',
 };

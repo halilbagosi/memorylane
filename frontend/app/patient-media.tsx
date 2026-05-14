@@ -38,5 +38,5 @@ export default function PatientMediaScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.neutral },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  errorText: { color: '#C0392B', fontSize: 16 },
+  errorText: { color: colors.danger, fontSize: 16 },
 });

@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.32)',
+    backgroundColor: colors.scrim,
   },
   iosSheet: {
     flex: 1,
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: colors.handle,
     alignSelf: 'center',
     marginTop: 12,
     marginBottom: 8,

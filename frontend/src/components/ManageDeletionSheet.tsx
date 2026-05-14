@@ -156,7 +156,7 @@ export function ManageDeletionSheet({
     <Modal visible={visible} transparent animationType="none" onRequestClose={animateOut}>
       <TouchableWithoutFeedback onPress={animateOut}>
         <View style={s.overlay}>
-          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', opacity: backdropAnim }]} />
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim, opacity: backdropAnim }]} />
           <TouchableWithoutFeedback onPress={() => {}}>
             <Animated.View style={[s.sheet, { transform: [{ translateY: slideAnim }] }]}>
               {/* Drag handle */}
@@ -168,7 +168,7 @@ export function ManageDeletionSheet({
                 {/* ── PENDING ── */}
                 {isPending && (
                   <>
-                    <AppIcon iosName="clock" androidFallback="⏳" size={32} color="#b45309" />
+                    <AppIcon iosName="clock" androidFallback="⏳" size={32} color={colors.warning} />
                     <Text style={[s.title, { marginTop: 12 }]}>Transferring Primary Roles</Text>
                     <Text style={s.body}>
                       You're still the primary caregiver. Your patients and access are unchanged. Nothing happens until you click "Finalize" after everyone accepts.
@@ -190,10 +190,10 @@ export function ManageDeletionSheet({
                       style={[s.actionBtn, { backgroundColor: colors.secondary, borderRadius: 14, marginTop: 4 }]}
                       onPress={animateOut}
                     >
-                      <Text style={[s.actionBtnText, { color: '#fff' }]}>Continue Using App</Text>
+                      <Text style={[s.actionBtnText, { color: colors.onAccent }]}>Continue Using App</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.actionBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                      <Text style={[s.actionBtnText, { color: '#C0392B' }]}>Cancel Account Deletion</Text>
+                      <Text style={[s.actionBtnText, { color: colors.danger }]}>Cancel Account Deletion</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -201,7 +201,7 @@ export function ManageDeletionSheet({
                 {/* ── ALL ACCEPTED ── */}
                 {isAllAccepted && (
                   <>
-                    <AppIcon iosName="checkmark.seal.fill" androidFallback="✅" size={36} color="#27ae60" />
+                    <AppIcon iosName="checkmark.seal.fill" androidFallback="✅" size={36} color={colors.success} />
                     <Text style={[s.title, { marginTop: 12 }]}>Ready to Finalize</Text>
                     <Text style={s.body}>
                       All caregivers accepted. The moment you tap "Finalize" below, the roles swap and your account is deactivated. You are still the primary right now.
@@ -209,12 +209,12 @@ export function ManageDeletionSheet({
                     <View style={s.list}>
                       {(details?.acceptedRequests ?? []).map(r => (
                         <View key={r.id} style={s.row}>
-                          <View style={[s.avatar, { backgroundColor: 'rgba(39,174,96,0.15)' }]}>
-                            <Text style={[s.avatarText, { color: '#27ae60' }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
+                          <View style={[s.avatar, { backgroundColor: colors.successContainer }]}>
+                            <Text style={[s.avatarText, { color: colors.success }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={s.name}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
-                            <Text style={{ fontSize: 12, color: '#27ae60', fontFamily: typography.fontFamily.regular }}>Will become primary</Text>
+                            <Text style={{ fontSize: 12, color: colors.success, fontFamily: typography.fontFamily.regular }}>Will become primary</Text>
                           </View>
                         </View>
                       ))}
@@ -222,8 +222,8 @@ export function ManageDeletionSheet({
                     <Text style={[s.body, { fontSize: 12, color: colors.textMuted, marginTop: 4 }]}>
                       After finalizing, your account enters a 10-day grace period before permanent removal. You can restore it anytime during that window.
                     </Text>
-                    <TouchableOpacity style={[s.actionBtn, { backgroundColor: '#27ae60', borderRadius: 14, marginTop: 8 }]} onPress={confirmFinalDeletion}>
-                      <Text style={[s.actionBtnText, { color: '#fff' }]}>Finalize — Transfer Roles</Text>
+                    <TouchableOpacity style={[s.actionBtn, { backgroundColor: colors.success, borderRadius: 14, marginTop: 8 }]} onPress={confirmFinalDeletion}>
+                      <Text style={[s.actionBtnText, { color: colors.onAccent }]}>Finalize — Transfer Roles</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.actionBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
                       <Text style={s.actionBtnText}>Cancel — Stay as Primary</Text>
@@ -234,7 +234,7 @@ export function ManageDeletionSheet({
                 {/* ── SOME DECLINED ── */}
                 {isSomeDeclined && (
                   <>
-                    <AppIcon iosName="exclamationmark.triangle.fill" androidFallback="⚠" size={36} color="#C0392B" />
+                    <AppIcon iosName="exclamationmark.triangle.fill" androidFallback="⚠" size={36} color={colors.danger} />
                     <Text style={[s.title, { marginTop: 12 }]}>Action Required</Text>
                     <Text style={s.body}>
                       A caregiver has declined the handover request. You need to pick another caregiver or cancel the deletion.
@@ -242,15 +242,15 @@ export function ManageDeletionSheet({
                     <View style={s.list}>
                       {(details?.declinedRequests ?? []).map(r => (
                         <View key={r.id} style={s.row}>
-                          <View style={[s.avatar, { backgroundColor: 'rgba(231,76,60,0.12)' }]}>
-                            <Text style={[s.avatarText, { color: '#C0392B' }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
+                          <View style={[s.avatar, { backgroundColor: colors.dangerContainer }]}>
+                            <Text style={[s.avatarText, { color: colors.danger }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={s.name}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
                             {r.declineReason ? (
                               <Text style={s.declineReason}>"{r.declineReason}"</Text>
                             ) : (
-                              <Text style={{ fontSize: 12, color: '#C0392B', fontFamily: typography.fontFamily.regular }}>Declined</Text>
+                              <Text style={{ fontSize: 12, color: colors.danger, fontFamily: typography.fontFamily.regular }}>Declined</Text>
                             )}
                           </View>
                         </View>
@@ -263,10 +263,10 @@ export function ManageDeletionSheet({
                         onNavigateToCareTeams?.();
                       }}
                     >
-                      <Text style={[s.actionBtnText, { color: '#fff' }]}>Pick Another Caregiver</Text>
+                      <Text style={[s.actionBtnText, { color: colors.onAccent }]}>Pick Another Caregiver</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.actionBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                      <Text style={[s.actionBtnText, { color: '#C0392B' }]}>Cancel Account Deletion</Text>
+                      <Text style={[s.actionBtnText, { color: colors.danger }]}>Cancel Account Deletion</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -284,7 +284,7 @@ export function ManageDeletionSheet({
 const s = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surfaceElevated,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -300,7 +300,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: colors.handle,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
@@ -321,9 +321,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     padding: 14,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.03)',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: colors.border,
     gap: 12,
   },
   avatar: {
@@ -337,7 +337,7 @@ const s = StyleSheet.create({
   avatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.textLight,
+    color: colors.onAccent,
   },
   name: {
     flex: 1,
@@ -354,7 +354,7 @@ const s = StyleSheet.create({
   declineReason: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: '#C0392B',
+    color: colors.danger,
     fontStyle: 'italic',
     marginTop: 2,
   },

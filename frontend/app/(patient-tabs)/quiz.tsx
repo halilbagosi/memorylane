@@ -82,9 +82,9 @@ interface ResumeSession {
 }
 
 const MIN_IDENTITIES = 4;
-const QUIZ_BACKGROUND = '#E8F5EC';
-const CREAM = '#FCFEF9';
-const FOREST_GREEN = '#1E4D30';
+const QUIZ_BACKGROUND = colors.neutral;
+const CREAM = colors.neutralLight;
+const FOREST_GREEN = colors.primary;
 const SESSION_KEY_PREFIX = 'memorylane_patient_quiz_session';
 
 const MODE_CONFIG: Record<QuizMode, { label: string; icon: SFSymbol; androidFallback: string }> = {
@@ -728,7 +728,7 @@ export default function QuizTab() {
               </View>
             )}
             <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setSelectedMedia(null)}>
-              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color="#E74C3C" />
+              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color={colors.danger} />
             </TouchableOpacity>
           </View>
         )}
@@ -753,7 +753,7 @@ export default function QuizTab() {
               iosName={isRecording ? 'stop.fill' : 'mic.fill'}
               androidFallback="A"
               size={20}
-              color={isRecording ? '#fff' : colors.primary}
+              color={isRecording ? colors.textLight : colors.primary}
             />
             <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
               {isRecording ? 'Recording...' : 'Voice'}
@@ -770,7 +770,7 @@ export default function QuizTab() {
           disabled={(!newNote.trim() && !selectedMedia) || isSubmitting}
         >
           {isSubmitting ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={CREAM} />
           ) : (
             <Text style={styles.saveBtnText}>Share with Family</Text>
           )}
@@ -841,7 +841,7 @@ export default function QuizTab() {
 
   const renderError = (message: string) => (
     <View style={styles.centerFill}>
-      <AppIcon iosName="exclamationmark.circle" androidFallback="!" size={48} color="#C0392B" />
+      <AppIcon iosName="exclamationmark.circle" androidFallback="!" size={48} color={colors.danger} />
       <Text style={styles.errorText}>{message}</Text>
       <TouchableOpacity style={styles.retryBtn} onPress={initialise} activeOpacity={0.8}>
         <Text style={styles.retryBtnText}>Try Again</Text>
@@ -927,7 +927,7 @@ export default function QuizTab() {
                 iosName={cfg.icon}
                 androidFallback={cfg.androidFallback}
                 size={24}
-                color={hasMedia ? CREAM : '#888888'}
+                color={hasMedia ? CREAM : colors.textMuted}
               />
               <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
             </TouchableOpacity>
@@ -1081,7 +1081,7 @@ export default function QuizTab() {
           <Text style={styles.greeting}>Hi, {patient.name}</Text>
           {['mode_select', 'no_media', 'insufficient_identities'].includes(phase.type) && (
             <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7}>
-              <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color="#C0392B" />
+              <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color={colors.danger} />
             </TouchableOpacity>
           )}
           {patient.avatarUrl ? (
@@ -1146,13 +1146,13 @@ const styles = StyleSheet.create({
   },
   scrollHintCard: {
     width: '100%',
-    backgroundColor: 'rgba(252, 254, 249, 0.95)',
+    backgroundColor: colors.neutralLight,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.2)',
+    borderColor: colors.border,
     gap: 8,
     alignItems: 'center',
   },
@@ -1185,7 +1185,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: colors.neutral,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.12)',
+    borderColor: colors.border,
   },
   topRow: {
     flexDirection: 'row',
@@ -1284,7 +1284,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#24442F',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.14,
         shadowRadius: 18,
@@ -1311,12 +1311,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: colors.border,
     alignItems: 'center',
     gap: 24,
     ...Platform.select({
       ios: {
-        shadowColor: '#24442F',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.14,
         shadowRadius: 18,
@@ -1348,7 +1348,7 @@ const styles = StyleSheet.create({
   },
   resumeSecondaryBtn: {
     borderRadius: 999,
-    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+    backgroundColor: colors.surfaceMuted,
     paddingVertical: 15,
     alignItems: 'center',
   },
@@ -1388,7 +1388,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modePillDisabled: {
-    backgroundColor: '#D1D8D0',
+    backgroundColor: colors.surfaceMuted,
   },
   modePillText: {
     fontFamily: typography.fontFamily.bold,
@@ -1398,7 +1398,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   modePillTextDisabled: {
-    color: '#888888',
+    color: colors.textMuted,
   },
   quizScreen: {
     flex: 1,
@@ -1418,10 +1418,10 @@ const styles = StyleSheet.create({
     width: 34,
     height: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(30, 77, 48, 0.24)',
+    backgroundColor: colors.secondaryContainer,
   },
   progressDashActive: {
-    backgroundColor: CREAM,
+    backgroundColor: colors.primary,
   },
   questionText: {
     fontFamily: typography.fontFamily.bold,
@@ -1437,7 +1437,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     ...Platform.select({
       ios: {
-        shadowColor: '#24442F',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.2,
         shadowRadius: 18,
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 30,
     overflow: 'hidden',
-    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+    backgroundColor: colors.surfaceMuted,
   },
   photoLoading: {
     ...StyleSheet.absoluteFillObject,
@@ -1470,9 +1470,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 8,
-    backgroundColor: 'rgba(252, 254, 249, 0.58)',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: colors.border,
   },
   hintButtonText: {
     fontFamily: typography.fontFamily.medium,
@@ -1488,7 +1488,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: colors.border,
   },
   hintText: {
     fontFamily: typography.fontFamily.regular,
@@ -1519,7 +1519,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     ...Platform.select({
       ios: {
-        shadowColor: '#24442F',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.14,
         shadowRadius: 9,
@@ -1528,7 +1528,7 @@ const styles = StyleSheet.create({
     }),
   },
   choiceBtnWrong: {
-    backgroundColor: '#D7E0D2',
+    backgroundColor: colors.surfaceMuted,
   },
   choiceBtnText: {
     fontFamily: typography.fontFamily.bold,
@@ -1538,7 +1538,7 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   choiceBtnTextWrong: {
-    color: '#7A7A7A',
+    color: colors.textMuted,
   },
   summaryContent: {
     flexGrow: 1,
@@ -1568,7 +1568,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#24442F',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.14,
         shadowRadius: 18,
@@ -1597,9 +1597,9 @@ const styles = StyleSheet.create({
   },
   practiceChoice: {
     borderRadius: 999,
-    backgroundColor: 'rgba(252, 254, 249, 0.9)',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: colors.border,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -1624,7 +1624,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(180, 174, 232, 0.2)',
+    borderColor: colors.lavenderContainer,
   },
   mediaBtnText: {
     fontFamily: typography.fontFamily.medium,
@@ -1632,11 +1632,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   recordingBtn: {
-    backgroundColor: '#E74C3C',
-    borderColor: '#E74C3C',
+    backgroundColor: colors.dangerSolid,
+    borderColor: colors.dangerSolid,
   },
   recordingBtnText: {
-    color: '#fff',
+    color: colors.textLight,
   },
   mediaPreview: {
     position: 'relative',
@@ -1665,7 +1665,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     right: -10,
-    backgroundColor: '#fff',
+    backgroundColor: colors.neutralLight,
     borderRadius: 12,
   },
   noteInputCard: {
@@ -1675,7 +1675,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.15)',
+    borderColor: colors.border,
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -1691,7 +1691,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.2)',
+    borderColor: colors.border,
     padding: 12,
     marginBottom: 14,
     backgroundColor: colors.neutral,

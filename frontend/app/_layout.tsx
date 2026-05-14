@@ -5,7 +5,7 @@ import { GothicA1_700Bold } from '@expo-google-fonts/gothic-a1';
 import * as SplashScreen from 'expo-splash-screen';
 import { Platform, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { PaperProvider, MD3LightTheme } from 'react-native-paper';
+import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import { registerTranslation, en } from 'react-native-paper-dates';
 import { colors } from '../src/theme/colors';
 
@@ -19,21 +19,25 @@ const isAndroid = Platform.OS === 'android';
 const isIOS = Platform.OS === 'ios';
 
 const paperTheme = {
-  ...MD3LightTheme,
+  ...MD3DarkTheme,
   colors: {
-    ...MD3LightTheme.colors,
+    ...MD3DarkTheme.colors,
     primary: colors.primary,
-    primaryContainer: 'rgba(30, 77, 48, 0.12)',
-    onPrimary: colors.textLight,
-    onPrimaryContainer: colors.primary,
+    primaryContainer: colors.primaryContainer,
+    onPrimary: colors.onAccent,
+    onPrimaryContainer: colors.textDark,
     secondary: colors.secondary,
-    secondaryContainer: 'rgba(180, 174, 232, 0.18)',
+    onSecondary: colors.onAccent,
+    secondaryContainer: colors.secondaryContainer,
     surface: colors.neutral,
     surfaceVariant: colors.neutralLight,
     onSurface: colors.textDark,
     onSurfaceVariant: colors.textMuted,
     background: colors.neutral,
-    outline: 'rgba(0, 0, 0, 0.12)',
+    outline: colors.borderStrong,
+    error: colors.danger,
+    onError: colors.onAccent,
+    errorContainer: colors.dangerContainer,
   },
 };
 
@@ -59,7 +63,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       {isAndroid && (
         <StatusBar
-          barStyle="dark-content"
+          barStyle="light-content"
           backgroundColor={colors.neutral}
           translucent={false}
         />

@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import { View, StyleSheet, Platform, ViewStyle } from 'react-native';
+import { colors } from '../theme/colors';
 
 interface AdaptiveCardProps {
   children: ReactNode;
@@ -26,26 +27,26 @@ export function AdaptiveCard({ children, style, backgroundColor }: AdaptiveCardP
 
 const styles = StyleSheet.create({
   base: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     overflow: 'hidden',
   },
 
   ios: {
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    backgroundColor: colors.neutralLight,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderColor: colors.borderStrong,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.22,
     shadowRadius: 16,
   },
 
   android: {
     borderRadius: 28,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     elevation: 1,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    borderColor: colors.border,
   },
 });

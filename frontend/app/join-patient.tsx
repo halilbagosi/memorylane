@@ -26,8 +26,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
 const isIOS = Platform.OS === 'ios';
 
-const ACCENT = '#2D4F3E';
-const ACCENT_LIGHT = 'rgba(45, 79, 62, 0.12)';
+const ACCENT = colors.secondary;
+const ACCENT_LIGHT = colors.secondaryContainer;
 
 export default function JoinPatientScreen() {
   const router = useRouter();
@@ -106,10 +106,10 @@ export default function JoinPatientScreen() {
   if (successInfo) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
           <View style={styles.successCheckCircle}>
-            <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color="#4CAF50" />
+            <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color={colors.success} />
           </View>
           <Text style={styles.successTitle}>Patient Added!</Text>
           <Text style={styles.successSubtitle}>
@@ -126,7 +126,7 @@ export default function JoinPatientScreen() {
   if (mode === 'camera' && !permission) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <Text style={styles.permText}>Loading camera...</Text>
       </View>
     );
@@ -135,7 +135,7 @@ export default function JoinPatientScreen() {
   if (mode === 'camera' && !permission?.granted) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <View style={styles.permCard}>
           <AppIcon iosName="camera.fill" androidFallback="cam" size={40} color={ACCENT} />
           <Text style={styles.permTitle}>Camera Access</Text>
@@ -164,7 +164,7 @@ export default function JoinPatientScreen() {
         style={[styles.manualContainer, { paddingTop: insets.top + 44 }]}
         behavior={isIOS ? 'padding' : undefined}
       >
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <View style={styles.manualContent}>
           <View style={[styles.iconCircle, { backgroundColor: ACCENT_LIGHT }]}>
             <AppIcon iosName="keyboard" androidFallback="..." size={32} color={ACCENT} />
@@ -237,7 +237,7 @@ export default function JoinPatientScreen() {
 
         <View style={[styles.overlaySection, styles.bottomSection, { paddingBottom: insets.bottom + 24 }]}>
           {error ? (
-            <AdaptiveCard style={styles.errorCard} backgroundColor="rgba(231, 76, 60, 0.15)">
+            <AdaptiveCard style={styles.errorCard} backgroundColor={colors.dangerContainer}>
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity onPress={() => { setError(''); scannedRef.current = false; }}>
                 <Text style={styles.errorRetry}>Try again</Text>
@@ -255,7 +255,7 @@ export default function JoinPatientScreen() {
             />
           ) : (
             <TouchableOpacity style={styles.manualBtn} onPress={() => setMode('manual')}>
-              <AppIcon iosName="keyboard" androidFallback="..." size={18} color="#FFFFFF" />
+              <AppIcon iosName="keyboard" androidFallback="..." size={18} color={colors.textLight} />
               <Text style={styles.manualBtnText}>Enter code manually</Text>
             </TouchableOpacity>
           )}
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   scanRow: { flexDirection: 'row', height: SCAN_AREA_SIZE },
   overlayFill: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   scanArea: { width: SCAN_AREA_SIZE, height: SCAN_AREA_SIZE },
-  corner: { position: 'absolute', width: 24, height: 24, borderColor: '#FFFFFF' },
+  corner: { position: 'absolute', width: 24, height: 24, borderColor: colors.textLight },
   cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 8 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 8 },
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 8 },
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
   scanTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: '#FFFFFF',
+    color: colors.textLight,
     marginBottom: 6,
   },
   scanSubtitle: {
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
   manualBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: colors.textLight,
   },
   errorCard: {
     flexDirection: 'row',
@@ -389,13 +389,13 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#C0392B',
+    color: colors.danger,
     flex: 1,
   },
   errorRetry: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: '#C0392B',
+    color: colors.danger,
     marginLeft: 12,
   },
   successContent: { alignItems: 'center', paddingHorizontal: 32 },

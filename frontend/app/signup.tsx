@@ -38,10 +38,10 @@ function evaluatePassword(pw: string): PasswordStrength {
 
   const levels: Record<number, { label: string; color: string }> = {
     0: { label: '', color: 'transparent' },
-    1: { label: 'Weak', color: '#C0392B' },
-    2: { label: 'Fair', color: '#e67e22' },
-    3: { label: 'Good', color: '#f1c40f' },
-    4: { label: 'Strong', color: '#27ae60' },
+    1: { label: 'Weak', color: colors.danger },
+    2: { label: 'Fair', color: colors.warning },
+    3: { label: 'Good', color: colors.patientAccent },
+    4: { label: 'Strong', color: colors.success },
   };
 
   return { score, ...levels[score] };
@@ -209,12 +209,12 @@ export default function SignupScreen() {
                   {initials ? (
                     <Text style={styles.avatarInitials}>{initials}</Text>
                   ) : (
-                    <AppIcon iosName="person.crop.circle" androidFallback="👤" size={32} color="rgba(255,255,255,0.8)" />
+                    <AppIcon iosName="person.crop.circle" androidFallback="👤" size={32} color={colors.onAccent} />
                   )}
                 </View>
               )}
               <View style={styles.avatarEditBadge}>
-                <AppIcon iosName="plus" androidFallback="+" size={11} color="#fff" weight="bold" />
+                <AppIcon iosName="plus" androidFallback="+" size={11} color={colors.onAccent} weight="bold" />
               </View>
             </TouchableOpacity>
             <View style={styles.avatarHint}>
@@ -273,7 +273,7 @@ export default function SignupScreen() {
                       {
                         backgroundColor: segment <= strength.score
                           ? strength.color
-                          : isIOS ? 'rgba(0,0,0,0.06)' : '#E0E0E0',
+                          : colors.surfaceMuted,
                       },
                       isIOS ? styles.iosSegment : styles.androidSegment,
                     ]}
@@ -299,9 +299,9 @@ export default function SignupScreen() {
             <Switch
               value={isSubscribed}
               onValueChange={setIsSubscribed}
-              trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-              thumbColor={isSubscribed ? colors.secondary : isIOS ? '#fff' : '#f4f4f4'}
-              ios_backgroundColor="rgba(0,0,0,0.08)"
+              trackColor={{ false: colors.surfaceMuted, true: colors.secondaryContainer }}
+              thumbColor={isSubscribed ? colors.secondary : colors.textMuted}
+              ios_backgroundColor={colors.surfaceMuted}
             />
           </View>
 
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textLight,
+    color: colors.onAccent,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
   },
 
   apiErrorText: {
-    color: '#C0392B',
+    color: colors.danger,
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -452,9 +452,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 18,
     borderRadius: 16,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    backgroundColor: colors.neutralLight,
     borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.08)',
+    borderColor: colors.border,
     gap: 12,
   },
   subscriptionInfo: {

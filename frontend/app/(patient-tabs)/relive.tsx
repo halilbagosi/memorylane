@@ -147,7 +147,7 @@ export default function ReliveTab() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={handleDebugLogout} style={styles.logoutBtn} activeOpacity={0.7}>
-            <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color="#C0392B" />
+            <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color={colors.danger} />
           </TouchableOpacity>
           {patient?.avatarUrl ? (
             <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
@@ -322,7 +322,7 @@ const MemoryTile = memo(function MemoryTile({
       )}
       {isVideo && (
         <View style={styles.videoBadge}>
-          <AppIcon iosName="play.fill" androidFallback="▶" size={10} color="#fff" />
+          <AppIcon iosName="play.fill" androidFallback="▶" size={10} color={colors.textLight} />
         </View>
       )}
     </TouchableOpacity>
@@ -368,7 +368,7 @@ function MemoryPreviewModal({
               />
               {imageLoading && (
                 <View style={styles.previewLoadingOverlay}>
-                  <ActivityIndicator size="large" color="#fff" />
+                  <ActivityIndicator size="large" color={colors.textLight} />
                 </View>
               )}
             </>
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(192,57,43,0.1)',
+    backgroundColor: colors.dangerContainer,
   },
   headerAvatarFallback: {
     width: 40,
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
   headerAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: '#fff',
+    color: colors.onAccent,
   },
 
   // Filter chips
@@ -472,9 +472,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.neutralLight,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: colors.border,
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: {
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
   },
-  chipTextActive: { color: '#fff' },
+  chipTextActive: { color: colors.onAccent },
 
   // States
   center: {
@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: 'rgba(30,77,48,0.08)',
+    backgroundColor: colors.primaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: '#C0392B',
+    color: colors.danger,
     textAlign: 'center',
   },
   retryBtn: {
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#fff',
+    color: colors.onAccent,
   },
 
   // List
@@ -563,7 +563,7 @@ const styles = StyleSheet.create({
     width: TILE_SIZE,
     aspectRatio: 1,
     overflow: 'hidden',
-    backgroundColor: '#f3f3f3',
+    backgroundColor: colors.surface,
   },
   gridTileSpacer: {
     width: TILE_SIZE,
@@ -576,14 +576,14 @@ const styles = StyleSheet.create({
   },
   tileLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#f3f3f3',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   gridMediaFallback: {
     width: '100%',
     height: '100%',
-    backgroundColor: 'rgba(30,77,48,0.06)',
+    backgroundColor: colors.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -627,7 +627,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: colors.neutralLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -652,7 +652,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: '88%',
     borderRadius: 22,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surfaceElevated,
     overflow: 'hidden',
   },
   previewImage: {
@@ -665,7 +665,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    backgroundColor: 'rgba(30,77,48,0.06)',
+    backgroundColor: colors.primaryContainer,
   },
   previewKindLabel: {
     fontFamily: typography.fontFamily.medium,
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
   previewYear: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: '#fff',
+    color: colors.textLight,
   },
   previewCategory: {
     fontFamily: typography.fontFamily.medium,
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: colors.neutralLight,
     alignItems: 'center',
     justifyContent: 'center',
   },

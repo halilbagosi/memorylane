@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { typography } from '../theme/typography';
 import { AppIcon } from './AppIcon';
+import { colors } from '../theme/colors';
 
 interface Props {
   visible: boolean;
@@ -80,7 +81,7 @@ export function QuizSuccessOverlay({ visible, message = 'Well done.', onDismiss 
     >
       <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
         <View style={styles.iconWrap}>
-          <AppIcon iosName="checkmark" androidFallback="check" size={20} color="#1E4D30" />
+          <AppIcon iosName="checkmark" androidFallback="check" size={20} color={colors.onAccent} />
         </View>
         <Text style={styles.message}>{message}</Text>
       </Animated.View>
@@ -101,15 +102,15 @@ const styles = StyleSheet.create({
     minHeight: 76,
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.22)',
-    backgroundColor: '#FCFEF9',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceElevated,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     paddingHorizontal: 22,
     paddingVertical: 16,
-    shadowColor: '#24442F',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.16,
     shadowRadius: 18,
@@ -121,12 +122,12 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(30, 77, 48, 0.1)',
+    backgroundColor: colors.primary,
   },
   message: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: '#1E4D30',
+    color: colors.textDark,
     textAlign: 'center',
   },
 });

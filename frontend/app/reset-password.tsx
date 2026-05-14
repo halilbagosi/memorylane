@@ -91,7 +91,7 @@ export default function ResetPasswordScreen() {
                         <View style={styles.topSpacer} />
 
                         <View style={styles.successIconWrap}>
-                            <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color="#4A7A5A" />
+                            <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color={colors.success} />
                         </View>
 
                         <Text style={styles.headline}>Password Reset!</Text>
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
         lineHeight: 22,
     },
     apiErrorText: {
-        color: '#C0392B',
+        color: colors.danger,
         fontFamily: typography.fontFamily.regular,
         fontSize: 14,
         textAlign: 'center',
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
         width: 88,
         height: 88,
         borderRadius: 44,
-        backgroundColor: 'rgba(74, 122, 90, 0.1)',
+        backgroundColor: colors.successContainer,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 24,

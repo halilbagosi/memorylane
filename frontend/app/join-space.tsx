@@ -29,7 +29,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
 const isIOS = Platform.OS === 'ios';
 
-const PATIENT_ACCENT = '#8B7355';
+const PATIENT_ACCENT = colors.patientAccent;
 
 function biometricErrorMessage(error?: string) {
   switch (error) {
@@ -233,11 +233,11 @@ export default function JoinSpaceScreen() {
     if (setupState === 'confirm') {
       return (
         <View style={[styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-          <StatusBar barStyle="dark-content" />
+          <StatusBar barStyle="light-content" />
           <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
             <View style={styles.successIconOuter}>
               <View style={styles.successIconInner}>
-                <AppIcon iosName="checkmark" androidFallback="✓" size={40} color="#fff" />
+                <AppIcon iosName="checkmark" androidFallback="✓" size={40} color={colors.onAccent} />
               </View>
             </View>
             <Text style={styles.successTitle}>Paired with {successInfo.patientName}</Text>
@@ -274,11 +274,11 @@ export default function JoinSpaceScreen() {
 
     return (
       <View style={[styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
           <View style={styles.successIconOuter}>
             <View style={styles.successIconInner}>
-              <AppIcon iosName="checkmark" androidFallback="✓" size={40} color="#fff" />
+              <AppIcon iosName="checkmark" androidFallback="✓" size={40} color={colors.onAccent} />
             </View>
           </View>
           <Text style={styles.successTitle}>You're all set!</Text>
@@ -298,7 +298,7 @@ export default function JoinSpaceScreen() {
   if (mode === 'camera' && !permission) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <Text style={styles.permText}>Loading camera...</Text>
       </View>
     );
@@ -307,7 +307,7 @@ export default function JoinSpaceScreen() {
   if (mode === 'camera' && !permission?.granted) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <View style={styles.permCard}>
           <AppIcon iosName="camera.fill" androidFallback="cam" size={40} color={PATIENT_ACCENT} />
           <Text style={styles.permTitle}>Camera Access</Text>
@@ -339,7 +339,7 @@ export default function JoinSpaceScreen() {
         style={styles.manualContainer}
         behavior={isIOS ? 'padding' : undefined}
       >
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
 
         {/* Content — centered, shifted slightly above mid */}
         <View style={[
@@ -349,7 +349,7 @@ export default function JoinSpaceScreen() {
             paddingBottom: Math.max(insets.bottom, 24) + 100,
           },
         ]}>
-          <View style={[styles.iconCircle, { backgroundColor: 'rgba(139, 115, 85, 0.12)' }]}>
+          <View style={[styles.iconCircle, { backgroundColor: colors.patientAccentContainer }]}>
             <AppIcon iosName="keyboard" androidFallback="..." size={32} color={PATIENT_ACCENT} />
           </View>
 
@@ -426,7 +426,7 @@ export default function JoinSpaceScreen() {
           {error ? (
             <AdaptiveCard
               style={styles.errorCard}
-              backgroundColor="rgba(231, 76, 60, 0.15)"
+              backgroundColor={colors.dangerContainer}
             >
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity onPress={() => { setError(''); scannedRef.current = false; }}>
@@ -448,7 +448,7 @@ export default function JoinSpaceScreen() {
               style={styles.manualBtn}
               onPress={() => setMode('manual')}
             >
-              <AppIcon iosName="keyboard" androidFallback="..." size={18} color="#FFFFFF" />
+              <AppIcon iosName="keyboard" androidFallback="..." size={18} color={colors.textLight} />
               <Text style={styles.manualBtnText}>Enter code manually</Text>
             </TouchableOpacity>
           )}
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 24,
     height: 24,
-    borderColor: '#FFFFFF',
+    borderColor: colors.textLight,
   },
   cornerTL: {
     top: 0,
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
   scanTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: '#FFFFFF',
+    color: colors.textLight,
     marginBottom: 6,
   },
   scanSubtitle: {
@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
   manualBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: colors.textLight,
   },
 
   errorCard: {
@@ -672,13 +672,13 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: '#C0392B',
+    color: colors.danger,
     flex: 1,
   },
   errorRetry: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: '#C0392B',
+    color: colors.danger,
     marginLeft: 12,
   },
 
@@ -694,7 +694,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(139,115,85,0.12)',
+    backgroundColor: colors.patientAccentContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 28,
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.success,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
     lineHeight: 20,
-    color: '#C0392B',
+    color: colors.danger,
     textAlign: 'center',
     marginBottom: 16,
   },

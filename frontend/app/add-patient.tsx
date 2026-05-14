@@ -309,12 +309,12 @@ export default function AddPatientScreen() {
                       {`${name?.[0] ?? ''}${surname?.[0] ?? ''}`.toUpperCase()}
                     </Text>
                   ) : (
-                    <AppIcon iosName="person.crop.circle" androidFallback="P" size={32} color="rgba(255,255,255,0.8)" />
+                    <AppIcon iosName="person.crop.circle" androidFallback="P" size={32} color={colors.onAccent} />
                   )}
                 </View>
               )}
               <View style={styles.avatarEditBadge}>
-                <AppIcon iosName="plus" androidFallback="+" size={11} color="#fff" weight="bold" />
+                <AppIcon iosName="plus" androidFallback="+" size={11} color={colors.onAccent} weight="bold" />
               </View>
             </TouchableOpacity>
             <View style={styles.avatarHint}>
@@ -370,7 +370,7 @@ export default function AddPatientScreen() {
               {dateOfBirth && (
                 <AdaptiveCard
                   style={styles.ageChip}
-                  backgroundColor={isIOS ? 'rgba(180, 174, 232, 0.18)' : 'rgba(180, 174, 232, 0.22)'}
+                  backgroundColor={colors.lavenderContainer}
                 >
                   <Text style={styles.ageChipText}>
                     Age {calculateAge(dateOfBirth)}
@@ -442,7 +442,7 @@ export default function AddPatientScreen() {
                   <Animated.View
                     style={[
                       StyleSheet.absoluteFill,
-                      { backgroundColor: 'rgba(0,0,0,0.38)', opacity: backdropAnim },
+                      { backgroundColor: colors.scrim, opacity: backdropAnim },
                     ]}
                   />
                   <TouchableWithoutFeedback onPress={() => {}}>
@@ -475,7 +475,7 @@ export default function AddPatientScreen() {
                         onChange={onIOSDateChange}
                         maximumDate={new Date()}
                         minimumDate={new Date(1900, 0, 1)}
-                        themeVariant="light"
+                        themeVariant="dark"
                         style={styles.iosInlinePicker}
                       />
                     </Animated.View>
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textLight,
+    color: colors.onAccent,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -593,18 +593,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   iosDateButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0, 0, 0, 0.12)',
+    borderColor: colors.border,
     borderRadius: 14,
   },
   androidDateButton: {
     backgroundColor: colors.neutralLight,
     borderWidth: 1.5,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: colors.border,
     borderRadius: 16,
   },
-  dateButtonError: { borderColor: '#C0392B' },
+  dateButtonError: { borderColor: colors.danger },
   dateButtonText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
@@ -643,9 +643,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : colors.neutralLight,
+    backgroundColor: colors.neutralLight,
     borderWidth: isIOS ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: 'rgba(0,0,0,0.10)',
+    borderColor: colors.border,
   },
   severityChipSelected: {
     backgroundColor: colors.secondary,
@@ -657,17 +657,17 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   severityChipTextSelected: {
-    color: '#fff',
+    color: colors.onAccent,
   },
 
   errorText: {
-    color: '#C0392B',
+    color: colors.danger,
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     marginTop: 4,
   },
   apiErrorText: {
-    color: '#C0392B',
+    color: colors.danger,
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
+    borderBottomColor: colors.border,
   },
   iosPickerCancel: {
     fontFamily: typography.fontFamily.regular,

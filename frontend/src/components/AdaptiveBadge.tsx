@@ -17,7 +17,7 @@ export function AdaptiveBadge({
   style,
 }: AdaptiveBadgeProps) {
   const isIOS = Platform.OS === 'ios';
-  const bg = backgroundColor || 'rgba(0,0,0,0.06)';
+  const bg = backgroundColor || colors.surfaceMuted;
 
   return (
     <View

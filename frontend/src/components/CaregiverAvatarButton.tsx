@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { getCaregiverInfo, type CaregiverInfo } from '../utils/auth';
 import { typography } from '../theme/typography';
+import { colors } from '../theme/colors';
 
 const isIOS = Platform.OS === 'ios';
 const SIZE = 44;
@@ -64,7 +65,7 @@ export function CaregiverAvatarButton() {
             <Image source={{ uri: caregiver.avatarUrl }} style={styles.image} />
           ) : (
             <LinearGradient
-              colors={['#2D5F3E', '#1E4D30']}
+              colors={[colors.primary, colors.secondary]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.fallback}
@@ -92,11 +93,11 @@ const styles = StyleSheet.create({
     height: SIZE,
     borderRadius: SIZE / 2,
     borderWidth: isIOS ? 2 : 1.5,
-    borderColor: isIOS ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.08)',
+    borderColor: colors.borderStrong,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1E4D30',
+    backgroundColor: colors.neutralLight,
   },
   image: {
     width: INNER,
@@ -113,7 +114,7 @@ const styles = StyleSheet.create({
   initials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: colors.onAccent,
     letterSpacing: 0.5,
   },
 });

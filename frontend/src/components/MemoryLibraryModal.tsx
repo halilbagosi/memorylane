@@ -830,7 +830,7 @@ export function MemoryLibrarySheetContent({
 
         {(uploading || verifyingQuizPhoto) && (
           <View style={styles.uploadBanner}>
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={colors.onAccent} />
             <Text style={styles.uploadBannerText}>
               {verifyingQuizPhoto ? 'Verifying clarity...' : `Uploading ${uploadProgress?.current} of ${uploadProgress?.total}…`}
             </Text>
@@ -934,10 +934,10 @@ export function MemoryLibrarySheetContent({
           disabled={selected.size === 0 || bulkDeleting}
         >
           {bulkDeleting ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={colors.textLight} />
           ) : (
             <>
-              <AppIcon iosName="trash.fill" androidFallback="Del" size={20} color="#fff" />
+              <AppIcon iosName="trash.fill" androidFallback="Del" size={20} color={colors.textLight} />
               <Text style={styles.deleteFabText}>Delete ({selected.size})</Text>
             </>
           )}
@@ -950,9 +950,9 @@ export function MemoryLibrarySheetContent({
           disabled={uploading || verifyingQuizPhoto}
         >
           {uploading || verifyingQuizPhoto ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={colors.onAccent} />
           ) : (
-            <AppIcon iosName="plus" androidFallback="+" size={24} color="#fff" weight="medium" />
+            <AppIcon iosName="plus" androidFallback="+" size={24} color={colors.onAccent} weight="medium" />
           )}
         </TouchableOpacity>
       )}
@@ -966,7 +966,7 @@ export function MemoryLibrarySheetContent({
               <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="person.fill" androidFallback="1" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>One person only</Text></View>
               <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="sun.max.fill" androidFallback="*" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>Clear and bright</Text></View>
               <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>Looking at the camera</Text></View>
-              <View style={styles.guidanceTip}><View style={[styles.guidanceIcon, styles.guidanceIconError]}><AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color="#C0392B" /></View><Text style={styles.guidanceTipText}>Same photo not allowed</Text></View>
+              <View style={styles.guidanceTip}><View style={[styles.guidanceIcon, styles.guidanceIconError]}><AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color={colors.danger} /></View><Text style={styles.guidanceTipText}>Same photo not allowed</Text></View>
             </View>
             <View style={styles.quizModalActions}>
               <TouchableOpacity style={styles.quizCancelBtn} onPress={() => { queuedPickerSourceRef.current = null; setQuizGuidanceVisible(false); setPendingQuizPhotoSource(null); }}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
@@ -1052,7 +1052,7 @@ function MemoryTile({ item, tileSize = TILE_SIZE, seamless = false, editMode, is
   const tileStyle = { width: tileSize, height: tileSize };
   const baseTileStyle = [styles.tile, tileStyle, seamless && styles.tileSeamless];
   if (item.status !== 'READY') return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={colors.secondary} /><Text style={styles.tilePendingText}>Uploading…</Text></View>);
-  if (item.urlError) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" /><Text style={styles.tilePendingText}>Error</Text></View>);
+  if (item.urlError) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color={colors.danger} /><Text style={styles.tilePendingText}>Error</Text></View>);
   if (!item.signedUrl) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={colors.secondary} /></View>);
 
   const isSelectableInEdit = editMode && (isPrimary || canDelete);
@@ -1062,14 +1062,14 @@ function MemoryTile({ item, tileSize = TILE_SIZE, seamless = false, editMode, is
       <Image source={{ uri: item.signedUrl }} style={styles.tileImage} resizeMode="cover" onError={onImageError} />
       {item.kind !== 'PHOTO' && (
         <View style={styles.kindBadge}>
-          <AppIcon iosName={item.kind === 'VIDEO' ? 'video.fill' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'} androidFallback={item.kind === 'VIDEO' ? '▶' : item.kind === 'AUDIO' ? '♪' : '📄'} size={11} color="#fff" />
+          <AppIcon iosName={item.kind === 'VIDEO' ? 'video.fill' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'} androidFallback={item.kind === 'VIDEO' ? '▶' : item.kind === 'AUDIO' ? '♪' : '📄'} size={11} color={colors.textLight} />
         </View>
       )}
       {editMode && (
         <View style={[styles.selectOverlay, isSelected && styles.selectOverlayActive]}>
           {isSelectableInEdit && (
             <View style={[styles.selectCircle, isSelected && styles.selectCircleActive]}>
-              {isSelected && <AppIcon iosName="checkmark" androidFallback="✓" size={12} color="#fff" weight="bold" />}
+              {isSelected && <AppIcon iosName="checkmark" androidFallback="✓" size={12} color={colors.textLight} weight="bold" />}
             </View>
           )}
         </View>
@@ -1133,7 +1133,7 @@ function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTi
     <Modal visible animationType="fade" onRequestClose={onClose}>
       <View style={styles.fsPreviewScreen}>
         {(isPhoto || isVideo) && item.signedUrl && !imageFailed ? (
-          <><ZoomableImage uri={item.signedUrl} onLoad={() => setImageLoading(false)} onError={() => { setImageLoading(false); setImageFailed(true); }} />{imageLoading && <View style={styles.fsPreviewLoadingOverlay}><ActivityIndicator size="large" color="#fff" /></View>}</>
+          <><ZoomableImage uri={item.signedUrl} onLoad={() => setImageLoading(false)} onError={() => { setImageLoading(false); setImageFailed(true); }} />{imageLoading && <View style={styles.fsPreviewLoadingOverlay}><ActivityIndicator size="large" color={colors.textLight} /></View>}</>
         ) : (
           <View style={styles.fsPreviewFallback}>
             <AppIcon iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'} size={56} color={colors.secondary} />
@@ -1206,32 +1206,32 @@ const styles = StyleSheet.create({
   
   controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   filterChips: { flexDirection: 'row', gap: 8, flex: 1 },
-  filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border },
   filterChipActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
   filterChipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textMuted },
-  filterChipTextActive: { color: '#FFF' },
+  filterChipTextActive: { color: colors.onAccent },
 
-  editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'transparent' },
+  editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border },
   editButtonActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
   editButtonText: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: colors.textMuted },
-  editButtonTextActive: { color: '#FFF' },
+  editButtonTextActive: { color: colors.onAccent },
 
   secondaryFilterRow: { flexGrow: 0, marginTop: 12 },
   secondaryFilterContent: { gap: 8 },
-  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
+  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.neutralLight, borderWidth: 1, borderColor: colors.border },
   chipActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
   chipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textMuted },
-  chipTextActive: { color: '#fff' },
+  chipTextActive: { color: colors.onAccent },
 
   uploadBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.secondary, paddingVertical: 9, borderRadius: 12, marginTop: 12 },
-  uploadBannerText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#fff' },
+  uploadBannerText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.onAccent },
 
   grid: { paddingHorizontal: GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
   memoryGrid: { paddingHorizontal: MEMORY_GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
   gridRow: { gap: GRID_GUTTER, marginBottom: GRID_GUTTER },
   memoryGridRow: { flexDirection: 'row', gap: MEMORY_GRID_GAP, marginBottom: MEMORY_GRID_GAP },
 
-  tile: { width: TILE_SIZE, height: TILE_SIZE, borderRadius: isIOS ? 10 : 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.04)' },
+  tile: { width: TILE_SIZE, height: TILE_SIZE, borderRadius: isIOS ? 10 : 14, overflow: 'hidden', backgroundColor: colors.surface },
   tileSeamless: { borderRadius: 0 },
   tileSelected: { opacity: 0.78, transform: [{ scale: 0.94 }] },
   tileDisabled: { opacity: 0.38 },
@@ -1240,66 +1240,66 @@ const styles = StyleSheet.create({
   tileImage: { width: '100%', height: '100%', objectFit: 'cover' },
   kindBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 3 },
   selectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'flex-end', padding: 6 },
-  selectOverlayActive: { backgroundColor: 'rgba(231,76,60,0.18)' },
-  selectCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
-  selectCircleActive: { backgroundColor: '#E74C3C', borderColor: '#E74C3C' },
+  selectOverlayActive: { backgroundColor: colors.dangerContainer },
+  selectCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.textLight, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
+  selectCircleActive: { backgroundColor: colors.dangerSolid, borderColor: colors.dangerSolid },
 
   centerFlex: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 64 },
-  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surfaceMuted, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   emptyTitle: { fontFamily: typography.fontFamily.bold, fontSize: 16, color: colors.textDark, marginTop: 6 },
   emptyBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 4 },
-  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: '#C0392B', textAlign: 'center' },
+  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.danger, textAlign: 'center' },
   retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.primary, marginTop: 12 },
-  retryBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  retryBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.onAccent },
 
   fab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 6, elevation: 8 },
-  deleteFab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, flexDirection: 'row', gap: 6, paddingHorizontal: 20, height: 56, borderRadius: 28, backgroundColor: '#E74C3C', justifyContent: 'center', alignItems: 'center', shadowColor: '#E74C3C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 8 },
-  deleteFabText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: '#FFF' },
+  deleteFab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, flexDirection: 'row', gap: 6, paddingHorizontal: 20, height: 56, borderRadius: 28, backgroundColor: colors.dangerSolid, justifyContent: 'center', alignItems: 'center', shadowColor: colors.dangerSolid, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 8 },
+  deleteFabText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: colors.textLight },
   fabDisabled: { opacity: 0.55 },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalBackdrop: { flex: 1, backgroundColor: colors.scrim, alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalScroll: { width: '100%' },
   modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
   quizModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: colors.neutral, padding: 18, gap: 10 },
   guidanceModal: { width: '100%', borderRadius: 18, backgroundColor: colors.neutral, padding: 18, gap: 14 },
   guidanceTips: { gap: 10 },
   guidanceTip: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 42 },
-  guidanceIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(3,87,58,0.1)' },
-  guidanceIconError: { backgroundColor: 'rgba(192,57,43,0.1)' },
+  guidanceIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondaryContainer },
+  guidanceIconError: { backgroundColor: colors.dangerContainer },
   guidanceTipText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textDark },
   quizModalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: colors.textDark },
   quizModalBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, lineHeight: 18, color: colors.textMuted },
-  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
+  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.neutralLight, paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
   noteInput: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
-  verificationBox: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(3,87,58,0.16)', backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 12, paddingVertical: 10 },
-  verificationBoxSuccess: { backgroundColor: 'rgba(167,215,197,0.32)' },
+  verificationBox: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 12, borderWidth: 1, borderColor: colors.secondaryContainer, backgroundColor: colors.surfaceMuted, paddingHorizontal: 12, paddingVertical: 10 },
+  verificationBoxSuccess: { backgroundColor: colors.successContainer },
   verificationText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 13, lineHeight: 18, color: colors.secondary },
   previewModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: colors.neutral, padding: 16, gap: 12 },
   previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.neutralLight },
   previewMediaImageFrame: { width: '100%', height: Math.min(SCREEN_WIDTH * 0.72, 360), alignSelf: 'center', borderRadius: 14, overflow: 'hidden', backgroundColor: colors.neutral },
   previewMediaImage: { width: '100%', height: '100%' },
   previewImageLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   detailsList: { gap: 6 },
   detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: colors.textDark },
   detailMeta: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted },
   editDetailsBtn: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
-  editDetailsText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  editDetailsText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.onAccent },
   quizModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
   quizCancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
   quizCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
   quizSaveBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
-  quizSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  quizSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.onAccent },
 
   yearHeader: { paddingHorizontal: GRID_PADDING, paddingTop: 20, paddingBottom: 8 },
   yearHeaderText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
   yearHeaderSuffix: { fontSize: 10 },
 
   approxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
-  approxCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.15)', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  approxCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.neutralLight, alignItems: 'center', justifyContent: 'center' },
   approxCheckboxActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  approxCheckmark: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: '#fff' },
+  approxCheckmark: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: colors.onAccent },
   approxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
 
   fsPreviewScreen: { flex: 1, backgroundColor: '#000' },
@@ -1307,13 +1307,13 @@ const styles = StyleSheet.create({
   fsPreviewLoadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
   fsPreviewFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.neutral },
   fsPreviewKindLabel: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
-  fsPreviewBackBtn: { position: 'absolute', top: isIOS ? 56 : 20, left: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' },
+  fsPreviewBackBtn: { position: 'absolute', top: isIOS ? 56 : 20, left: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: colors.neutralLight, alignItems: 'center', justifyContent: 'center' },
   fsPreviewDetails: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 56, paddingBottom: isIOS ? 44 : 28, gap: 5 },
-  fsPreviewName: { fontFamily: typography.fontFamily.bold, fontSize: 22, color: '#fff' },
+  fsPreviewName: { fontFamily: typography.fontFamily.bold, fontSize: 22, color: colors.textLight },
   fsPreviewRelationship: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: 'rgba(255,255,255,0.7)' },
-  fsPreviewYear: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: '#fff' },
+  fsPreviewYear: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: colors.textLight },
   fsPreviewCategory: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: 0.5 },
   fsPreviewNote: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: 'rgba(255,255,255,0.9)', lineHeight: 22, marginTop: 2 },
   fsPreviewEditBtn: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: 'rgba(255,255,255,0.18)' },
-  fsPreviewEditText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#fff' },
+  fsPreviewEditText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textLight },
 });
