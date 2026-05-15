@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
   View,
   Text,
@@ -15,7 +16,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
@@ -29,7 +30,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
 const isIOS = Platform.OS === 'ios';
 
-const PATIENT_ACCENT = colors.patientAccent;
+const PATIENT_ACCENT = '#8B7355';
 
 function biometricErrorMessage(error?: string) {
   switch (error) {
@@ -57,6 +58,8 @@ function biometricErrorMessage(error?: string) {
 }
 
 export default function JoinSpaceScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -233,11 +236,11 @@ export default function JoinSpaceScreen() {
     if (setupState === 'confirm') {
       return (
         <View style={[styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-          <StatusBar barStyle="light-content" />
+          <StatusBar barStyle="dark-content" />
           <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
             <View style={styles.successIconOuter}>
               <View style={styles.successIconInner}>
-                <AppIcon iosName="checkmark" androidFallback="✓" size={40} color={colors.onAccent} />
+                <AppIcon iosName="checkmark" androidFallback="✓" size={40} color="#fff" />
               </View>
             </View>
             <Text style={styles.successTitle}>Paired with {successInfo.patientName}</Text>
@@ -274,11 +277,11 @@ export default function JoinSpaceScreen() {
 
     return (
       <View style={[styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
           <View style={styles.successIconOuter}>
             <View style={styles.successIconInner}>
-              <AppIcon iosName="checkmark" androidFallback="✓" size={40} color={colors.onAccent} />
+              <AppIcon iosName="checkmark" androidFallback="✓" size={40} color="#fff" />
             </View>
           </View>
           <Text style={styles.successTitle}>You're all set!</Text>
@@ -298,7 +301,7 @@ export default function JoinSpaceScreen() {
   if (mode === 'camera' && !permission) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <Text style={styles.permText}>Loading camera...</Text>
       </View>
     );
@@ -307,7 +310,7 @@ export default function JoinSpaceScreen() {
   if (mode === 'camera' && !permission?.granted) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <View style={styles.permCard}>
           <AppIcon iosName="camera.fill" androidFallback="cam" size={40} color={PATIENT_ACCENT} />
           <Text style={styles.permTitle}>Camera Access</Text>
@@ -339,7 +342,7 @@ export default function JoinSpaceScreen() {
         style={styles.manualContainer}
         behavior={isIOS ? 'padding' : undefined}
       >
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
 
         {/* Content — centered, shifted slightly above mid */}
         <View style={[
@@ -349,7 +352,7 @@ export default function JoinSpaceScreen() {
             paddingBottom: Math.max(insets.bottom, 24) + 100,
           },
         ]}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.patientAccentContainer }]}>
+          <View style={[styles.iconCircle, { backgroundColor: 'rgba(139, 115, 85, 0.12)' }]}>
             <AppIcon iosName="keyboard" androidFallback="..." size={32} color={PATIENT_ACCENT} />
           </View>
 
@@ -426,7 +429,7 @@ export default function JoinSpaceScreen() {
           {error ? (
             <AdaptiveCard
               style={styles.errorCard}
-              backgroundColor={colors.dangerContainer}
+              backgroundColor="rgba(231, 76, 60, 0.15)"
             >
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity onPress={() => { setError(''); scannedRef.current = false; }}>
@@ -448,7 +451,7 @@ export default function JoinSpaceScreen() {
               style={styles.manualBtn}
               onPress={() => setMode('manual')}
             >
-              <AppIcon iosName="keyboard" androidFallback="..." size={18} color={colors.textLight} />
+              <AppIcon iosName="keyboard" androidFallback="..." size={18} color="#FFFFFF" />
               <Text style={styles.manualBtnText}>Enter code manually</Text>
             </TouchableOpacity>
           )}
@@ -458,11 +461,13 @@ export default function JoinSpaceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   // ─── Permission screens ───
   centered: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
@@ -471,7 +476,7 @@ const styles = StyleSheet.create({
   permText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   permCard: {
     alignItems: 'center',
@@ -481,7 +486,7 @@ const styles = StyleSheet.create({
   permTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 16,
     marginBottom: 8,
   },
@@ -489,7 +494,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
   },
 
@@ -513,7 +518,7 @@ const styles = StyleSheet.create({
   // ─── Manual entry ───
   manualContainer: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
   },
   manualContent: {
     flex: 1,
@@ -535,14 +540,14 @@ const styles = StyleSheet.create({
   manualTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 8,
   },
   manualSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     maxWidth: 280,
   },
@@ -572,7 +577,7 @@ const styles = StyleSheet.create({
   },
   overlaySection: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.55)'),
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingHorizontal: 24,
@@ -588,7 +593,7 @@ const styles = StyleSheet.create({
   },
   overlayFill: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.55)'),
   },
   scanArea: {
     width: SCAN_AREA_SIZE,
@@ -599,7 +604,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 24,
     height: 24,
-    borderColor: colors.textLight,
+    borderColor: (isDark ? '#17231D' : '#FFFFFF'),
   },
   cornerTL: {
     top: 0,
@@ -633,14 +638,14 @@ const styles = StyleSheet.create({
   scanTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: colors.textLight,
+    color: (isDark ? '#17231D' : '#FFFFFF'),
     marginBottom: 6,
   },
   scanSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255,255,255,0.75)',
+    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.75)'),
     textAlign: 'center',
   },
 
@@ -648,7 +653,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.18)'),
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 28,
@@ -656,7 +661,7 @@ const styles = StyleSheet.create({
   manualBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textLight,
+    color: (isDark ? '#17231D' : '#FFFFFF'),
   },
 
   errorCard: {
@@ -672,13 +677,13 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     flex: 1,
   },
   errorRetry: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     marginLeft: 12,
   },
 
@@ -694,7 +699,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: colors.patientAccentContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(139,115,85,0.12)'),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 28,
@@ -703,14 +708,14 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: colors.success,
+    backgroundColor: '#4CAF50',
     justifyContent: 'center',
     alignItems: 'center',
   },
   successTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 12,
     textAlign: 'center',
   },
@@ -718,7 +723,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
     lineHeight: 24,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     maxWidth: 290,
   },
@@ -742,7 +747,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
     lineHeight: 20,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     textAlign: 'center',
     marginBottom: 16,
   },
@@ -758,6 +763,8 @@ const styles = StyleSheet.create({
   skipBiometricText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

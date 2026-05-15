@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   View,
   Text,
@@ -10,7 +11,7 @@ import {
   Alert,
   Pressable,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 export interface M3DialogAction {
@@ -70,6 +71,8 @@ function IOSDialogProxy({ visible, title, body, actions, onDismiss }: M3DialogPr
 }
 
 function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogProps) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const isStacked = actions.length >= 3;
@@ -106,10 +109,10 @@ function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogPro
                     key={i}
                     style={({ pressed }) => [
                       isStacked ? styles.actionBtnStacked : styles.actionBtn,
-                      pressed && { backgroundColor: colors.surfaceMuted },
+                      pressed && { backgroundColor: 'rgba(0,0,0,0.04)' },
                     ]}
                     onPress={action.onPress}
-                    android_ripple={{ color: colors.surfaceMuted, borderless: false }}
+                    android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
                   >
                     <Text
                       style={[
@@ -130,16 +133,18 @@ function AndroidDialog({ visible, title, body, actions, onDismiss }: M3DialogPro
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: colors.scrim,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.32)'),
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
   },
   dialog: {
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     borderRadius: 28,
     paddingTop: 24,
     paddingHorizontal: 24,
@@ -147,20 +152,18 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     elevation: 3,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 12,
   },
   body: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 20,
   },
   actionRow: {
@@ -188,9 +191,11 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   actionLabelDestructive: {
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
   },
 });
+};
+// Styles are computed per-render via `getStyles(isDark)` inside `AndroidDialog`

@@ -3,11 +3,12 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Modal, Platform, Animated, PanResponder, TouchableWithoutFeedback,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import { colors as staticColors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { API_BASE_URL } from '../config/api';
 import { getToken, clearAuth } from '../utils/auth';
 import { AppIcon } from './AppIcon';
+import { useTheme } from '../theme/ThemeProvider';
 
 const isIOS = Platform.OS === 'ios';
 
@@ -50,6 +51,8 @@ export function ManageDeletionSheet({
   onCancelled,
   onNavigateToCareTeams,
 }: ManageDeletionSheetProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const s = getStyles(isDark);
   const [details, setDetails] = useState<DeletionDetails | null>(null);
 
   // ── Animations (same as account page) ──
@@ -156,7 +159,7 @@ export function ManageDeletionSheet({
     <Modal visible={visible} transparent animationType="none" onRequestClose={animateOut}>
       <TouchableWithoutFeedback onPress={animateOut}>
         <View style={s.overlay}>
-          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim, opacity: backdropAnim }]} />
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', opacity: backdropAnim }]} />
           <TouchableWithoutFeedback onPress={() => {}}>
             <Animated.View style={[s.sheet, { transform: [{ translateY: slideAnim }] }]}>
               {/* Drag handle */}
@@ -168,7 +171,7 @@ export function ManageDeletionSheet({
                 {/* ── PENDING ── */}
                 {isPending && (
                   <>
-                    <AppIcon iosName="clock" androidFallback="⏳" size={32} color={colors.warning} />
+                    <AppIcon iosName="clock" androidFallback="⏳" size={32} color={isDark ? '#FFB4A8' : '#b45309'} />
                     <Text style={[s.title, { marginTop: 12 }]}>Transferring Primary Roles</Text>
                     <Text style={s.body}>
                       You're still the primary caregiver. Your patients and access are unchanged. Nothing happens until you click "Finalize" after everyone accepts.
@@ -181,19 +184,19 @@ export function ManageDeletionSheet({
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={s.name}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
-                            <Text style={{ fontSize: 12, color: colors.textMuted, fontFamily: typography.fontFamily.regular }}>Waiting to accept…</Text>
+                            <Text style={{ fontSize: 12, color: themeColors.textMuted, fontFamily: typography.fontFamily.regular }}>Waiting to accept…</Text>
                           </View>
                         </View>
                       ))}
                     </View>
                     <TouchableOpacity
-                      style={[s.actionBtn, { backgroundColor: colors.secondary, borderRadius: 14, marginTop: 4 }]}
+                      style={[s.actionBtn, { backgroundColor: themeColors.secondary, borderRadius: 14, marginTop: 4 }]}
                       onPress={animateOut}
                     >
-                      <Text style={[s.actionBtnText, { color: colors.onAccent }]}>Continue Using App</Text>
+                      <Text style={[s.actionBtnText, { color: isDark ? themeColors.neutral : '#fff' }]}>Continue Using App</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.actionBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                      <Text style={[s.actionBtnText, { color: colors.danger }]}>Cancel Account Deletion</Text>
+                      <Text style={[s.actionBtnText, { color: isDark ? '#FFB4A8' : '#C0392B' }]}>Cancel Account Deletion</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -201,7 +204,7 @@ export function ManageDeletionSheet({
                 {/* ── ALL ACCEPTED ── */}
                 {isAllAccepted && (
                   <>
-                    <AppIcon iosName="checkmark.seal.fill" androidFallback="✅" size={36} color={colors.success} />
+                    <AppIcon iosName="checkmark.seal.fill" androidFallback="✅" size={36} color="#27ae60" />
                     <Text style={[s.title, { marginTop: 12 }]}>Ready to Finalize</Text>
                     <Text style={s.body}>
                       All caregivers accepted. The moment you tap "Finalize" below, the roles swap and your account is deactivated. You are still the primary right now.
@@ -209,21 +212,21 @@ export function ManageDeletionSheet({
                     <View style={s.list}>
                       {(details?.acceptedRequests ?? []).map(r => (
                         <View key={r.id} style={s.row}>
-                          <View style={[s.avatar, { backgroundColor: colors.successContainer }]}>
-                            <Text style={[s.avatarText, { color: colors.success }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
+                          <View style={[s.avatar, { backgroundColor: 'rgba(39,174,96,0.15)' }]}>
+                            <Text style={[s.avatarText, { color: '#27ae60' }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={s.name}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
-                            <Text style={{ fontSize: 12, color: colors.success, fontFamily: typography.fontFamily.regular }}>Will become primary</Text>
+                            <Text style={{ fontSize: 12, color: '#27ae60', fontFamily: typography.fontFamily.regular }}>Will become primary</Text>
                           </View>
                         </View>
                       ))}
                     </View>
-                    <Text style={[s.body, { fontSize: 12, color: colors.textMuted, marginTop: 4 }]}>
+                    <Text style={[s.body, { fontSize: 12, color: themeColors.textMuted, marginTop: 4 }]}>
                       After finalizing, your account enters a 10-day grace period before permanent removal. You can restore it anytime during that window.
                     </Text>
-                    <TouchableOpacity style={[s.actionBtn, { backgroundColor: colors.success, borderRadius: 14, marginTop: 8 }]} onPress={confirmFinalDeletion}>
-                      <Text style={[s.actionBtnText, { color: colors.onAccent }]}>Finalize — Transfer Roles</Text>
+                    <TouchableOpacity style={[s.actionBtn, { backgroundColor: '#27ae60', borderRadius: 14, marginTop: 8 }]} onPress={confirmFinalDeletion}>
+                      <Text style={[s.actionBtnText, { color: '#fff' }]}>Finalize — Transfer Roles</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.actionBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
                       <Text style={s.actionBtnText}>Cancel — Stay as Primary</Text>
@@ -234,7 +237,7 @@ export function ManageDeletionSheet({
                 {/* ── SOME DECLINED ── */}
                 {isSomeDeclined && (
                   <>
-                    <AppIcon iosName="exclamationmark.triangle.fill" androidFallback="⚠" size={36} color={colors.danger} />
+                    <AppIcon iosName="exclamationmark.triangle.fill" androidFallback="⚠" size={36} color={isDark ? '#FFB4A8' : '#C0392B'} />
                     <Text style={[s.title, { marginTop: 12 }]}>Action Required</Text>
                     <Text style={s.body}>
                       A caregiver has declined the handover request. You need to pick another caregiver or cancel the deletion.
@@ -242,31 +245,31 @@ export function ManageDeletionSheet({
                     <View style={s.list}>
                       {(details?.declinedRequests ?? []).map(r => (
                         <View key={r.id} style={s.row}>
-                          <View style={[s.avatar, { backgroundColor: colors.dangerContainer }]}>
-                            <Text style={[s.avatarText, { color: colors.danger }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
+                          <View style={[s.avatar, { backgroundColor: isDark ? 'rgba(255,180,168,0.12)' : 'rgba(231,76,60,0.12)' }]}>
+                            <Text style={[s.avatarText, { color: isDark ? '#FFB4A8' : '#C0392B' }]}>{r.toCaregiver.name[0]?.toUpperCase()}</Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={s.name}>{r.toCaregiver.name} {r.toCaregiver.surname}</Text>
                             {r.declineReason ? (
                               <Text style={s.declineReason}>"{r.declineReason}"</Text>
                             ) : (
-                              <Text style={{ fontSize: 12, color: colors.danger, fontFamily: typography.fontFamily.regular }}>Declined</Text>
+                              <Text style={{ fontSize: 12, color: isDark ? '#FFB4A8' : '#C0392B', fontFamily: typography.fontFamily.regular }}>Declined</Text>
                             )}
                           </View>
                         </View>
                       ))}
                     </View>
                     <TouchableOpacity
-                      style={[s.actionBtn, { backgroundColor: colors.secondary, borderRadius: 14, marginTop: 8 }]}
+                      style={[s.actionBtn, { backgroundColor: themeColors.secondary, borderRadius: 14, marginTop: 8 }]}
                       onPress={() => {
                         animateOut();
                         onNavigateToCareTeams?.();
                       }}
                     >
-                      <Text style={[s.actionBtnText, { color: colors.onAccent }]}>Pick Another Caregiver</Text>
+                      <Text style={[s.actionBtnText, { color: isDark ? themeColors.neutral : '#fff' }]}>Pick Another Caregiver</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[s.actionBtn, { marginTop: 8 }]} onPress={cancelDeletionRequest}>
-                      <Text style={[s.actionBtnText, { color: colors.danger }]}>Cancel Account Deletion</Text>
+                      <Text style={[s.actionBtnText, { color: isDark ? '#FFB4A8' : '#C0392B' }]}>Cancel Account Deletion</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -279,12 +282,14 @@ export function ManageDeletionSheet({
   );
 }
 
-// ─── Styles (matches account page exactly) ──────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: themeColors.neutralLight,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -300,18 +305,18 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.handle,
+    backgroundColor: isDark ? 'rgba(235, 247, 239, 0.15)' : 'rgba(0,0,0,0.15)',
   },
   title: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 8,
   },
   body: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 20,
     lineHeight: 22,
   },
@@ -321,41 +326,42 @@ const s = StyleSheet.create({
     alignItems: 'center',
     padding: 14,
     borderRadius: 14,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: isDark ? 'rgba(235, 247, 239, 0.04)' : 'rgba(0,0,0,0.03)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(0,0,0,0.08)',
     gap: 12,
   },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.onAccent,
+    color: themeColors.textLight,
   },
   name: {
     flex: 1,
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   actionBtn: { alignItems: 'center', paddingVertical: 12 },
   actionBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   declineReason: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.danger,
+    color: isDark ? '#FFB4A8' : '#C0392B',
     fontStyle: 'italic',
     marginTop: 2,
   },
 });
+};

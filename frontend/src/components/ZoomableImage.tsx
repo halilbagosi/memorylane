@@ -1,4 +1,6 @@
+import { colors, lightColors, darkColors } from '../theme/colors';
 import React, { useEffect, useRef } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { Animated, PanResponder, StyleSheet, View } from 'react-native';
 
 const MIN_SCALE = 1;
@@ -39,6 +41,9 @@ export function ZoomableImage({ uri, onLoad, onError }: Props) {
   const gestureStart = useRef({ scale: 1, tx: 0, ty: 0, dist: 0, focalX: 0, focalY: 0 });
   const tapStart = useRef({ x: 0, y: 0, time: 0 });
   const lastTap = useRef(0);
+
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
 
   const boundsFor = (scale: number) => {
     const { width, height } = layout.current;
@@ -235,7 +240,9 @@ export function ZoomableImage({ uri, onLoad, onError }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     flex: 1,
     overflow: 'hidden',
@@ -246,3 +253,5 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

@@ -2,13 +2,14 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
-import { colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppIcon } from '../../src/components/AppIcon';
 import { M3TabBar } from '../../src/components/M3TabBar';
 
 function IOSTabLayout() {
+  const { colors: themeColors } = useTheme();
   return (
-    <NativeTabs tintColor={colors.secondary}>
+    <NativeTabs tintColor={themeColors.secondary}>
       <NativeTabs.Trigger name="patients">
         <Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
         <Label>Patients</Label>
@@ -30,12 +31,13 @@ function IOSTabLayout() {
 }
 
 function AndroidTabLayout() {
+  const { colors: themeColors } = useTheme();
   return (
     <Tabs
-      tabBar={(props) => <M3TabBar {...props} accentColor={colors.secondary} />}
+      tabBar={(props) => <M3TabBar {...props} accentColor={themeColors.secondary} />}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: colors.neutral },
+        sceneStyle: { backgroundColor: themeColors.neutral },
       }}
     >
       <Tabs.Screen

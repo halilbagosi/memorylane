@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
     View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -15,6 +16,8 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
 
 export default function ResetPasswordScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
     const router = useRouter();
     const { email: emailParam } = useLocalSearchParams<{ email: string }>();
 
@@ -91,7 +94,7 @@ export default function ResetPasswordScreen() {
                         <View style={styles.topSpacer} />
 
                         <View style={styles.successIconWrap}>
-                            <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color={colors.success} />
+                            <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color="#4A7A5A" />
                         </View>
 
                         <Text style={styles.headline}>Password Reset!</Text>
@@ -126,7 +129,7 @@ export default function ResetPasswordScreen() {
                     <Text style={styles.headline}>Reset Password</Text>
                     <Text style={styles.subheadline}>
                         Enter the 6-digit code sent to{' '}
-                        <Text style={{ fontFamily: typography.fontFamily.bold, color: colors.textDark }}>
+                        <Text style={{ fontFamily: typography.fontFamily.bold, color: themeColors.textDark }}>
                             {emailParam}
                         </Text>{' '}
                         and choose a new password.
@@ -151,7 +154,7 @@ export default function ResetPasswordScreen() {
                                     iosName={showPassword ? 'eye.slash' : 'eye'}
                                     androidFallback={showPassword ? 'Hide' : 'Show'}
                                     size={20}
-                                    color={colors.textMuted}
+                                    color={themeColors.textMuted}
                                 />
                             ),
                             onPress: () => setShowPassword(!showPassword),
@@ -190,8 +193,10 @@ export default function ResetPasswordScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: themeColors.neutral },
     container: { flex: 1 },
     scrollContent: {
         paddingHorizontal: 24,
@@ -203,20 +208,20 @@ const styles = StyleSheet.create({
     headline: {
         fontFamily: typography.fontFamily.bold,
         fontSize: 28,
-        color: colors.textDark,
+        color: themeColors.textDark,
         marginBottom: 6,
         textAlign: 'center',
     },
     subheadline: {
         fontFamily: typography.fontFamily.regular,
         fontSize: 15,
-        color: colors.textMuted,
+        color: themeColors.textMuted,
         marginBottom: SCREEN_HEIGHT * 0.03,
         textAlign: 'center',
         lineHeight: 22,
     },
     apiErrorText: {
-        color: colors.danger,
+        color: (isDark ? '#FFB4A8' : '#C0392B'),
         fontFamily: typography.fontFamily.regular,
         fontSize: 14,
         textAlign: 'center',
@@ -225,7 +230,7 @@ const styles = StyleSheet.create({
     ghostText: {
         fontFamily: typography.fontFamily.medium,
         fontSize: 14,
-        color: colors.textMuted,
+        color: themeColors.textMuted,
         textTransform: 'none',
         letterSpacing: 0,
     },
@@ -233,9 +238,11 @@ const styles = StyleSheet.create({
         width: 88,
         height: 88,
         borderRadius: 44,
-        backgroundColor: colors.successContainer,
+        backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(74, 122, 90, 0.1)'),
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 24,
     },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

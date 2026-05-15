@@ -1,4 +1,6 @@
+import { lightColors, darkColors } from '../../src/theme/colors';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
   Dimensions,
@@ -15,7 +17,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '../../src/components/AppIcon';
@@ -69,6 +70,8 @@ function groupByDecade(items: TimelineItem[]): ListRow[] {
 }
 
 export default function ReliveTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [patient, setPatient] = useState<PatientInfo | null>(null);
@@ -147,7 +150,7 @@ export default function ReliveTab() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={handleDebugLogout} style={styles.logoutBtn} activeOpacity={0.7}>
-            <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color={colors.danger} />
+            <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color="#C0392B" />
           </TouchableOpacity>
           {patient?.avatarUrl ? (
             <Image source={{ uri: patient.avatarUrl }} style={styles.headerAvatar} />
@@ -185,7 +188,7 @@ export default function ReliveTab() {
       {/* Content */}
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={themeColors.primary} />
         </View>
       ) : error ? (
         <View style={styles.center}>
@@ -207,7 +210,7 @@ export default function ReliveTab() {
               iosName="photo.on.rectangle.angled"
               androidFallback="📷"
               size={40}
-              color={colors.primary}
+              color={themeColors.primary}
             />
           </View>
           <Text style={styles.emptyTitle}>No memories yet</Text>
@@ -289,6 +292,7 @@ const MemoryTile = memo(function MemoryTile({
   onImageError: () => void;
   onPress: (item: TimelineItem) => void;
 }) {
+  const { isDark, colors: themeColors } = useTheme();
   const isPhoto = item.kind === 'PHOTO';
   const isVideo = item.kind === 'VIDEO';
   const [imageLoading, setImageLoading] = useState(true);
@@ -306,25 +310,25 @@ const MemoryTile = memo(function MemoryTile({
           />
           {imageLoading && (
             <View style={styles.tileLoadingOverlay}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <ActivityIndicator size="small" color={themeColors.primary} />
             </View>
           )}
         </>
       ) : (
         <View style={styles.gridMediaFallback}>
-          <AppIcon
-            iosName={item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
-            androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
-            size={24}
-            color={colors.primary}
-          />
+            <AppIcon
+              iosName={item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
+              androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
+              size={24}
+              color={themeColors.primary}
+            />
         </View>
       )}
       {isVideo && (
-        <View style={styles.videoBadge}>
-          <AppIcon iosName="play.fill" androidFallback="▶" size={10} color={colors.textLight} />
-        </View>
-      )}
+          <View style={styles.videoBadge}>
+            <AppIcon iosName="play.fill" androidFallback="▶" size={10} color={themeColors.neutralLight} />
+          </View>
+        )}
     </TouchableOpacity>
   );
 });
@@ -343,6 +347,7 @@ function MemoryPreviewModal({
   onClose: () => void;
 }) {
   const [imageLoading, setImageLoading] = useState(false);
+  const { isDark, colors: themeColors } = useTheme();
 
   useEffect(() => {
     if (item) setImageLoading(true);
@@ -368,7 +373,7 @@ function MemoryPreviewModal({
               />
               {imageLoading && (
                 <View style={styles.previewLoadingOverlay}>
-                  <ActivityIndicator size="large" color={colors.textLight} />
+                  <ActivityIndicator size="large" color={themeColors.neutralLight} />
                 </View>
               )}
             </>
@@ -379,7 +384,7 @@ function MemoryPreviewModal({
                 iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
                 androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
                 size={56}
-                color={colors.primary}
+                color={themeColors.primary}
               />
               <Text style={styles.previewKindLabel}>
                 {imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}
@@ -387,7 +392,7 @@ function MemoryPreviewModal({
             </View>
           )}
         <TouchableOpacity style={styles.previewBackBtn} onPress={onClose} accessibilityLabel="Back to memories">
-          <AppIcon iosName="chevron.left" androidFallback="Back" size={28} color={colors.textDark} />
+          <AppIcon iosName="chevron.left" androidFallback="Back" size={28} color={themeColors.textDark} />
         </TouchableOpacity>
 
           <LinearGradient
@@ -401,7 +406,7 @@ function MemoryPreviewModal({
             {!!item.note && <Text style={styles.previewNote}>{item.note}</Text>}
           </LinearGradient>
           <TouchableOpacity style={styles.previewCloseBtn} onPress={onClose}>
-            <AppIcon iosName="xmark" androidFallback="✕" size={14} color={colors.textDark} />
+            <AppIcon iosName="xmark" androidFallback="✕" size={14} color={themeColors.textDark} />
           </TouchableOpacity>
         </View>
     </Modal>
@@ -410,10 +415,12 @@ function MemoryPreviewModal({
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
   },
   topRow: {
     flexDirection: 'row',
@@ -425,12 +432,12 @@ const styles = StyleSheet.create({
   greeting: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   subtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   headerAvatar: {
@@ -449,20 +456,20 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.dangerContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.1)'),
   },
   headerAvatarFallback: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.onAccent,
+    color: themeColors.neutralLight,
   },
 
   // Filter chips
@@ -472,17 +479,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: themeColors.neutralLight,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipActive: { backgroundColor: themeColors.primary, borderColor: themeColors.primary },
   chipText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
-  chipTextActive: { color: colors.onAccent },
+  chipTextActive: { color: themeColors.neutralLight },
 
   // States
   center: {
@@ -497,7 +504,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.08)'),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
@@ -505,31 +512,31 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   emptyBody: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
   errorText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     textAlign: 'center',
   },
   retryBtn: {
     paddingHorizontal: 22,
     paddingVertical: 11,
     borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
   },
   retryBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.onAccent,
+    color: themeColors.neutralLight,
   },
 
   // List
@@ -545,7 +552,7 @@ const styles = StyleSheet.create({
   yearHeaderText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
@@ -563,7 +570,7 @@ const styles = StyleSheet.create({
     width: TILE_SIZE,
     aspectRatio: 1,
     overflow: 'hidden',
-    backgroundColor: colors.surface,
+    backgroundColor: themeColors.neutralLight,
   },
   gridTileSpacer: {
     width: TILE_SIZE,
@@ -576,14 +583,14 @@ const styles = StyleSheet.create({
   },
   tileLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.surface,
+    backgroundColor: themeColors.neutralLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   gridMediaFallback: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.06)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -594,7 +601,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.5)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -618,7 +625,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
   },
   previewBackBtn: {
     position: 'absolute',
@@ -627,7 +634,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.72)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -643,7 +650,7 @@ const styles = StyleSheet.create({
   },
   previewBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.6)'),
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -652,7 +659,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: '88%',
     borderRadius: 22,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: themeColors.neutralLight,
     overflow: 'hidden',
   },
   previewImage: {
@@ -665,12 +672,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.06)'),
   },
   previewKindLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   previewMeta: {
     padding: 18,
@@ -679,19 +686,19 @@ const styles = StyleSheet.create({
   previewYear: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textLight,
+    color: themeColors.neutralLight,
   },
   previewCategory: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.65)',
+    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.65)'),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   previewNote: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: 'rgba(255,255,255,0.9)',
+    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.9)'),
     lineHeight: 22,
     marginTop: 2,
   },
@@ -703,8 +710,10 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.9)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

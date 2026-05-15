@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
   View, Text, StyleSheet, Platform, Switch,
   ScrollView, TouchableOpacity, Image, Linking,
@@ -6,7 +7,7 @@ import {
 import * as Device from 'expo-device';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
@@ -38,16 +39,18 @@ function evaluatePassword(pw: string): PasswordStrength {
 
   const levels: Record<number, { label: string; color: string }> = {
     0: { label: '', color: 'transparent' },
-    1: { label: 'Weak', color: colors.danger },
-    2: { label: 'Fair', color: colors.warning },
-    3: { label: 'Good', color: colors.patientAccent },
-    4: { label: 'Strong', color: colors.success },
+    1: { label: 'Weak', color: '#C0392B' },
+    2: { label: 'Fair', color: '#e67e22' },
+    3: { label: 'Good', color: '#f1c40f' },
+    4: { label: 'Strong', color: '#27ae60' },
   };
 
   return { score, ...levels[score] };
 }
 
 export default function SignupScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
 
   const [avatarBase64, setAvatarBase64] = useState<string | null>(null);
@@ -209,12 +212,12 @@ export default function SignupScreen() {
                   {initials ? (
                     <Text style={styles.avatarInitials}>{initials}</Text>
                   ) : (
-                    <AppIcon iosName="person.crop.circle" androidFallback="👤" size={32} color={colors.onAccent} />
+                    <AppIcon iosName="person.crop.circle" androidFallback="👤" size={32} color="rgba(255,255,255,0.8)" />
                   )}
                 </View>
               )}
               <View style={styles.avatarEditBadge}>
-                <AppIcon iosName="plus" androidFallback="+" size={11} color={colors.onAccent} weight="bold" />
+                <AppIcon iosName="plus" androidFallback="+" size={11} color="#fff" weight="bold" />
               </View>
             </TouchableOpacity>
             <View style={styles.avatarHint}>
@@ -254,7 +257,7 @@ export default function SignupScreen() {
                   iosName={showPassword ? 'eye.slash' : 'eye'}
                   androidFallback={showPassword ? 'Hide' : 'Show'}
                   size={20}
-                  color={colors.textMuted}
+                  color={themeColors.textMuted}
                 />
               ),
               onPress: () => setShowPassword(!showPassword),
@@ -273,7 +276,7 @@ export default function SignupScreen() {
                       {
                         backgroundColor: segment <= strength.score
                           ? strength.color
-                          : colors.surfaceMuted,
+                          : isIOS ? 'rgba(0,0,0,0.06)' : '#E0E0E0',
                       },
                       isIOS ? styles.iosSegment : styles.androidSegment,
                     ]}
@@ -299,9 +302,9 @@ export default function SignupScreen() {
             <Switch
               value={isSubscribed}
               onValueChange={setIsSubscribed}
-              trackColor={{ false: colors.surfaceMuted, true: colors.secondaryContainer }}
-              thumbColor={isSubscribed ? colors.secondary : colors.textMuted}
-              ios_backgroundColor={colors.surfaceMuted}
+              trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
+              thumbColor={isSubscribed ? themeColors.secondary : isIOS ? '#fff' : '#f4f4f4'}
+              ios_backgroundColor="rgba(0,0,0,0.08)"
             />
           </View>
 
@@ -338,22 +341,24 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   container: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 40 },
 
   headline: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
     marginTop: 8,
   },
   subheadline: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 28,
   },
 
@@ -369,14 +374,14 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.onAccent,
+    color: themeColors.textLight,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -386,23 +391,23 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.neutral,
+    borderColor: themeColors.neutral,
   },
   avatarHint: { flex: 1 },
   avatarHintTitle: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 3,
   },
   avatarHintSub: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   strengthContainer: {
@@ -423,7 +428,7 @@ const styles = StyleSheet.create({
   },
 
   apiErrorText: {
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -435,12 +440,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textMuted },
+  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textMuted },
   linkButton: { paddingHorizontal: 0, paddingVertical: 0 },
   linkBoldText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.secondary,
+    color: themeColors.secondary,
     textTransform: 'none',
     letterSpacing: 0,
   },
@@ -452,9 +457,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 18,
     borderRadius: 16,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.5)') : (isDark ? '#17231D' : '#FFFFFF'),
     borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: colors.border,
+    borderColor: Platform.OS === 'ios' ? (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.1)') : (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
     gap: 12,
   },
   subscriptionInfo: {
@@ -463,13 +468,15 @@ const styles = StyleSheet.create({
   subscriptionTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 3,
   },
   subscriptionDesc: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     lineHeight: 17,
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

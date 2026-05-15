@@ -1,8 +1,9 @@
 import React from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 
 type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -79,16 +80,20 @@ export function AppIcon({
   iosName,
   androidFallback,
   size = 22,
-  color = colors.textDark,
+  color,
   weight = 'medium',
   style,
 }: AppIconProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const resolvedColor = color ?? themeColors.textDark;
+
   if (supportsSymbols) {
     return (
       <SymbolView
         name={iosName}
         size={size}
-        tintColor={color}
+        tintColor={resolvedColor}
         weight={weight}
         style={[{ width: size, height: size }, style]}
       />
@@ -101,7 +106,7 @@ export function AppIcon({
       <MaterialCommunityIcons
         name={materialName}
         size={size}
-        color={color}
+        color={resolvedColor}
         style={style}
       />
     );
@@ -112,15 +117,19 @@ export function AppIcon({
       <MaterialCommunityIcons
         name="help-circle-outline"
         size={size}
-        color={color}
+        color={resolvedColor}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   androidContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
 });
+};
+// Styles are created per-render via `getStyles(isDark)` in `AppIcon`.

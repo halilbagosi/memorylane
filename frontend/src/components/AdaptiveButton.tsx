@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   Pressable,
   Text,
@@ -8,7 +9,7 @@ import {
   TextStyle,
   ActivityIndicator,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 type ButtonVariant = 'filled' | 'outlined' | 'ghost' | 'danger';
@@ -36,8 +37,10 @@ export function AdaptiveButton({
   textStyle,
   color,
 }: AdaptiveButtonProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const isIOS = Platform.OS === 'ios';
-  const baseColor = color || colors.secondary;
+  const baseColor = color || themeColors.secondary;
 
   const containerStyles: ViewStyle[] = [
     styles.base,
@@ -79,7 +82,7 @@ export function AdaptiveButton({
         {loading && (
           <ActivityIndicator
             size="small"
-            color={variant === 'filled' ? colors.onAccent : baseColor}
+            color={variant === 'filled' ? themeColors.textLight : baseColor}
             style={{ marginRight: 8 }}
           />
         )}
@@ -100,7 +103,7 @@ export function AdaptiveButton({
       disabled={disabled || loading}
       android_ripple={{
         color: variant === 'filled'
-          ? 'rgba(7,18,13,0.14)'
+          ? 'rgba(255,255,255,0.2)'
           : baseColor + '18',
         borderless: false,
       }}
@@ -108,7 +111,7 @@ export function AdaptiveButton({
       {loading && (
         <ActivityIndicator
           size="small"
-          color={variant === 'filled' ? colors.onAccent : baseColor}
+          color={variant === 'filled' ? themeColors.textLight : baseColor}
           style={{ marginRight: 8 }}
         />
       )}
@@ -119,7 +122,9 @@ export function AdaptiveButton({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   base: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -139,11 +144,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   iosOutlined: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: themeColors.glassCardBg,
     borderWidth: 1,
   },
   iosDanger: {
-    backgroundColor: colors.dangerContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(231, 76, 60, 0.12)'),
     borderRadius: 20,
   },
 
@@ -159,7 +164,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
   },
   androidDanger: {
-    backgroundColor: colors.dangerContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(231, 76, 60, 0.08)'),
     borderRadius: 28,
   },
   androidPressed: {
@@ -180,6 +185,7 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
+    color: themeColors.textDark,
   },
   iosLabel: {
     letterSpacing: 0.2,
@@ -189,9 +195,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   filledLabel: {
-    color: colors.onAccent,
+    color: isDark ? '#0E1712' : themeColors.textLight,
   },
   dangerLabel: {
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
   },
 });
+};
+// Styles are computed per-render via `getStyles(isDark)` inside the component

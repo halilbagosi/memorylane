@@ -1,6 +1,7 @@
 import React from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 interface AdaptiveBadgeProps {
@@ -12,12 +13,15 @@ interface AdaptiveBadgeProps {
 
 export function AdaptiveBadge({
   label,
-  color = colors.textDark,
+  color,
   backgroundColor,
   style,
 }: AdaptiveBadgeProps) {
   const isIOS = Platform.OS === 'ios';
-  const bg = backgroundColor || colors.surfaceMuted;
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const resolvedColor = color ?? themeColors.textDark;
+  const bg = backgroundColor ?? (isDark ? themeColors.glassCardBg : 'rgba(0,0,0,0.06)');
 
   return (
     <View
@@ -28,14 +32,16 @@ export function AdaptiveBadge({
         style,
       ]}
     >
-      <Text style={[styles.label, isIOS ? styles.iosLabel : styles.androidLabel, { color }]}>
+      <Text style={[styles.label, isIOS ? styles.iosLabel : styles.androidLabel, { color: resolvedColor }]}> 
         {label}
       </Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   base: {
     paddingHorizontal: 12,
     paddingVertical: 5,
@@ -56,3 +62,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 });
+};
+// Styles resolved at render time via `useTheme()` in the component

@@ -1,4 +1,6 @@
+import { colors, lightColors, darkColors } from '../../src/theme/colors';
 import React, { useState, useCallback, useRef } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Platform, Image,
@@ -7,7 +9,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from 'expo-router';
 import { CommonActions } from '@react-navigation/native';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
 import { getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
@@ -101,7 +102,7 @@ function SwipeableRow({
       {/* Delete action underneath */}
       <View style={swipeStyles.deleteUnder}>
         <TouchableOpacity onPress={onDelete} style={swipeStyles.deleteBtn} activeOpacity={0.8}>
-          <AppIcon iosName="trash" androidFallback="✕" size={18} color={colors.textLight} />
+          <AppIcon iosName="trash" androidFallback="✕" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
       {/* Draggable content */}
@@ -119,7 +120,7 @@ const swipeStyles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 72,
-    backgroundColor: colors.dangerSolid,
+    backgroundColor: '#c0392b',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -151,24 +152,26 @@ function parseDeclineReason(body: string): { baseText: string; reason: string | 
 
 function dotColor(type: BackendNotification['type'] | 'delegation-pending'): string {
   switch (type) {
-    case 'DELEGATION_ACCEPTED': return colors.success;
-    case 'DELEGATION_DECLINED': return colors.danger;
-    case 'DELEGATION_CANCELLED': return colors.warning;
-    case 'DELEGATION_COMPLETED': return colors.success;
-    case 'SECONDARY_ADDED': return colors.primary;
-    case 'DEVICE_PAIRED': return colors.lavender;
-    case 'PATIENT_DELETED': return colors.danger;
-    case 'delegation-pending': return colors.warning;
-    case 'ROLE_REQUEST_RECEIVED': return colors.secondary;
-    case 'ROLE_REQUEST_APPROVED': return colors.success;
-    case 'ROLE_REQUEST_DECLINED': return colors.warning;
-    default: return colors.textMuted;
+    case 'DELEGATION_ACCEPTED': return '#2d6a4f';
+    case 'DELEGATION_DECLINED': return '#c0392b';
+    case 'DELEGATION_CANCELLED': return '#7a6f63';
+    case 'DELEGATION_COMPLETED': return '#2d6a4f';
+    case 'SECONDARY_ADDED': return '#2980b9';
+    case 'DEVICE_PAIRED': return '#8e44ad';
+    case 'PATIENT_DELETED': return '#c0392b';
+    case 'delegation-pending': return '#b8860b';
+    case 'ROLE_REQUEST_RECEIVED': return '#2D4F3E';
+    case 'ROLE_REQUEST_APPROVED': return '#2d6a4f';
+    case 'ROLE_REQUEST_DECLINED': return '#7a6f63';
+    default: return '#999';
   }
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function InboxTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const navigation = useNavigation();
 
   const [token, setToken] = useState<string | null>(null);
@@ -419,12 +422,12 @@ export default function InboxTab() {
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={themeColors.primary} />
         </View>
       ) : !hasContent ? (
         <View style={styles.centered}>
           <View style={styles.emptyIcon}>
-            <AppIcon iosName="tray" androidFallback="—" size={28} color={colors.textMuted} />
+            <AppIcon iosName="tray" androidFallback="—" size={28} color={themeColors.textMuted} />
           </View>
           <Text style={styles.emptyTitle}>All caught up</Text>
           <Text style={styles.emptyDesc}>No pending requests or notifications.</Text>
@@ -433,12 +436,12 @@ export default function InboxTab() {
         <ScrollView
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} />}
         >
           {/* ── Incoming delegation requests ── */}
           {incoming.map((req) => (
             <View key={req.id} style={styles.row}>
-              <View style={[styles.rowDot, { backgroundColor: req.accepted ? colors.success : req.declined ? colors.warning : dotColor('delegation-pending') }]} />
+              <View style={[styles.rowDot, { backgroundColor: req.accepted ? '#4A7A5A' : req.declined ? '#6B6455' : dotColor('delegation-pending') }]} />
               <View style={styles.rowAvatar}>
                 {req.fromCaregiver.avatarUrl ? (
                   <Image source={{ uri: req.fromCaregiver.avatarUrl }} style={styles.rowAvatarImg} />
@@ -474,7 +477,7 @@ export default function InboxTab() {
                     <TextInput
                       style={styles.declineReasonInput}
                       placeholder="Reason for declining…"
-                      placeholderTextColor={colors.textMuted}
+                      placeholderTextColor={themeColors.textMuted}
                       value={declineExpanded.reason}
                       onChangeText={(text) => setDeclineExpanded(prev => prev ? { ...prev, reason: text } : null)}
                       multiline
@@ -490,7 +493,7 @@ export default function InboxTab() {
                         <Text style={styles.declineBtnText}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.acceptBtn, { backgroundColor: colors.dangerSolid }]}
+                        style={[styles.acceptBtn, { backgroundColor: '#C0392B' }]}
                         onPress={() => {
                           setIncoming(prev => prev.map(r => r.id === req.id ? { ...r, declined: true } : r));
                           respond(req.id, 'decline', declineExpanded.reason);
@@ -498,7 +501,7 @@ export default function InboxTab() {
                         }}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.acceptBtnText, { color: colors.textLight }]}>Send Decline</Text>
+                        <Text style={styles.acceptBtnText}>Send Decline</Text>
                       </TouchableOpacity>
                     </View>
                   </>
@@ -530,7 +533,7 @@ export default function InboxTab() {
           {/* ── Incoming role requests (Primary Status requests) ── */}
           {roleRequests.map((req) => (
             <View key={req.id} style={styles.row}>
-              <View style={[styles.rowDot, { backgroundColor: req.approved ? colors.success : req.declined ? colors.warning : colors.secondary }]} />
+              <View style={[styles.rowDot, { backgroundColor: req.approved ? '#4A7A5A' : req.declined ? '#6B6455' : '#2D4F3E' }]} />
               <View style={styles.rowAvatar}>
                 {req.requester.avatarUrl ? (
                   <Image source={{ uri: req.requester.avatarUrl }} style={styles.rowAvatarImg} />
@@ -560,7 +563,7 @@ export default function InboxTab() {
                     <TextInput
                       style={styles.declineReasonInput}
                       placeholder="Reason for declining…"
-                      placeholderTextColor={colors.textMuted}
+                      placeholderTextColor={themeColors.textMuted}
                       value={declineExpanded.reason}
                       onChangeText={(text) => setDeclineExpanded(prev => prev ? { ...prev, reason: text } : null)}
                       multiline
@@ -576,7 +579,7 @@ export default function InboxTab() {
                         <Text style={styles.declineBtnText}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.acceptBtn, { backgroundColor: colors.dangerSolid }]}
+                        style={[styles.acceptBtn, { backgroundColor: '#C0392B' }]}
                         onPress={() => {
                           setRoleRequests(prev => prev.map(r => r.id === req.id ? { ...r, declined: true } : r));
                           respondToRoleRequest(req.id, 'decline', declineExpanded.reason);
@@ -584,7 +587,7 @@ export default function InboxTab() {
                         }}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.acceptBtnText, { color: colors.textLight }]}>Send Decline</Text>
+                        <Text style={styles.acceptBtnText}>Send Decline</Text>
                       </TouchableOpacity>
                     </View>
                   </>
@@ -631,7 +634,7 @@ export default function InboxTab() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <Text style={[styles.rowBold, isUnread && styles.rowBoldUnread]}>{notif.title}</Text>
                     {isTappable && (
-                      <AppIcon iosName="info.circle.fill" androidFallback="ⓘ" size={13} color={colors.secondary} />
+                      <AppIcon iosName="info.circle.fill" androidFallback="ⓘ" size={13} color={themeColors.secondary} />
                     )}
                     {isDeclineNotif && !!reason && (
                       <TouchableOpacity
@@ -642,7 +645,7 @@ export default function InboxTab() {
                         activeOpacity={0.6}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <AppIcon iosName="info.circle.fill" androidFallback="ⓘ" size={15} color={colors.danger} />
+                        <AppIcon iosName="info.circle.fill" androidFallback="ⓘ" size={15} color="#C0392B" />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -651,7 +654,7 @@ export default function InboxTab() {
                 </View>
                 {isTappable && (
                   <View style={{ paddingTop: 3, opacity: 0.5 }}>
-                    <AppIcon iosName="chevron.right" androidFallback="›" size={14} color={colors.textMuted} />
+                    <AppIcon iosName="chevron.right" androidFallback="›" size={14} color={themeColors.textMuted} />
                   </View>
                 )}
               </View>
@@ -724,8 +727,10 @@ export default function InboxTab() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
 
   header: {
     flexDirection: 'row',
@@ -746,16 +751,16 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   headerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   headerBadge: {
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -766,7 +771,7 @@ const styles = StyleSheet.create({
   headerBadgeText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 11,
-    color: colors.onAccent,
+    color: '#fff',
   },
 
   centered: {
@@ -779,7 +784,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: themeColors.neutralLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
@@ -787,13 +792,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
   },
   emptyDesc: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     paddingHorizontal: 40,
   },
@@ -805,18 +810,18 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.07)'),
     gap: 10,
   },
   rowUnread: {
-    backgroundColor: colors.secondaryContainer,
+    backgroundColor: '#ECEADC',
   },
   rowBoldUnread: {
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   rowDot: {
     width: 8,
@@ -831,30 +836,30 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   rowAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.onAccent,
+    color: themeColors.textLight,
   },
   rowBody: { flex: 1 },
   rowTitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     lineHeight: 20,
   },
   rowBold: {
     fontFamily: typography.fontFamily.bold,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   rowSub: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 3,
     opacity: 0.7,
   },
@@ -867,23 +872,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 8,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.05)'),
   },
   declineBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   acceptBtn: {
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 8,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
   },
   acceptBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.onAccent,
+    color: '#fff',
   },
   acceptedTag: {
     alignSelf: 'flex-start',
@@ -891,12 +896,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: colors.successContainer,
+    backgroundColor: '#D8E8D8',
   },
   acceptedTagText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.success,
+    color: (isDark ? '#8DE6A5' : '#4A7A5A'),
   },
   declinedTag: {
     alignSelf: 'flex-start',
@@ -904,25 +909,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: colors.warningContainer,
+    backgroundColor: '#E2DFCF',
   },
   declinedTagText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.warning,
+    color: '#6B6455',
   },
 
   // Decline reason modal
   reasonModalOverlay: {
     flex: 1,
-    backgroundColor: colors.scrim,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.45)'),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
   reasonModalCard: {
     width: '100%',
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: themeColors.neutral,
     borderRadius: 28,
     padding: 22,
     elevation: 3,
@@ -930,23 +935,23 @@ const styles = StyleSheet.create({
   reasonModalTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
   },
   reasonModalContext: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 14,
     lineHeight: 18,
   },
   reasonModalQuote: {
-    backgroundColor: colors.dangerContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.12)'),
     borderLeftWidth: 4,
-    borderLeftColor: colors.danger,
+    borderLeftColor: (isDark ? '#FFB4A8' : '#C0392B'),
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.dangerContainer,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.22)'),
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 18,
@@ -956,7 +961,7 @@ const styles = StyleSheet.create({
   reasonModalQuoteText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontStyle: 'italic',
     lineHeight: 20,
   },
@@ -965,26 +970,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
   },
   reasonModalOkText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.onAccent,
+    color: '#fff',
   },
 
   // Inline decline reason input
   declineReasonInput: {
     marginTop: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.12)'),
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textDark,
-    backgroundColor: colors.neutralLight,
+    color: themeColors.textDark,
+    backgroundColor: isIOS ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.7)') : (isDark ? '#17231D' : '#FFFFFF'),
     minHeight: 72,
     textAlignVertical: 'top',
   },
@@ -994,20 +999,20 @@ const styles = StyleSheet.create({
   delTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 8,
   },
   delBody: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     lineHeight: 20,
     marginBottom: 16,
   },
   delSectionLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 6,
@@ -1015,9 +1020,9 @@ const styles = StyleSheet.create({
   delList: {
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: isIOS ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.5)') : (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.03)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.07)'),
     marginBottom: 14,
   },
   delRow: {
@@ -1027,38 +1032,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
   },
   delAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.secondaryContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.12)'),
     justifyContent: 'center',
     alignItems: 'center',
   },
   delAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   delName: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   delRowSub: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 1,
   },
   delReason: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontStyle: 'italic',
     marginTop: 2,
   },
 
 });
+};
+// styles are computed at render time via `useTheme()` inside the component
+

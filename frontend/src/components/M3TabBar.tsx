@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   View,
   TouchableOpacity,
@@ -8,7 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 interface M3TabBarProps extends BottomTabBarProps {
@@ -19,9 +20,12 @@ export function M3TabBar({
   state,
   descriptors,
   navigation,
-  accentColor = colors.secondary,
+  accentColor,
 }: M3TabBarProps) {
   const insets = useSafeAreaInsets();
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const currentAccent = accentColor || themeColors.primary;
 
   return (
     <View style={[styles.outer, { paddingBottom: insets.bottom }]}>
@@ -53,7 +57,7 @@ export function M3TabBar({
               isFocused={isFocused}
               onPress={onPress}
               onLongPress={onLongPress}
-              accentColor={accentColor}
+              accentColor={currentAccent}
               icon={options.tabBarIcon}
               badge={typeof options.tabBarBadge === 'number' ? options.tabBarBadge : undefined}
             />
@@ -75,6 +79,8 @@ interface M3TabProps {
 }
 
 function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon, badge }: M3TabProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const pillScale = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
   const iconShift = useRef(new Animated.Value(isFocused ? -2 : 0)).current;
 
@@ -95,7 +101,7 @@ function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon, badg
     ]).start();
   }, [isFocused]);
 
-  const iconColor = isFocused ? accentColor : colors.textMuted;
+  const iconColor = isFocused ? accentColor : themeColors.textMuted;
 
   return (
     <TouchableOpacity
@@ -111,7 +117,7 @@ function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon, badg
           style={[
             styles.activePill,
             {
-              backgroundColor: accentColor + '1A',
+              backgroundColor: isDark ? accentColor + '26' : accentColor + '1A',
               transform: [
                 { scaleX: pillScale },
                 { scaleY: pillScale },
@@ -133,7 +139,7 @@ function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon, badg
         style={[
           styles.label,
           {
-            color: isFocused ? accentColor : colors.textMuted,
+            color: isFocused ? accentColor : themeColors.textMuted,
             fontFamily: isFocused ? typography.fontFamily.bold : typography.fontFamily.medium,
           },
         ]}
@@ -145,11 +151,13 @@ function M3Tab({ label, isFocused, onPress, onLongPress, accentColor, icon, badg
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   outer: {
-    backgroundColor: colors.neutralLight,
+    backgroundColor: themeColors.neutralLight,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.06)'),
   },
   bar: {
     flexDirection: 'row',
@@ -181,17 +189,17 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: colors.dangerSolid,
+    backgroundColor: (isDark ? '#FFB4A8' : '#C0392B'),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: colors.neutralLight,
+    borderColor: themeColors.neutralLight,
   },
   badgeText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 10,
-    color: colors.textLight,
+    color: '#fff',
     includeFontPadding: false,
   },
   label: {
@@ -200,3 +208,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 });
+};
+ 

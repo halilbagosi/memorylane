@@ -1,5 +1,7 @@
+import { colors, lightColors, darkColors } from '../../src/theme/colors';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +24,6 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { SFSymbol } from 'expo-symbols';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
@@ -82,9 +83,6 @@ interface ResumeSession {
 }
 
 const MIN_IDENTITIES = 4;
-const QUIZ_BACKGROUND = colors.neutral;
-const CREAM = colors.neutralLight;
-const FOREST_GREEN = colors.primary;
 const SESSION_KEY_PREFIX = 'memorylane_patient_quiz_session';
 
 const MODE_CONFIG: Record<QuizMode, { label: string; icon: SFSymbol; androidFallback: string }> = {
@@ -129,6 +127,8 @@ async function deleteSavedSession(patientId: string): Promise<void> {
 }
 
 export default function QuizTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
@@ -691,7 +691,7 @@ export default function QuizTab() {
     <View style={styles.leaveMemoriesSection}>
       <View style={[styles.leaveMemoriesSpacer, leaveMemoriesScrollGap]} />
       <View style={styles.scrollHintCard}>
-        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={FOREST_GREEN} />
+        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={themeColors.primary} />
         <Text style={styles.scrollHintTitle}>Leave a memory for family</Text>
         <Text style={styles.scrollHintBody}>
           Keep scrolling on this page — below your practice area you can write a note or share a photo, video, or voice
@@ -704,7 +704,7 @@ export default function QuizTab() {
         <TextInput
           style={styles.textInput}
           placeholder="Write a note or share a memory..."
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={themeColors.textMuted}
           multiline
           value={newNote}
           onChangeText={setNewNote}
@@ -720,7 +720,7 @@ export default function QuizTab() {
                   iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
                   androidFallback="M"
                   size={24}
-                  color={colors.primary}
+                  color={themeColors.primary}
                 />
                 <Text style={styles.mediaPlaceholderText}>
                   {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
@@ -728,19 +728,19 @@ export default function QuizTab() {
               </View>
             )}
             <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setSelectedMedia(null)}>
-              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color={colors.danger} />
+              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color="#E74C3C" />
             </TouchableOpacity>
           </View>
         )}
 
         <View style={styles.mediaButtons}>
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
-            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={colors.primary} />
+            <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
+            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={themeColors.primary} />
             <Text style={styles.mediaBtnText}>Photo</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('VIDEO')}>
-            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={colors.primary} />
+            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={themeColors.primary} />
             <Text style={styles.mediaBtnText}>Video</Text>
           </TouchableOpacity>
 
@@ -753,7 +753,7 @@ export default function QuizTab() {
               iosName={isRecording ? 'stop.fill' : 'mic.fill'}
               androidFallback="A"
               size={20}
-              color={isRecording ? colors.textLight : colors.primary}
+              color={isRecording ? '#fff' : themeColors.primary}
             />
             <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
               {isRecording ? 'Recording...' : 'Voice'}
@@ -770,7 +770,7 @@ export default function QuizTab() {
           disabled={(!newNote.trim() && !selectedMedia) || isSubmitting}
         >
           {isSubmitting ? (
-            <ActivityIndicator size="small" color={CREAM} />
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Text style={styles.saveBtnText}>Share with Family</Text>
           )}
@@ -795,7 +795,7 @@ export default function QuizTab() {
                   }
                   androidFallback={item.type === 'NOTE' ? 'N' : 'P'}
                   size={16}
-                  color={colors.primary}
+                  color={themeColors.primary}
                 />
                 <Text style={styles.feedItemDate}>
                   {new Date(item.createdAt).toLocaleDateString('en-US', {
@@ -835,13 +835,13 @@ export default function QuizTab() {
   // We keep ALL the new UI screens that were added in alpha
   const renderLoading = () => (
     <View style={styles.centerFill}>
-      <ActivityIndicator size="large" color={FOREST_GREEN} />
+      <ActivityIndicator size="large" color={themeColors.primary} />
     </View>
   );
 
   const renderError = (message: string) => (
     <View style={styles.centerFill}>
-      <AppIcon iosName="exclamationmark.circle" androidFallback="!" size={48} color={colors.danger} />
+      <AppIcon iosName="exclamationmark.circle" androidFallback="!" size={48} color="#C0392B" />
       <Text style={styles.errorText}>{message}</Text>
       <TouchableOpacity style={styles.retryBtn} onPress={initialise} activeOpacity={0.8}>
         <Text style={styles.retryBtnText}>Try Again</Text>
@@ -851,7 +851,7 @@ export default function QuizTab() {
 
   const renderNoMedia = () => (
     <View style={styles.centerFill}>
-      <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={FOREST_GREEN} />
+      <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={themeColors.primary} />
       <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
       <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
     </View>
@@ -859,7 +859,7 @@ export default function QuizTab() {
 
   const renderInsufficientIdentities = (count: number) => (
     <View style={styles.centerFill}>
-      <AppIcon iosName="sparkles" androidFallback="*" size={52} color={FOREST_GREEN} />
+      <AppIcon iosName="sparkles" androidFallback="*" size={52} color={themeColors.primary} />
       <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
       <Text style={styles.emptySubtitle}>
         Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
@@ -927,7 +927,7 @@ export default function QuizTab() {
                 iosName={cfg.icon}
                 androidFallback={cfg.androidFallback}
                 size={24}
-                color={hasMedia ? CREAM : colors.textMuted}
+                color={hasMedia ? themeColors.neutralLight : '#888888'}
               />
               <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
             </TouchableOpacity>
@@ -982,7 +982,7 @@ export default function QuizTab() {
         <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
           <View style={styles.photoClip}>
             <View style={styles.photoLoading}>
-              <ActivityIndicator size="small" color={FOREST_GREEN} />
+              <ActivityIndicator size="small" color={themeColors.primary} />
             </View>
             <Animated.Image
               key={`${q.media.publicId}-${q.imageUrl}`}
@@ -1081,7 +1081,7 @@ export default function QuizTab() {
           <Text style={styles.greeting}>Hi, {patient.name}</Text>
           {['mode_select', 'no_media', 'insufficient_identities'].includes(phase.type) && (
             <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7}>
-              <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color={colors.danger} />
+              <AppIcon iosName="arrow.right.square" androidFallback="<" size={18} color="#C0392B" />
             </TouchableOpacity>
           )}
           {patient.avatarUrl ? (
@@ -1121,10 +1121,12 @@ export default function QuizTab() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     paddingHorizontal: 24,
   },
   phaseScroll: {
@@ -1146,26 +1148,26 @@ const styles = StyleSheet.create({
   },
   scrollHintCard: {
     width: '100%',
-    backgroundColor: colors.neutralLight,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.95)'),
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
     gap: 8,
     alignItems: 'center',
   },
   scrollHintTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   scrollHintBody: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: FOREST_GREEN,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
     opacity: 0.92,
@@ -1173,7 +1175,7 @@ const styles = StyleSheet.create({
   recentMemoriesHeading: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginBottom: 10,
     marginTop: 4,
     width: '100%',
@@ -1183,9 +1185,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.12)'),
   },
   topRow: {
     flexDirection: 'row',
@@ -1196,7 +1198,7 @@ const styles = StyleSheet.create({
   greeting: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     flex: 1,
   },
   logoutBtn: {
@@ -1212,14 +1214,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   centerFill: {
     flex: 1,
@@ -1231,12 +1233,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     paddingHorizontal: 16,
   },
   retryBtn: {
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     borderRadius: 50,
     paddingVertical: 14,
     paddingHorizontal: 36,
@@ -1244,18 +1246,18 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   emptyTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 25,
     maxWidth: 300,
@@ -1271,20 +1273,20 @@ const styles = StyleSheet.create({
   introText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     lineHeight: 40,
     textAlign: 'center',
   },
   startButton: {
     minWidth: 190,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingVertical: 18,
     paddingHorizontal: 54,
     alignItems: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: '#24442F',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.14,
         shadowRadius: 18,
@@ -1295,11 +1297,11 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   resumeFill: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -1307,16 +1309,16 @@ const styles = StyleSheet.create({
   resumeCard: {
     width: '100%',
     borderRadius: 24,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 24,
     paddingVertical: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
     alignItems: 'center',
     gap: 24,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: '#24442F',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.14,
         shadowRadius: 18,
@@ -1328,7 +1330,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 25,
     lineHeight: 34,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   resumeActions: {
@@ -1337,25 +1339,25 @@ const styles = StyleSheet.create({
   },
   resumePrimaryBtn: {
     borderRadius: 999,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     paddingVertical: 16,
     alignItems: 'center',
   },
   resumePrimaryText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   resumeSecondaryBtn: {
     borderRadius: 999,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
     paddingVertical: 15,
     alignItems: 'center',
   },
   resumeSecondaryText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   modeSelectContent: {
     flexGrow: 1,
@@ -1367,7 +1369,7 @@ const styles = StyleSheet.create({
   modeSelectTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 28,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 36,
     marginBottom: 36,
@@ -1380,7 +1382,7 @@ const styles = StyleSheet.create({
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     borderRadius: 50,
     paddingVertical: 18,
     paddingHorizontal: 32,
@@ -1388,21 +1390,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modePillDisabled: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: '#D1D8D0',
   },
   modePillText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: CREAM,
+    color: themeColors.neutralLight,
     flex: 1,
     textAlign: 'center',
   },
   modePillTextDisabled: {
-    color: colors.textMuted,
+    color: '#888888',
   },
   quizScreen: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     alignItems: 'center',
     paddingHorizontal: 20,
   },
@@ -1418,26 +1420,26 @@ const styles = StyleSheet.create({
     width: 34,
     height: 5,
     borderRadius: 999,
-    backgroundColor: colors.secondaryContainer,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.24)'),
   },
   progressDashActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.neutralLight,
   },
   questionText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 38,
     marginBottom: 28,
   },
   photoShadow: {
     borderRadius: 30,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     marginBottom: 16,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: '#24442F',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.2,
         shadowRadius: 18,
@@ -1449,7 +1451,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 30,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
   },
   photoLoading: {
     ...StyleSheet.absoluteFillObject,
@@ -1470,31 +1472,31 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 8,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.58)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
   },
   hintButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textDecorationLine: 'underline',
   },
   hintBubble: {
     marginTop: 10,
     maxWidth: 320,
     borderRadius: 18,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
   },
   hintText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 21,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   choiceGrid: {
@@ -1512,14 +1514,14 @@ const styles = StyleSheet.create({
   choiceBtn: {
     minHeight: 66,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
     paddingVertical: 12,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: '#24442F',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.14,
         shadowRadius: 9,
@@ -1528,17 +1530,17 @@ const styles = StyleSheet.create({
     }),
   },
   choiceBtnWrong: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: '#D7E0D2',
   },
   choiceBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 23,
   },
   choiceBtnTextWrong: {
-    color: colors.textMuted,
+    color: '#7A7A7A',
   },
   summaryContent: {
     flexGrow: 1,
@@ -1555,20 +1557,20 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 40,
   },
   photosButton: {
     minWidth: 230,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 34,
     paddingVertical: 18,
     alignItems: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: '#24442F',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.14,
         shadowRadius: 18,
@@ -1579,13 +1581,13 @@ const styles = StyleSheet.create({
   photosButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   summaryPrompt: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginTop: 18,
   },
   practiceChoiceGrid: {
@@ -1597,16 +1599,16 @@ const styles = StyleSheet.create({
   },
   practiceChoice: {
     borderRadius: 999,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.9)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   practiceChoiceText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   mediaButtons: {
@@ -1620,23 +1622,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.lavenderContainer,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.2)'),
   },
   mediaBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.primary,
+    color: themeColors.primary,
   },
   recordingBtn: {
-    backgroundColor: colors.dangerSolid,
-    borderColor: colors.dangerSolid,
+    backgroundColor: '#E74C3C',
+    borderColor: '#E74C3C',
   },
   recordingBtnText: {
-    color: colors.textLight,
+    color: '#fff',
   },
   mediaPreview: {
     position: 'relative',
@@ -1651,7 +1653,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 80,
     borderRadius: 12,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
@@ -1659,46 +1661,46 @@ const styles = StyleSheet.create({
   mediaPlaceholderText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.primary,
+    color: themeColors.primary,
   },
   removeMediaBtn: {
     position: 'absolute',
     top: -10,
     right: -10,
-    backgroundColor: colors.neutralLight,
+    backgroundColor: '#fff',
     borderRadius: 12,
   },
   noteInputCard: {
     width: '100%',
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.15)'),
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginBottom: 10,
   },
   textInput: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.textDark,
     minHeight: 88,
     textAlignVertical: 'top',
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
     padding: 12,
     marginBottom: 14,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
   },
   saveBtn: {
     borderRadius: 999,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 4,
@@ -1709,7 +1711,7 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   feedItemHeader: {
     flexDirection: 'row',
@@ -1721,7 +1723,7 @@ const styles = StyleSheet.create({
   feedItemDate: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   feedImage: {
     width: '100%',
@@ -1732,20 +1734,21 @@ const styles = StyleSheet.create({
   feedContent: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: FOREST_GREEN,
+    color: themeColors.textDark,
     lineHeight: 16,
   },
   mediaIndicator: {
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     padding: 12,
     borderRadius: 10,
     marginBottom: 10,
     borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+    borderLeftColor: themeColors.primary,
   },
   mediaIndicatorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
 });
+};

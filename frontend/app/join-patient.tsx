@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
   View,
   Text,
@@ -13,7 +14,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
@@ -26,10 +27,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.65;
 const isIOS = Platform.OS === 'ios';
 
-const ACCENT = colors.secondary;
-const ACCENT_LIGHT = colors.secondaryContainer;
+const ACCENT = '#2D4F3E';
+const ACCENT_LIGHT = 'rgba(45, 79, 62, 0.12)';
 
 export default function JoinPatientScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -106,10 +109,10 @@ export default function JoinPatientScreen() {
   if (successInfo) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <Animated.View style={[styles.successContent, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
           <View style={styles.successCheckCircle}>
-            <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color={colors.success} />
+            <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={56} color="#4CAF50" />
           </View>
           <Text style={styles.successTitle}>Patient Added!</Text>
           <Text style={styles.successSubtitle}>
@@ -126,7 +129,7 @@ export default function JoinPatientScreen() {
   if (mode === 'camera' && !permission) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <Text style={styles.permText}>Loading camera...</Text>
       </View>
     );
@@ -135,7 +138,7 @@ export default function JoinPatientScreen() {
   if (mode === 'camera' && !permission?.granted) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <View style={styles.permCard}>
           <AppIcon iosName="camera.fill" androidFallback="cam" size={40} color={ACCENT} />
           <Text style={styles.permTitle}>Camera Access</Text>
@@ -164,7 +167,7 @@ export default function JoinPatientScreen() {
         style={[styles.manualContainer, { paddingTop: insets.top + 44 }]}
         behavior={isIOS ? 'padding' : undefined}
       >
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <View style={styles.manualContent}>
           <View style={[styles.iconCircle, { backgroundColor: ACCENT_LIGHT }]}>
             <AppIcon iosName="keyboard" androidFallback="..." size={32} color={ACCENT} />
@@ -237,7 +240,7 @@ export default function JoinPatientScreen() {
 
         <View style={[styles.overlaySection, styles.bottomSection, { paddingBottom: insets.bottom + 24 }]}>
           {error ? (
-            <AdaptiveCard style={styles.errorCard} backgroundColor={colors.dangerContainer}>
+            <AdaptiveCard style={styles.errorCard} backgroundColor="rgba(231, 76, 60, 0.15)">
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity onPress={() => { setError(''); scannedRef.current = false; }}>
                 <Text style={styles.errorRetry}>Try again</Text>
@@ -255,7 +258,7 @@ export default function JoinPatientScreen() {
             />
           ) : (
             <TouchableOpacity style={styles.manualBtn} onPress={() => setMode('manual')}>
-              <AppIcon iosName="keyboard" androidFallback="..." size={18} color={colors.textLight} />
+              <AppIcon iosName="keyboard" androidFallback="..." size={18} color="#FFFFFF" />
               <Text style={styles.manualBtnText}>Enter code manually</Text>
             </TouchableOpacity>
           )}
@@ -265,10 +268,12 @@ export default function JoinPatientScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   centered: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
@@ -276,7 +281,7 @@ const styles = StyleSheet.create({
   permText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   permCard: {
     alignItems: 'center',
@@ -286,7 +291,7 @@ const styles = StyleSheet.create({
   permTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 16,
     marginBottom: 8,
   },
@@ -294,10 +299,10 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
   },
-  manualContainer: { flex: 1, backgroundColor: colors.neutral },
+  manualContainer: { flex: 1, backgroundColor: themeColors.neutral },
   manualContent: {
     flex: 1,
     justifyContent: 'center',
@@ -315,14 +320,14 @@ const styles = StyleSheet.create({
   manualTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 8,
   },
   manualSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
   },
   altLink: { marginTop: 20, paddingVertical: 8 },
@@ -334,7 +339,7 @@ const styles = StyleSheet.create({
   cameraContainer: { flex: 1, backgroundColor: '#000' },
   overlaySection: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.55)'),
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingHorizontal: 24,
@@ -342,9 +347,9 @@ const styles = StyleSheet.create({
   },
   bottomSection: { justifyContent: 'flex-start', paddingTop: 24 },
   scanRow: { flexDirection: 'row', height: SCAN_AREA_SIZE },
-  overlayFill: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlayFill: { flex: 1, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.55)') },
   scanArea: { width: SCAN_AREA_SIZE, height: SCAN_AREA_SIZE },
-  corner: { position: 'absolute', width: 24, height: 24, borderColor: colors.textLight },
+  corner: { position: 'absolute', width: 24, height: 24, borderColor: (isDark ? '#17231D' : '#FFFFFF') },
   cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 8 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 8 },
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 8 },
@@ -352,21 +357,21 @@ const styles = StyleSheet.create({
   scanTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: colors.textLight,
+    color: (isDark ? '#17231D' : '#FFFFFF'),
     marginBottom: 6,
   },
   scanSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255,255,255,0.75)',
+    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.75)'),
     textAlign: 'center',
   },
   manualBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.18)'),
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 28,
@@ -374,7 +379,7 @@ const styles = StyleSheet.create({
   manualBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textLight,
+    color: (isDark ? '#17231D' : '#FFFFFF'),
   },
   errorCard: {
     flexDirection: 'row',
@@ -389,13 +394,13 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     flex: 1,
   },
   errorRetry: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.danger,
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     marginLeft: 12,
   },
   successContent: { alignItems: 'center', paddingHorizontal: 32 },
@@ -403,14 +408,14 @@ const styles = StyleSheet.create({
   successTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 10,
   },
   successSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
     lineHeight: 24,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
   },
   successPatientName: {
@@ -418,3 +423,5 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component
