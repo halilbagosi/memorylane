@@ -1,4 +1,6 @@
+import { colors, lightColors, darkColors } from '../theme/colors';
 import React, { useState, useRef, useCallback } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   TouchableWithoutFeedback,
   Animated,
@@ -18,6 +20,8 @@ const SIZE = 44;
 const INNER = SIZE - 4;
 
 export function CaregiverAvatarButton() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
   const [caregiver, setCaregiver] = useState<CaregiverInfo | null>(null);
   const scale = useRef(new Animated.Value(1)).current;
@@ -78,7 +82,9 @@ export function CaregiverAvatarButton() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   outer: {
     width: SIZE,
     height: SIZE,
@@ -92,11 +98,11 @@ const styles = StyleSheet.create({
     height: SIZE,
     borderRadius: SIZE / 2,
     borderWidth: isIOS ? 2 : 1.5,
-    borderColor: isIOS ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.08)',
+    borderColor: isIOS ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.45)') : (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1E4D30',
+    backgroundColor: (isDark ? '#9BE7B4' : '#1E4D30'),
   },
   image: {
     width: INNER,
@@ -113,7 +119,9 @@ const styles = StyleSheet.create({
   initials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: (isDark ? '#17231D' : '#FFFFFF'),
     letterSpacing: 0.5,
   },
 });
+};
+// Styles are provided per-render via `getStyles(isDark)` inside the component

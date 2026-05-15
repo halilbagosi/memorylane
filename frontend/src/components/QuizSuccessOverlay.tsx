@@ -1,4 +1,6 @@
+import { colors, lightColors, darkColors } from '../theme/colors';
 import React, { useEffect, useRef } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { typography } from '../theme/typography';
 import { AppIcon } from './AppIcon';
@@ -10,6 +12,8 @@ interface Props {
 }
 
 export function QuizSuccessOverlay({ visible, message = 'Well done.', onDismiss }: Props) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const opacity = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.96)).current;
   const onDismissRef = useRef(onDismiss);
@@ -80,7 +84,7 @@ export function QuizSuccessOverlay({ visible, message = 'Well done.', onDismiss 
     >
       <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
         <View style={styles.iconWrap}>
-          <AppIcon iosName="checkmark" androidFallback="check" size={20} color="#1E4D30" />
+          <AppIcon iosName="checkmark" androidFallback="check" size={20} color={themeColors.primary} />
         </View>
         <Text style={styles.message}>{message}</Text>
       </Animated.View>
@@ -88,45 +92,48 @@ export function QuizSuccessOverlay({ visible, message = 'Well done.', onDismiss 
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    zIndex: 999,
-    elevation: 999,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  card: {
-    minWidth: 190,
-    minHeight: 76,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.22)',
-    backgroundColor: '#FCFEF9',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 22,
-    paddingVertical: 16,
-    shadowColor: '#24442F',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 7,
-  },
-  iconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(30, 77, 48, 0.1)',
-  },
-  message: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
-    color: '#1E4D30',
-    textAlign: 'center',
-  },
-});
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+    overlay: {
+      zIndex: 999,
+      elevation: 999,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    card: {
+      minWidth: 190,
+      minHeight: 76,
+      borderRadius: 20,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: themeColors.glassBorder,
+      backgroundColor: themeColors.neutralLight,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      paddingHorizontal: 22,
+      paddingVertical: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: isDark ? 0.4 : 0.1,
+      shadowRadius: 18,
+      elevation: 7,
+    },
+    iconWrap: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(155, 231, 180, 0.12)' : 'rgba(30, 77, 48, 0.1)',
+    },
+    message: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 20,
+      color: isDark ? '#9BE7B4' : '#1E4D30',
+      textAlign: 'center',
+    },
+  });
+};

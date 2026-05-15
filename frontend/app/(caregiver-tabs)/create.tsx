@@ -1,4 +1,6 @@
+import { colors, lightColors, darkColors } from '../../src/theme/colors';
 import React, { useCallback, useMemo, useState } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   View,
   Text,
@@ -14,7 +16,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { getCaregiverInfo, getToken } from '../../src/utils/auth';
 import { API_BASE_URL } from '../../src/config/api';
@@ -61,6 +62,8 @@ const CARE_LEVEL_OPTIONS: { key: CareLevel; label: string; helper: string; icon:
 ];
 
 export default function CreateTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const [myId, setMyId] = useState('');
   const [patients, setPatients] = useState<PatientItem[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
@@ -314,14 +317,14 @@ export default function CreateTab() {
       {activeSection === 'builder' ? (
         <ScrollView
           contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} />}
           showsVerticalScrollIndicator={false}
         >
           {/* Patient Selector Card - Animated Dropdown */}
           <AdaptiveCard style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIconWrap}>
-                <AppIcon iosName="person.fill" androidFallback="P" size={16} color={colors.secondary} />
+                <AppIcon iosName="person.fill" androidFallback="P" size={16} color={themeColors.secondary} />
               </View>
               <Text style={styles.sectionTitle}>Patient</Text>
             </View>
@@ -361,7 +364,7 @@ export default function CreateTab() {
                     iosName={isPatientDropdownOpen ? 'chevron.up' : 'chevron.down'}
                     androidFallback={isPatientDropdownOpen ? '↑' : '↓'}
                     size={14}
-                    color={colors.textMuted}
+                    color={themeColors.textMuted}
                   />
                 </TouchableOpacity>
 
@@ -384,7 +387,7 @@ export default function CreateTab() {
                           {patient.name} {patient.surname}
                         </Text>
                         {selectedPatientId === patient.id && (
-                          <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={colors.secondary} />
+                          <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={themeColors.secondary} />
                         )}
                       </TouchableOpacity>
                     ))}
@@ -398,7 +401,7 @@ export default function CreateTab() {
           <AdaptiveCard style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIconWrap}>
-                <AppIcon iosName="person.crop.circle.badge.checkmark" androidFallback="C" size={16} color={colors.secondary} />
+                <AppIcon iosName="person.crop.circle.badge.checkmark" androidFallback="C" size={16} color={themeColors.secondary} />
               </View>
               <View style={styles.sectionHeaderText}>
                 <Text style={styles.sectionTitle}>Care Level</Text>
@@ -420,7 +423,7 @@ export default function CreateTab() {
                         iosName={option.icon as any}
                         androidFallback={option.label[0]}
                         size={16}
-                        color={active ? '#FFFFFF' : colors.secondary}
+                        color={active ? '#FFFFFF' : themeColors.secondary}
                       />
                     </View>
                     <View style={styles.modeTextWrap}>
@@ -437,7 +440,7 @@ export default function CreateTab() {
           <AdaptiveCard style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIconWrap}>
-                <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={colors.secondary} />
+                <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={themeColors.secondary} />
               </View>
               <View style={styles.sectionHeaderText}>
                 <Text style={styles.sectionTitle}>Quiz Modes</Text>
@@ -462,7 +465,7 @@ export default function CreateTab() {
                           iosName={mode.icon as any}
                           androidFallback={mode.label[0]}
                           size={16}
-                          color={active ? '#FFFFFF' : colors.secondary}
+                          color={active ? '#FFFFFF' : themeColors.secondary}
                         />
                       </View>
                       <View style={styles.modeTextWrap}>
@@ -471,7 +474,7 @@ export default function CreateTab() {
                       </View>
                     </View>
                     {active && (
-                      <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={20} color={colors.secondary} />
+                      <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={20} color={themeColors.secondary} />
                     )}
                   </TouchableOpacity>
                 );
@@ -483,7 +486,7 @@ export default function CreateTab() {
           <AdaptiveCard style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIconWrap}>
-                <AppIcon iosName="chart.bar.fill" androidFallback="D" size={16} color={colors.secondary} />
+                <AppIcon iosName="chart.bar.fill" androidFallback="D" size={16} color={themeColors.secondary} />
               </View>
               <View style={styles.sectionHeaderText}>
                 <Text style={styles.sectionTitle}>Manual Difficulty</Text>
@@ -512,7 +515,7 @@ export default function CreateTab() {
                       iosName={option.icon as any}
                       androidFallback={option.label[0]}
                       size={18}
-                      color={active && !aiAdaptiveEnabled ? '#FFFFFF' : colors.textMuted}
+                      color={active && !aiAdaptiveEnabled ? (isDark ? '#0B120E' : '#FFFFFF') : themeColors.textMuted}
                     />
                     <Text style={[styles.difficultyLabel, active && !aiAdaptiveEnabled && styles.difficultyLabelActive]}>
                       {option.label}
@@ -556,7 +559,7 @@ export default function CreateTab() {
                 onValueChange={handleAiAdaptiveToggle}
                 disabled={!canUseAiAdaptive}
                 trackColor={{ false: 'rgba(0,0,0,0.12)', true: 'rgba(45,79,62,0.4)' }}
-                thumbColor={canUseAiAdaptive && aiAdaptiveEnabled ? colors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
+                thumbColor={canUseAiAdaptive && aiAdaptiveEnabled ? themeColors.secondary : isIOS ? '#FFFFFF' : '#E0E0E0'}
                 ios_backgroundColor="rgba(0,0,0,0.12)"
               />
             </View>
@@ -606,8 +609,10 @@ export default function CreateTab() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
 
   header: {
     paddingHorizontal: 24,
@@ -621,12 +626,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   headerSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
 
@@ -638,9 +643,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 3,
     borderRadius: isIOS ? 14 : 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: themeColors.neutral,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
     gap: 4,
   },
   segmentTab: {
@@ -653,15 +658,15 @@ const styles = StyleSheet.create({
     borderRadius: isIOS ? 11 : 14,
   },
   segmentTabActive: {
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
   },
   segmentText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   segmentTextActive: {
-    color: '#FFFFFF',
+    color: (isDark ? '#17231D' : '#FFFFFF'),
   },
 
   content: {
@@ -690,32 +695,32 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
-    color: colors.textDark,
+    color: themeColors.textDark,
     fontSize: 16,
   },
   helperText: {
     fontFamily: typography.fontFamily.regular,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     fontSize: 13,
     lineHeight: 19,
   },
   helperTextInline: {
     fontFamily: typography.fontFamily.regular,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     fontSize: 12,
   },
 
   dropdownContainer: {
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
     overflow: 'hidden',
   },
   patientSelector: {
@@ -727,7 +732,7 @@ const styles = StyleSheet.create({
   },
   patientSelectorOpen: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
   },
   patientSelectorLeft: {
     flexDirection: 'row',
@@ -739,28 +744,28 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.12)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   patientInitialText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   patientSelectorName: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   patientSelectorRole: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 1,
   },
   dropdownList: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.3)'),
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -768,27 +773,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.04)',
+    borderTopColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)'),
     gap: 12,
   },
   patientInitialCircleSmall: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.05)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   patientInitialTextSmall: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   dropdownItemText: {
     flex: 1,
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
 
   modeList: {
@@ -800,13 +805,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
     padding: 12,
   },
   modeCardActive: {
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderColor: (isDark ? themeColors.primary : 'rgba(45,79,62,0.3)'),
+    backgroundColor: (isDark ? themeColors.accentSelected : 'rgba(45,79,62,0.08)'),
   },
   modeLeft: {
     flexDirection: 'row',
@@ -818,12 +823,12 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   modeIconWrapActive: {
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
   },
   modeTextWrap: {
     flex: 1,
@@ -831,16 +836,16 @@ const styles = StyleSheet.create({
   modeTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   modeTitleActive: {
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   modeSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   careLevelList: {
@@ -852,13 +857,13 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
     padding: 12,
   },
   careLevelCardActive: {
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderColor: (isDark ? themeColors.primary : 'rgba(45,79,62,0.3)'),
+    backgroundColor: (isDark ? themeColors.accentSelected : 'rgba(45,79,62,0.08)'),
   },
 
   difficultyRow: {
@@ -872,29 +877,29 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
   },
   difficultyPillActive: {
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: colors.secondary,
+    borderColor: (isDark ? themeColors.primary : 'rgba(45,79,62,0.3)'),
+    backgroundColor: themeColors.primary,
   },
   difficultyPillDisabled: {
     opacity: 0.58,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.45)'),
   },
   difficultyLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   difficultyLabelActive: {
-    color: '#FFFFFF',
+    color: (isDark ? '#0B120E' : '#FFFFFF'),
   },
   difficultyHelper: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -905,7 +910,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   premiumLockedCard: {
-    borderColor: 'rgba(212,168,67,0.28)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(212,168,67,0.28)'),
   },
   premiumLeft: {
     flexDirection: 'row',
@@ -915,7 +920,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   premiumIconWrap: {
-    backgroundColor: 'rgba(212,168,67,0.12)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(212,168,67,0.12)'),
   },
   premiumTextWrap: {
     flex: 1,
@@ -929,12 +934,12 @@ const styles = StyleSheet.create({
   premiumTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   premiumSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   upgradeButton: {
@@ -946,9 +951,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(212,168,67,0.16)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(212,168,67,0.16)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(123,90,0,0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(123,90,0,0.18)'),
   },
   upgradeButtonText: {
     fontFamily: typography.fontFamily.bold,
@@ -963,6 +968,8 @@ const styles = StyleSheet.create({
 
   libraryContainer: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

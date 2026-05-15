@@ -1,4 +1,5 @@
 import React, { ReactNode, useEffect, useRef } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   View,
   Modal,
@@ -11,7 +12,7 @@ import {
   BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 
 interface M3BottomSheetProps {
   visible: boolean;
@@ -24,6 +25,8 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
   const insets = useSafeAreaInsets();
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslate = useRef(new Animated.Value(600)).current;
+  const { isDark, colors } = useTheme();
+  const styles = getStyles(isDark);
 
   useEffect(() => {
     if (visible) {
@@ -74,7 +77,7 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
         presentationStyle="formSheet"
         onRequestClose={onClose}
       >
-        <View style={[styles.iosSheet, { backgroundColor: colors.neutral }]}>
+        <View style={[styles.iosSheet, { backgroundColor: isDark ? '#0E1712' : colors.neutral }]}>
           <View style={styles.handle} />
           {children}
         </View>
@@ -118,20 +121,22 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   fill: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.32)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.32)'),
   },
   iosSheet: {
     flex: 1,
   },
   androidSheet: {
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     maxHeight: '85%',
@@ -141,9 +146,11 @@ const styles = StyleSheet.create({
     width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.2)'),
     alignSelf: 'center',
     marginTop: 12,
     marginBottom: 8,
   },
 });
+};
+// Styles are computed per-render via `getStyles(isDark)` inside the component
