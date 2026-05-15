@@ -29,8 +29,8 @@ export const darkColors = {
   textMuted: '#AEBDAF', // Muted sage
 
   // Card backgrounds based on screenshots
-  patientCardBg: Platform.OS === 'ios' ? 'rgba(91, 69, 42, 0.72)' : '#2B2419', // Dark Amber/Brown
-  patientCardBgSecondary: Platform.OS === 'ios' ? 'rgba(123, 115, 192, 0.06)' : '#532287', // Darker muted purple for secondary patient cards
+  patientCardBg: Platform.OS === 'ios' ? 'rgba(91, 69, 42, 0.72)' : 'rgba(91, 69, 42, 0.72)', // Dark Amber/Brown
+  patientCardBgSecondary: Platform.OS === 'ios' ? 'rgba(123, 115, 192, 0.06)' : '#2a2330d2', // Darker muted purple for secondary patient cards
   caregiverCardBg: Platform.OS === 'ios' ? 'rgba(27, 79, 57, 0.68)' : '#183426', // Dark Emerald
   glassCardBg: Platform.OS === 'ios' ? 'rgba(235, 247, 239, 0.04)' : '#121B15',
   glassBorder: 'rgba(235, 247, 239, 0.08)',
