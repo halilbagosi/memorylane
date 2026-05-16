@@ -774,6 +774,7 @@ function PatientDetailContent({
 }) {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
+  const router = useRouter();
   const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library' | 'reminders'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
   const [editName, setEditName] = React.useState('');
@@ -1345,6 +1346,22 @@ function PatientDetailContent({
             <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={themeColors.textMuted} />
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          style={styles.actionRow}
+          onPress={() => {
+            onClose();
+            setTimeout(() => {
+              router.push({ pathname: '/patient-goals', params: { patientId: patient.id, patientName: `${patient.name} ${patient.surname}` } });
+            }, 350);
+          }}
+        >
+          <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(76,175,80,0.12)' }]}>
+            <AppIcon iosName="flag.fill" androidFallback="🎯" size={18} color="#4CAF50" />
+          </View>
+          <Text style={styles.actionRowLabel}>Stats & Goals</Text>
+          <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={themeColors.textMuted} />
+        </TouchableOpacity>
 
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => { onClose(); onDelete(patient); }}>

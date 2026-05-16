@@ -1,10 +1,11 @@
-import { Controller, Post, Get, Delete, Patch, Body, UseGuards, Req, Param } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Put, Body, UseGuards, Req, Param } from '@nestjs/common';
 import { PatientService } from './patient.service';
 import { DashboardService } from './dashboard/dashboard.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { JoinPatientDto } from './dto/join-patient.dto';
 import { SetQuizRemindersDto } from './dto/set-quiz-reminders.dto';
+import { UpsertGoalDto } from './dto/upsert-goal.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ManagementService } from './management/management.service';
 
@@ -153,9 +154,42 @@ export class PatientController {
     return this.patientService.removeCaregiver(patientId, req.user.userId, caregiverId);
   }
 
+  // ── Stats & Goals ──────────────────────────────────────────────────
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/stats')
+  async getPatientStats(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.getPatientStats(patientId, req.user.userId);
+  }
+
+  @Get(':id/patient-stats')
+  async getPublicPatientStats(@Param('id') patientId: string) {
+    // Allows the patient app (which doesn't have a JWT token) to fetch their own progress
+    return this.patientService.getPatientStats(patientId, null);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/goal')
+  async getGoal(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.getGoal(patientId, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put(':id/goal')
+  async upsertGoal(@Param('id') patientId: string, @Body() body: UpsertGoalDto, @Req() req: any) {
+    return this.patientService.upsertGoal(patientId, req.user.userId, body.targetAccuracy);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id/goal')
+  async deleteGoal(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.deleteGoal(patientId, req.user.userId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
   async remove(@Param('id') patientId: string, @Req() req: any) {
     return this.managementService.deletePatient(patientId, req.user.userId);
   }
 }
+

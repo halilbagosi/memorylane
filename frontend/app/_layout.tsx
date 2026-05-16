@@ -102,6 +102,7 @@ function RootLayoutContent() {
             }}
           />
           <Stack.Screen name="patient-media" options={{ title: 'Memories', headerShown: true, gestureEnabled: true, ...(isIOS ? { fullScreenGestureEnabled: true } : {}) }} />
+          <Stack.Screen name="patient-goals" options={{ title: 'Stats & Goals', headerShown: true, gestureEnabled: true, ...(isIOS ? { fullScreenGestureEnabled: true } : {}) }} />
         </Stack>
       </PaperProvider>
     </SafeAreaProvider>

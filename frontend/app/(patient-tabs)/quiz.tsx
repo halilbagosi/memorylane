@@ -33,6 +33,7 @@ import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/
 import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
 import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
 import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import {
@@ -135,6 +136,7 @@ export default function QuizTab() {
   const { width, height } = useWindowDimensions();
 
   const [patient, setPatient] = useState<PatientInfo | null>(null);
+  const [stats, setStats] = useState<any>(null);
   const [memories, setMemories] = useState<TimelineItem[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,6 +162,12 @@ export default function QuizTab() {
       ]);
       setMemories(timelineData);
       setNotes(notesData);
+
+      // Fetch patient stats for goal progress display
+      const statsRes = await fetch(`${API_BASE_URL}/patients/${info.id}/stats`);
+      if (statsRes.ok) {
+        setStats(await statsRes.json());
+      }
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -612,7 +620,12 @@ export default function QuizTab() {
       const p = patientRef.current;
       const attempts = attemptResultsRef.current;
       if (p && attempts.length > 0) {
-        submitQuizResults(p.id, attempts).catch(() => undefined);
+        submitQuizResults(p.id, attempts).then(() => {
+          fetch(`${API_BASE_URL}/patients/${p.id}/patient-stats`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if (data) setStats(data); })
+            .catch(() => undefined);
+        }).catch(() => undefined);
       }
       setPhase({ type: 'summary' });
     } else {
@@ -704,7 +717,8 @@ export default function QuizTab() {
     try {
       if (selectedMedia) {
         // Upload Media
-        const fileInfo = await FileSystem.getInfoAsync(selectedMedia.uri);
+        const file = new File(selectedMedia.uri);
+        const fileInfo = { exists: file.exists, size: file.size };
         if (!fileInfo.exists) throw new Error('File not found');
 
         await uploadMediaByPatient({
@@ -979,6 +993,29 @@ export default function QuizTab() {
           <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
             <Text style={styles.startButtonText}>Start</Text>
           </TouchableOpacity>
+
+          {stats && stats.goal && (
+            <View style={[styles.patientGoalCard, { marginTop: 48 }]}>
+              <View style={styles.patientGoalHeader}>
+                <Text style={styles.patientGoalTitle}>Your Goal</Text>
+                <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+              </View>
+              <View style={styles.patientGoalTrack}>
+                <View 
+                  style={[
+                    styles.patientGoalFill, 
+                    { width: `${Math.min(100, (stats.currentAccuracy / stats.goal.targetAccuracy) * 100)}%` }
+                  ]} 
+                />
+                <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]} />
+              </View>
+              <Text style={styles.patientGoalSubtext}>
+                {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                  ? '🎉 You reached your goal!' 
+                  : `${stats.goal.targetAccuracy}% accuracy target`}
+              </Text>
+            </View>
+          )}
         </View>
 
         {renderSwipeUpHint()}
@@ -1157,6 +1194,29 @@ export default function QuizTab() {
               Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
             </Text>
           </View>
+
+          {stats && stats.goal && (
+            <View style={[styles.patientGoalCard, { marginBottom: 24, marginTop: 0 }]}>
+              <View style={styles.patientGoalHeader}>
+                <Text style={styles.patientGoalTitle}>Your Goal</Text>
+                <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+              </View>
+              <View style={styles.patientGoalTrack}>
+                <View 
+                  style={[
+                    styles.patientGoalFill, 
+                    { width: `${Math.min(100, (stats.currentAccuracy / stats.goal.targetAccuracy) * 100)}%` }
+                  ]} 
+                />
+                <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]} />
+              </View>
+              <Text style={styles.patientGoalSubtext}>
+                {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                  ? '🎉 You reached your goal!' 
+                  : `${stats.goal.targetAccuracy}% accuracy target`}
+              </Text>
+            </View>
+          )}
 
           <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
             <Text style={styles.photosButtonText}>Go to my photos</Text>
@@ -1879,6 +1939,7 @@ const getStyles = (isDark: boolean) => {
     color: themeColors.textMuted,
   },
   feedImage: {
+
     width: '100%',
     height: 72,
     borderRadius: 8,
@@ -1900,8 +1961,60 @@ const getStyles = (isDark: boolean) => {
   },
   mediaIndicatorText: {
     fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.textDark,
+    fontSize: 13,
+    color: themeColors.primary,
+  },
+  patientGoalCard: {
+    width: '100%',
+    backgroundColor: (isDark ? 'rgba(76,175,80,0.08)' : 'rgba(76,175,80,0.05)'),
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.15)'),
+  },
+  patientGoalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  patientGoalTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.primary,
+  },
+  patientGoalPercent: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: '#4CAF50',
+  },
+  patientGoalTrack: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(0,0,0,0.06)'),
+    overflow: 'visible',
+    position: 'relative',
+  },
+  patientGoalFill: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4CAF50',
+  },
+  patientGoalMarker: {
+    position: 'absolute',
+    width: 2,
+    height: 24,
+    backgroundColor: isDark ? '#F5FBF7' : '#1A1A1A',
+    top: -6,
+    transform: [{ translateX: -1 }],
+    borderRadius: 1,
+  },
+  patientGoalSubtext: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textMuted,
+    marginTop: 18,
+    textAlign: 'center',
   },
 });
 };

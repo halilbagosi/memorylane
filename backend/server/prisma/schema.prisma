@@ -42,6 +42,7 @@ model Caregiver {
   sentRoleRequests      RoleRequest[]          @relation("SentRoleRequests")
   receivedRoleRequests  RoleRequest[]          @relation("ReceivedRoleRequests")
   notifications         Notification[]
+  caregiverGoals        CaregiverGoal[]
 
   @@map("caregivers")
 }
@@ -169,6 +170,7 @@ model Patient {
   analyticsSnapshots  AnalyticsSnapshot[]
   delegationRequests  DelegationRequest[]
   roleRequests        RoleRequest[]
+  caregiverGoals      CaregiverGoal[]
 
   @@map("patients")
 }
@@ -353,4 +355,19 @@ model AnalyticsSnapshot {
   patient            Patient  @relation(fields: [patientId], references: [id])
 
   @@map("analytics_snapshots")
+}
+
+model CaregiverGoal {
+  id               String   @id @default(uuid())
+  caregiverId      String   @map("caregiver_id")
+  patientId        String   @map("patient_id")
+  targetAccuracy   Float    @map("target_accuracy")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  caregiver        Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  patient          Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([caregiverId, patientId])
+  @@map("caregiver_goals")
 }

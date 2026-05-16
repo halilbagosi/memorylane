@@ -577,7 +577,7 @@ const getStyles = (isDark: boolean) => {
   },
   overlaySection: {
     flex: 1,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.55)'),
+    backgroundColor: (isDark ? 'rgba(14, 23, 18, 0.75)' : 'rgba(0,0,0,0.55)'),
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingHorizontal: 24,
@@ -593,7 +593,7 @@ const getStyles = (isDark: boolean) => {
   },
   overlayFill: {
     flex: 1,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.55)'),
+    backgroundColor: (isDark ? 'rgba(14, 23, 18, 0.75)' : 'rgba(0,0,0,0.55)'),
   },
   scanArea: {
     width: SCAN_AREA_SIZE,
@@ -604,7 +604,7 @@ const getStyles = (isDark: boolean) => {
     position: 'absolute',
     width: 24,
     height: 24,
-    borderColor: (isDark ? '#17231D' : '#FFFFFF'),
+    borderColor: '#FFFFFF',
   },
   cornerTL: {
     top: 0,
@@ -638,14 +638,14 @@ const getStyles = (isDark: boolean) => {
   scanTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: (isDark ? '#17231D' : '#FFFFFF'),
+    color: '#FFFFFF',
     marginBottom: 6,
   },
   scanSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.75)'),
+    color: 'rgba(255, 255, 255, 0.85)',
     textAlign: 'center',
   },
 
@@ -653,7 +653,7 @@ const getStyles = (isDark: boolean) => {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.18)'),
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 28,
@@ -661,7 +661,7 @@ const getStyles = (isDark: boolean) => {
   manualBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: (isDark ? '#17231D' : '#FFFFFF'),
+    color: '#FFFFFF',
   },
 
   errorCard: {

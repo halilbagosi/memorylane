@@ -711,6 +711,16 @@ export default function AccountScreen() {
                 </Text>
               </View>
             </View>
+            
+            {!profile?.isSubscribed && (
+              <View style={styles.premiumUpsellContainer}>
+                <Text style={styles.premiumUpsellTitle}>⭐ Upgrade to Premium to unlock:</Text>
+                <Text style={styles.premiumUpsellDesc}>
+                  Unlimited patients, caregivers, video/audio uploads, and AI-powered features.
+                </Text>
+              </View>
+            )}
+
             <View style={styles.subscriptionToggleRow}>
               <Text style={styles.subscriptionToggleLabel}>
                 {profile?.isSubscribed ? 'Active' : 'Upgrade'}
@@ -1338,7 +1348,25 @@ const getStyles = (isDark: boolean) => {
     fontSize: 13,
     color: themeColors.textMuted,
   },
-
+  premiumUpsellContainer: {
+    marginTop: -4,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.03)' : 'rgba(0,0,0,0.02)'),
+    borderRadius: 8,
+  },
+  premiumUpsellTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.textDark,
+    marginBottom: 4,
+  },
+  premiumUpsellDesc: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: themeColors.textMuted,
+    lineHeight: 18,
+  },
 });
 };
 // styles are computed at render time via `useTheme()` inside the component

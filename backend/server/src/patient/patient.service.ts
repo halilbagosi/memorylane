@@ -923,4 +923,117 @@ export class PatientService {
       successRate: patient.successRate,
     };
   }
+
+  // ── Goals ──────────────────────────────────────────────────────────
+
+  async upsertGoal(patientId: string, caregiverId: string, targetAccuracy: number) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    const goal = await this.prisma.caregiverGoal.upsert({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+      update: { targetAccuracy },
+      create: { caregiverId, patientId, targetAccuracy },
+    });
+
+    return { id: goal.id, targetAccuracy: goal.targetAccuracy };
+  }
+
+  async getGoal(patientId: string, caregiverId: string) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    const goal = await this.prisma.caregiverGoal.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+
+    return goal ? { id: goal.id, targetAccuracy: goal.targetAccuracy } : { id: null, targetAccuracy: null };
+  }
+
+  async deleteGoal(patientId: string, caregiverId: string) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    await this.prisma.caregiverGoal.deleteMany({
+      where: { caregiverId, patientId },
+    });
+
+    return { message: 'Goal removed' };
+  }
+
+  async getPatientStats(patientId: string, caregiverId: string | null) {
+    if (caregiverId) {
+      const link = await this.prisma.patientCaregiver.findUnique({
+        where: { caregiverId_patientId: { caregiverId, patientId } },
+      });
+      if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, name: true, surname: true, successRate: true, patientCaregivers: { where: { isPrimary: true }, select: { caregiverId: true } } },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    // Compute overall accuracy from all quiz attempts
+    const allAttempts = await this.prisma.quizAttempt.findMany({
+      where: { session: { patientId } },
+      select: { firstTapCorrect: true, timeToCorrectMs: true },
+    });
+
+    const totalAttempts = allAttempts.length;
+    const totalCorrect = allAttempts.filter((a) => a.firstTapCorrect).length;
+    const currentAccuracy = totalAttempts > 0
+      ? Math.round((totalCorrect / totalAttempts) * 100)
+      : 0;
+    const averageTimeMs = totalAttempts > 0
+      ? Math.round(allAttempts.reduce((sum, a) => sum + a.timeToCorrectMs, 0) / totalAttempts)
+      : 0;
+
+    // Get the last 7 analytics snapshots for the trend mini-chart
+    const recentSnapshots = await this.prisma.analyticsSnapshot.findMany({
+      where: { patientId },
+      orderBy: { date: 'desc' },
+      take: 7,
+      select: {
+        date: true,
+        accuracyPercentage: true,
+        totalAttempts: true,
+        totalCorrect: true,
+      },
+    });
+
+    // Get goal
+    const targetCaregiverId = caregiverId || patient.patientCaregivers[0]?.caregiverId;
+    let goal = null;
+    if (targetCaregiverId) {
+      goal = await this.prisma.caregiverGoal.findUnique({
+        where: { caregiverId_patientId: { caregiverId: targetCaregiverId, patientId } },
+      });
+    }
+
+    const { name, surname } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+
+    return {
+      patientId,
+      patientName: `${name} ${surname}`,
+      currentAccuracy,
+      totalAttempts,
+      totalCorrect,
+      averageTimeMs,
+      goal: goal ? { id: goal.id, targetAccuracy: goal.targetAccuracy } : null,
+      recentSnapshots: recentSnapshots.reverse().map((s) => ({
+        date: s.date.toISOString().split('T')[0],
+        accuracy: Math.round(s.accuracyPercentage),
+        attempts: s.totalAttempts,
+        correct: s.totalCorrect,
+      })),
+    };
+  }
 }
