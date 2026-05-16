@@ -11,6 +11,7 @@ export type CareLevelValue = 'PREVENTATIVE' | 'DEMENTIA';
 export interface QuizSettings {
   quizModes: string[];
   quizDifficulty: string;
+  predictedDifficulty: QuizDifficulty;
   careLevel: CareLevelValue;
   aiAdaptiveEnabled: boolean;
   successRate: number;
@@ -365,10 +366,11 @@ export class PatientService {
         careLevel: true,
         aiAdaptiveEnabled: true,
         successRate: true,
+        aiDifficultyModel: true,
       },
     });
     if (!patient) throw new NotFoundException('Patient not found');
-    return patient;
+    return this.withPredictedDifficulty(patientId, patient);
   }
 
   async updateQuizModes(
@@ -416,9 +418,10 @@ export class PatientService {
         careLevel: true,
         aiAdaptiveEnabled: true,
         successRate: true,
+        aiDifficultyModel: true,
       },
     });
-    return patient;
+    return this.withPredictedDifficulty(patientId, patient);
   }
 
   async recordQuizResults(patientId: string, attempts: QuizResultAttemptInput[]) {
@@ -877,6 +880,47 @@ export class PatientService {
         name: patient.creator.name,
         surname: patient.creator.surname,
       },
+    };
+  }
+
+  private async withPredictedDifficulty(
+    patientId: string,
+    patient: {
+      quizModes: string[];
+      quizDifficulty: string;
+      careLevel: CareLevelValue;
+      aiAdaptiveEnabled: boolean;
+      successRate: number;
+      aiDifficultyModel?: unknown;
+    },
+  ): Promise<QuizSettings> {
+    const attempts = await this.prisma.quizAttempt.findMany({
+      where: { session: { patientId } },
+      orderBy: { attemptedAt: 'desc' },
+      take: 10,
+      select: { timeToCorrectMs: true },
+    });
+    const averageTimeMs = attempts.length > 0
+      ? attempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / attempts.length
+      : 8000;
+    const latestTimeMs = attempts[0]?.timeToCorrectMs ?? averageTimeMs;
+    const inputs = {
+      accuracy: patient.successRate,
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, averageTimeMs),
+      timeOfDay: this.aiDifficulty.timeOfDayScore(),
+      currentDifficulty: this.aiDifficulty.difficultyToComplexity(patient.quizDifficulty),
+    };
+    const prediction = patient.aiAdaptiveEnabled
+      ? this.aiDifficulty.predict(inputs, patient.aiDifficultyModel)
+      : this.aiDifficulty.ruleBased(inputs);
+
+    return {
+      quizModes: patient.quizModes,
+      quizDifficulty: patient.quizDifficulty,
+      predictedDifficulty: patient.aiAdaptiveEnabled ? prediction.difficulty : (patient.quizDifficulty as QuizDifficulty),
+      careLevel: patient.careLevel,
+      aiAdaptiveEnabled: patient.aiAdaptiveEnabled,
+      successRate: patient.successRate,
     };
   }
 }

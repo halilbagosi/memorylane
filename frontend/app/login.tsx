@@ -334,14 +334,14 @@ export default function LoginScreen() {
             <View style={styles.topSpacer} />
 
             <View style={styles.welcomeBackIconWrap}>
-              <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color={styles.successColor.color} />
+              <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color={themeColors.primary} />
             </View>
 
             <Text style={styles.restoreHeadline}>Welcome back,{'\n'}{restored.firstName}</Text>
 
             <Text style={styles.restoreSubheadline}>
               Your account has been restored. Since you finalized your handover, you are now a{' '}
-              <Text style={{ fontFamily: typography.fontFamily.bold, color: styles.themeColors.textDark }}>
+              <Text style={{ fontFamily: typography.fontFamily.bold, color: themeColors.textDark }}>
                 Secondary Caregiver
               </Text>
               {' '}for the following patients:
@@ -438,6 +438,7 @@ export default function LoginScreen() {
 
           <AdaptiveInput
             label="Email Address"
+            value={email}
             onChangeText={setEmail}
             placeholder="example@email.com"
             keyboardType="email-address"
@@ -446,6 +447,7 @@ export default function LoginScreen() {
 
           <AdaptiveInput
             label="Password"
+            value={password}
             onChangeText={setPassword}
             placeholder="Enter your password"
             secureTextEntry={!showPassword}
@@ -515,13 +517,9 @@ export default function LoginScreen() {
 
           <View style={styles.linkRow}>
             <Text style={styles.linkText}>Don't have an account? </Text>
-            <AdaptiveButton
-              title="Sign Up"
-              variant="ghost"
-              onPress={() => router.push('/signup')}
-              style={styles.linkButton}
-              textStyle={styles.linkBoldText}
-            />
+            <TouchableOpacity onPress={() => router.push('/signup')} style={styles.linkButton} activeOpacity={0.7}>
+              <Text style={styles.linkBoldText}>Sign Up</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.bottomSpacer} />
@@ -547,10 +545,14 @@ const getStyles = (isDark: boolean) => {
   scrollContent: {
     paddingHorizontal: 24,
     flexGrow: 1,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
 
-  topSpacer: { height: SCREEN_HEIGHT * 0.12 },
-  bottomSpacer: { height: SCREEN_HEIGHT * 0.06 },
+  topSpacer: { height: SCREEN_HEIGHT * 0.04 },
+  bottomSpacer: { height: SCREEN_HEIGHT * 0.04 },
 
   headline: {
     fontFamily: typography.fontFamily.bold,
@@ -580,7 +582,10 @@ const getStyles = (isDark: boolean) => {
     marginTop: 20,
   },
   linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textMuted },
-  linkButton: { paddingHorizontal: 0, paddingVertical: 0 },
+  linkButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
   linkBoldText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
@@ -706,3 +711,4 @@ const getStyles = (isDark: boolean) => {
 });
 };
 // styles are computed at render time via `useTheme()` inside the component
+

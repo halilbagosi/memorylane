@@ -293,6 +293,7 @@ const MemoryTile = memo(function MemoryTile({
   onPress: (item: TimelineItem) => void;
 }) {
   const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const isPhoto = item.kind === 'PHOTO';
   const isVideo = item.kind === 'VIDEO';
   const [imageLoading, setImageLoading] = useState(true);
@@ -348,6 +349,7 @@ function MemoryPreviewModal({
 }) {
   const [imageLoading, setImageLoading] = useState(false);
   const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
 
   useEffect(() => {
     if (item) setImageLoading(true);

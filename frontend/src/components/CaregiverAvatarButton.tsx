@@ -25,6 +25,7 @@ export function CaregiverAvatarButton() {
   const router = useRouter();
   const [caregiver, setCaregiver] = useState<CaregiverInfo | null>(null);
   const scale = useRef(new Animated.Value(1)).current;
+  const navigatingRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -52,13 +53,28 @@ export function CaregiverAvatarButton() {
     }).start();
   };
 
+  const openAccount = () => {
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
+    router.push('/account');
+    setTimeout(() => {
+      navigatingRef.current = false;
+    }, 450);
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 7,
+      tension: 170,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const initials = caregiver
     ? `${caregiver.name?.[0] ?? ''}${caregiver.surname?.[0] ?? ''}`.toUpperCase()
     : '?';
 
   return (
     <TouchableWithoutFeedback
-      onPress={() => router.push('/account')}
+      onPress={openAccount}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
     >

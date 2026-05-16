@@ -70,16 +70,37 @@ function RootLayoutContent() {
         >
           <Stack.Screen name="index" options={{ title: '', headerShown: false }} />
           <Stack.Screen name="signup" options={{ title: '', gestureEnabled: true }} />
-          <Stack.Screen name="login" options={{ title: '', gestureEnabled: true }} />
+          <Stack.Screen
+            name="login"
+            options={{
+              title: '',
+              gestureEnabled: true,
+              animation: isAndroid ? 'slide_from_right' : undefined,
+            }}
+          />
           <Stack.Screen name="forgot-password" options={{ title: '', gestureEnabled: true }} />
           <Stack.Screen name="reset-password" options={{ title: '', gestureEnabled: true }} />
           <Stack.Screen name="dashboard" options={{ title: '', headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="add-patient" options={{ title: '', headerBackTitle: '', gestureEnabled: true }} />
-          <Stack.Screen name="join-space" options={{ title: 'Start Your Journey', headerShown: true, gestureEnabled: true }} />
+          <Stack.Screen
+            name="join-space"
+            options={{
+              title: 'Start Your Journey',
+              headerShown: true,
+              gestureEnabled: true,
+            }}
+          />
           <Stack.Screen name="join-patient" options={{ title: 'Link to Patient', headerShown: true, gestureEnabled: true }} />
           <Stack.Screen name="(patient-tabs)" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="(caregiver-tabs)" options={{ headerShown: false, title: '', gestureEnabled: false }} />
-          <Stack.Screen name="account" options={{ title: 'Account', gestureEnabled: true }} />
+          <Stack.Screen
+            name="account"
+            options={{
+              title: 'Account',
+              gestureEnabled: true,
+              animation: isAndroid ? 'slide_from_right' : undefined,
+            }}
+          />
           <Stack.Screen name="patient-media" options={{ title: 'Memories', headerShown: true, gestureEnabled: true, ...(isIOS ? { fullScreenGestureEnabled: true } : {}) }} />
         </Stack>
       </PaperProvider>

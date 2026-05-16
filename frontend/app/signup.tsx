@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTheme } from '../src/theme/ThemeProvider';
 import {
-  View, Text, StyleSheet, Platform, Switch,
+  View, Text, StyleSheet, Platform, Switch, KeyboardAvoidingView,
   ScrollView, TouchableOpacity, Image, Linking,
 } from 'react-native';
 import * as Device from 'expo-device';
@@ -193,6 +193,7 @@ export default function SignupScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <KeyboardAvoidingView behavior={isIOS ? 'padding' : 'height'} style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -320,15 +321,12 @@ export default function SignupScreen() {
 
           <View style={styles.linkRow}>
             <Text style={styles.linkText}>Already have an account? </Text>
-            <AdaptiveButton
-              title="Log In"
-              variant="ghost"
-              onPress={() => router.push('/login')}
-              style={styles.linkButton}
-              textStyle={styles.linkBoldText}
-            />
+            <TouchableOpacity onPress={() => router.push('/login')} style={styles.linkButton} activeOpacity={0.7}>
+              <Text style={styles.linkBoldText}>Log In</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
+      </KeyboardAvoidingView>
 
       <M3Dialog
         visible={dialog.visible}
@@ -346,7 +344,15 @@ const getStyles = (isDark: boolean) => {
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   container: { flex: 1 },
-  scrollContent: { padding: 24, paddingBottom: 40 },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 96,
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+  },
 
   headline: {
     fontFamily: typography.fontFamily.bold,
@@ -441,7 +447,10 @@ const getStyles = (isDark: boolean) => {
     marginTop: 20,
   },
   linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textMuted },
-  linkButton: { paddingHorizontal: 0, paddingVertical: 0 },
+  linkButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
   linkBoldText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,

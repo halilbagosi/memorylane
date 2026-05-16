@@ -56,6 +56,15 @@ export default function AccountScreen() {
   const [token, setToken] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const goToCaregiverPatients = () => {
+    setDeletionModalVisible(false);
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    router.replace('/(caregiver-tabs)/patients');
+  };
   const [profile, setProfile] = useState<CaregiverInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1062,7 +1071,7 @@ export default function AccountScreen() {
           setDeletionModalVisible(false);
           if (token) await loadProfile(token);
         }}
-        onNavigateToCareTeams={() => router.push('/(caregiver-tabs)/patients')}
+        onNavigateToCareTeams={goToCaregiverPatients}
       />
     </View>
   );

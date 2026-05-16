@@ -248,6 +248,7 @@ export interface PatientQuizData {
 export interface QuizSettings {
   quizModes: QuizMode[];
   quizDifficulty: QuizDifficulty;
+  predictedDifficulty: QuizDifficulty;
   careLevel: CareLevel;
   aiAdaptiveEnabled: boolean;
   successRate: number;
@@ -309,6 +310,7 @@ export async function getQuizSettings(patientId: string): Promise<QuizSettings> 
   return {
     quizModes: data.quizModes,
     quizDifficulty: data.quizDifficulty ?? 'MEDIUM',
+    predictedDifficulty: data.predictedDifficulty ?? data.quizDifficulty ?? 'MEDIUM',
     careLevel: data.careLevel ?? 'DEMENTIA',
     aiAdaptiveEnabled: data.aiAdaptiveEnabled === true,
     successRate: Number(data.successRate ?? 0),
@@ -335,6 +337,7 @@ export async function updateQuizModes(
   return {
     quizModes: data.quizModes,
     quizDifficulty: data.quizDifficulty ?? 'MEDIUM',
+    predictedDifficulty: data.predictedDifficulty ?? data.quizDifficulty ?? 'MEDIUM',
     careLevel: data.careLevel ?? 'DEMENTIA',
     aiAdaptiveEnabled: data.aiAdaptiveEnabled === true,
     successRate: Number(data.successRate ?? 0),

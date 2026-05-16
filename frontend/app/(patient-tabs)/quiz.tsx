@@ -51,6 +51,7 @@ import {
   buildQuizSet,
   buildQuizSetFromIds,
   QuizQuestion,
+  shouldMixQuestionTypes,
   uniqueIdentityCount,
 } from '../../src/services/quiz';
 
@@ -355,7 +356,14 @@ export default function QuizTab() {
       const saved = await readSavedSession(p.id);
       if (saved && (saved.mode === 'MIXED' || quizModes.includes(saved.mode))) {
         const restoredQuestions = saved.mode === 'MIXED'
-          ? buildAdaptiveQuizSetFromIds(pool, quizModes, nextCareLevel ?? 'DEMENTIA', saved.questionIds, difficulty ?? 'MEDIUM')
+          ? buildAdaptiveQuizSetFromIds(
+            pool,
+            quizModes,
+            nextCareLevel ?? 'DEMENTIA',
+            saved.questionIds,
+            difficulty ?? 'MEDIUM',
+            nextAiAdaptiveEnabled === true,
+          )
           : buildQuizSetFromIds(pool, saved.mode, saved.questionIds, difficulty ?? 'MEDIUM');
         const currentIndex = Math.max(0, saved.currentIndex);
         if (restoredQuestions.length > currentIndex) {
@@ -401,14 +409,14 @@ export default function QuizTab() {
 
   const startAdaptiveSet = useCallback(() => {
     console.log(`[Quiz] Starting adaptive set. CareLevel: ${careLevel}, Modes: ${enabledModes.join(',')}, Pool: ${mediaPool.length}`);
-    const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty);
+    const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty, aiAdaptiveEnabled);
     console.log(`[Quiz] Generated ${qs.length} adaptive questions`);
     if (qs.length === 0) {
       console.warn('[Quiz] No adaptive questions generated, cannot start quiz');
       return;
     }
     setQuestions(qs);
-    setActiveMode(careLevel === 'PREVENTATIVE' ? 'MIXED' : qs[0].mode);
+    setActiveMode(shouldMixQuestionTypes(careLevel, quizDifficulty, aiAdaptiveEnabled) ? 'MIXED' : qs[0].mode);
     setQuestionIds(qs.map((q) => q.media.publicId));
     setQuestionIndex(0);
     setScore(0);
@@ -420,7 +428,7 @@ export default function QuizTab() {
     attemptResultsRef.current = [];
     questionStartTimeRef.current = Date.now();
     setPhase({ type: 'quiz' });
-  }, [careLevel, enabledModes, hintOpacity, mediaPool, quizDifficulty]);
+  }, [aiAdaptiveEnabled, careLevel, enabledModes, hintOpacity, mediaPool, quizDifficulty]);
 
   const continueSavedSession = useCallback(() => {
     if (!resumeSession) return;
@@ -458,13 +466,17 @@ export default function QuizTab() {
   }, [clearCurrentSession]);
 
   const handleIntroStart = useCallback(() => {
-    if (careLevel === 'PREVENTATIVE') {
+    if (aiAdaptiveEnabled || careLevel === 'PREVENTATIVE') {
       startAdaptiveSet();
+      return;
+    }
+    if (enabledModes.length > 1) {
+      setPhase({ type: 'mode_select' });
       return;
     }
     const preferredMode = enabledModes.includes('NAME') ? 'NAME' : enabledModes[0];
     if (preferredMode) startSet(preferredMode);
-  }, [careLevel, enabledModes, startAdaptiveSet, startSet]);
+  }, [aiAdaptiveEnabled, careLevel, enabledModes, startAdaptiveSet, startSet]);
 
   const showHint = useCallback(() => {
     const current = questions[questionIndexRef.current];
@@ -1033,43 +1045,66 @@ export default function QuizTab() {
     navigation.navigate('relive' as never);
   };
 
-  const renderSummary = () => (
-    <ScrollView
-      style={styles.phaseScroll}
-      contentContainerStyle={styles.summaryContent}
-      showsVerticalScrollIndicator
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.summaryMessageBlock}>
-        <Text style={styles.summaryTitle}>
-          Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
-        </Text>
-      </View>
+  const renderSummary = () => {
+    const showAdaptiveRetry = aiAdaptiveEnabled || careLevel === 'PREVENTATIVE';
+    const hasAdaptiveMedia = showAdaptiveRetry
+      && buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty, aiAdaptiveEnabled).length > 0;
 
-      <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
-        <Text style={styles.photosButtonText}>Go to my photos</Text>
-      </TouchableOpacity>
+    return (
+      <ScrollView
+        style={styles.phaseScroll}
+        contentContainerStyle={styles.summaryContent}
+        showsVerticalScrollIndicator
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.summaryMessageBlock}>
+          <Text style={styles.summaryTitle}>
+            Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
+          </Text>
+        </View>
 
-      <Text style={styles.summaryPrompt}>Practice again:</Text>
-      <View style={styles.practiceChoiceGrid}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-          return (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
-            >
-              <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {renderLeaveMemoriesSection()}
-    </ScrollView>
-  );
+        <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
+          <Text style={styles.photosButtonText}>Go to my photos</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.summaryPrompt}>Practice again:</Text>
+        {showAdaptiveRetry && (
+          <TouchableOpacity
+            style={[styles.adaptivePracticeChoice, !hasAdaptiveMedia && styles.modePillDisabled]}
+            onPress={() => hasAdaptiveMedia && startAdaptiveSet()}
+            activeOpacity={hasAdaptiveMedia ? 0.78 : 1}
+          >
+            <AppIcon
+              iosName="brain.head.profile"
+              androidFallback="AI"
+              size={18}
+              color={hasAdaptiveMedia ? themeColors.neutralLight : '#888888'}
+            />
+            <Text style={[styles.adaptivePracticeChoiceText, !hasAdaptiveMedia && styles.modePillTextDisabled]}>
+              Practice together
+            </Text>
+          </TouchableOpacity>
+        )}
+        <View style={styles.practiceChoiceGrid}>
+          {enabledModes.map((mode) => {
+            const cfg = MODE_CONFIG[mode];
+            const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
+                onPress={() => hasMedia && startSet(mode)}
+                activeOpacity={hasMedia ? 0.75 : 1}
+              >
+                <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {renderLeaveMemoriesSection()}
+      </ScrollView>
+    );
+  };
 
   const showTopBar = !['quiz', 'intro', 'resume_prompt', 'summary'].includes(phase.type);
   const showFocusModal = phase.type === 'resume_prompt' || phase.type === 'quiz';
@@ -1596,6 +1631,24 @@ const getStyles = (isDark: boolean) => {
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 10,
+  },
+  adaptivePracticeChoice: {
+    minWidth: 230,
+    maxWidth: 320,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  adaptivePracticeChoiceText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.neutralLight,
+    textAlign: 'center',
   },
   practiceChoice: {
     borderRadius: 999,

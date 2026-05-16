@@ -1,4 +1,4 @@
-import { colors, lightColors, darkColors } from '../../src/theme/colors';
+import { lightColors, darkColors } from '../../src/theme/colors';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import {
@@ -44,6 +44,8 @@ interface PatientItem {
 
 type Difficulty = QuizDifficulty;
 
+const REQUIRED_MODE: QuizMode = 'NAME';
+
 const MODE_OPTIONS: { key: QuizMode; label: string; icon: string; subtitle: string }[] = [
   { key: 'NAME', label: 'Name', icon: 'person.fill', subtitle: 'Patient guesses each person\'s name' },
   { key: 'AGE', label: 'Age', icon: 'calendar', subtitle: 'Patient estimates each person\'s age' },
@@ -61,6 +63,24 @@ const CARE_LEVEL_OPTIONS: { key: CareLevel; label: string; helper: string; icon:
   { key: 'DEMENTIA', label: 'Dementia', helper: 'Gentler practice with question types kept separate.', icon: 'heart.fill' },
 ];
 
+const AI_DIFFICULTY_HELPER =
+  'AI Easy: 2 decoys and one question type. Medium: 3 decoys and one question type. Hard: 4 decoys with mixed names, ages, and relationships.';
+
+const AI_LEVEL_DETAILS: Record<QuizDifficulty, string> = {
+  EASY: 'Easy uses 2 decoys and keeps one question type in the session.',
+  MEDIUM: 'Medium uses 3 decoys and keeps one question type in the session.',
+  HARD: 'Hard uses 4 decoys and mixes Names, Ages, and Relationships.',
+};
+
+function formatDifficultyLabel(value: QuizDifficulty): string {
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
+function withRequiredNameMode(modes: QuizMode[]): QuizMode[] {
+  const orderedModes = MODE_OPTIONS.map((option) => option.key).filter((mode) => modes.includes(mode));
+  return orderedModes.includes(REQUIRED_MODE) ? orderedModes : [REQUIRED_MODE, ...orderedModes];
+}
+
 export default function CreateTab() {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
@@ -70,6 +90,7 @@ export default function CreateTab() {
   const [activeSection, setActiveSection] = useState<'builder' | 'library'>('builder');
   const [selectedModes, setSelectedModes] = useState<QuizMode[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
+  const [predictedDifficulty, setPredictedDifficulty] = useState<QuizDifficulty>('MEDIUM');
   const [careLevel, setCareLevel] = useState<CareLevel>('DEMENTIA');
   const [aiAdaptiveEnabled, setAiAdaptiveEnabled] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -97,7 +118,8 @@ export default function CreateTab() {
     () => patients.find((patient) => patient.id === selectedPatientId) ?? null,
     [patients, selectedPatientId],
   );
-  const canUseAiAdaptive = getPlanLimits(isSubscribed).aiDifficultyEnabled;
+  const planCanUseAiAdaptive = getPlanLimits(isSubscribed).aiDifficultyEnabled;
+  const canUseAiAdaptive = planCanUseAiAdaptive || aiAdaptiveEnabled;
 
   const animate = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -139,14 +161,11 @@ export default function CreateTab() {
         try {
           const settings = await getQuizSettings(fallbackId);
           setDifficulty(settings.quizDifficulty);
+          setPredictedDifficulty(settings.predictedDifficulty);
           setCareLevel(settings.careLevel);
-          setAiAdaptiveEnabled(nextIsSubscribed && settings.aiAdaptiveEnabled);
+          setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
 
-          if (settings.careLevel === 'DEMENTIA') {
-            setSelectedModes(settings.quizModes.length > 0 ? [settings.quizModes[0]] : ['NAME']);
-          } else {
-            setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
-          }
+          setSelectedModes(withRequiredNameMode(settings.quizModes));
         } catch {
           setCareLevel('PREVENTATIVE');
           setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
@@ -170,14 +189,11 @@ export default function CreateTab() {
     try {
       const settings = await getQuizSettings(patientId);
       setDifficulty(settings.quizDifficulty);
+      setPredictedDifficulty(settings.predictedDifficulty);
       setCareLevel(settings.careLevel);
-      setAiAdaptiveEnabled(canUseAiAdaptive && settings.aiAdaptiveEnabled);
+      setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
 
-      if (settings.careLevel === 'DEMENTIA') {
-        setSelectedModes(settings.quizModes.length > 0 ? [settings.quizModes[0]] : ['NAME']);
-      } else {
-        setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
-      }
+      setSelectedModes(withRequiredNameMode(settings.quizModes));
     } catch {
       showDialog('Error', 'Unable to load existing quiz modes.', [{ label: 'OK', onPress: dismissDialog }]);
       setCareLevel('PREVENTATIVE');
@@ -197,28 +213,22 @@ export default function CreateTab() {
   };
 
   const toggleMode = (mode: QuizMode) => {
+    if (mode === REQUIRED_MODE) return;
     animate();
-    if (careLevel === 'DEMENTIA') {
-      setSelectedModes([mode]);
-    } else {
-      setSelectedModes((prev) => {
-        if (prev.includes(mode)) return prev.filter((entry) => entry !== mode);
-        return [...prev, mode];
-      });
-    }
+    setSelectedModes((prev) => withRequiredNameMode(
+      prev.includes(mode)
+        ? prev.filter((entry) => entry !== mode)
+        : [...prev, mode],
+    ));
   };
 
   const handleCareLevelSelect = (newLevel: CareLevel) => {
     animate();
     setCareLevel(newLevel);
-    if (newLevel === 'DEMENTIA') {
-      setSelectedModes((prev) => (prev.length > 0 ? [prev[0]] : ['NAME']));
-    } else if (newLevel === 'PREVENTATIVE') {
-      setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
-    }
+    setSelectedModes((prev) => withRequiredNameMode(prev));
   };
 
-  const handleAiAdaptiveToggle = (value: boolean) => {
+  const handleAiAdaptiveToggle = async (value: boolean) => {
     if (value && !canUseAiAdaptive) {
       showDialog('Premium Feature', 'AI adaptive difficulty is available with Premium.', [
         { label: 'Not now', onPress: dismissDialog },
@@ -227,7 +237,26 @@ export default function CreateTab() {
       return;
     }
     animate();
+    const previousValue = aiAdaptiveEnabled;
     setAiAdaptiveEnabled(value);
+    if (!selectedPatientId) return;
+
+    try {
+      const settings = await updateQuizModes(selectedPatientId, withRequiredNameMode(selectedModes), difficulty, {
+        careLevel,
+        aiAdaptiveEnabled: value,
+      });
+      setDifficulty(settings.quizDifficulty);
+      setPredictedDifficulty(settings.predictedDifficulty);
+      setCareLevel(settings.careLevel);
+      setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
+      setSelectedModes(withRequiredNameMode(settings.quizModes));
+    } catch {
+      setAiAdaptiveEnabled(previousValue);
+      showDialog('Error', 'Could not save AI adaptive difficulty for this patient.', [
+        { label: 'OK', onPress: dismissDialog },
+      ]);
+    }
   };
 
   const selectPatient = async (patientId: string) => {
@@ -254,10 +283,15 @@ export default function CreateTab() {
     setSaving(true);
     try {
       const adaptiveEnabledForSave = canUseAiAdaptive && aiAdaptiveEnabled;
-      await updateQuizModes(selectedPatientId, selectedModes, difficulty, {
+      const settings = await updateQuizModes(selectedPatientId, selectedModes, difficulty, {
         careLevel,
         aiAdaptiveEnabled: adaptiveEnabledForSave,
       });
+      setDifficulty(settings.quizDifficulty);
+      setPredictedDifficulty(settings.predictedDifficulty);
+      setCareLevel(settings.careLevel);
+      setAiAdaptiveEnabled(settings.aiAdaptiveEnabled);
+      setSelectedModes(withRequiredNameMode(settings.quizModes));
       showDialog(
         'Quiz Created',
         `Saved for ${selectedPatient?.name ?? 'patient'} with ${adaptiveEnabledForSave ? 'AI adaptive difficulty' : `${difficulty.toLowerCase()} difficulty`}.`,
@@ -445,19 +479,21 @@ export default function CreateTab() {
               <View style={styles.sectionHeaderText}>
                 <Text style={styles.sectionTitle}>Quiz Modes</Text>
                 <Text style={styles.helperTextInline}>
-                  {careLevel === 'DEMENTIA' ? 'Choose one type' : 'Choose one or more'}
+                  {careLevel === 'DEMENTIA' ? 'Choose separate practice types' : 'Choose mixed practice types'}
                 </Text>
               </View>
             </View>
             <View style={styles.modeList}>
               {MODE_OPTIONS.map((mode) => {
                 const active = selectedModes.includes(mode.key);
+                const required = mode.key === REQUIRED_MODE;
                 return (
                   <TouchableOpacity
                     key={mode.key}
                     style={[styles.modeCard, active && styles.modeCardActive]}
                     onPress={() => toggleMode(mode.key)}
-                    activeOpacity={0.8}
+                    activeOpacity={required ? 1 : 0.8}
+                    disabled={required}
                   >
                     <View style={styles.modeLeft}>
                       <View style={[styles.modeIconWrap, active && styles.modeIconWrapActive]}>
@@ -526,7 +562,7 @@ export default function CreateTab() {
             </View>
             <Text style={styles.difficultyHelper}>
               {aiAdaptiveEnabled
-                ? 'Safety fallback still uses Easy below 70%, Medium from 70-90%, and Hard above 90%.'
+                ? AI_DIFFICULTY_HELPER
                 : DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.helper}
             </Text>
           </AdaptiveCard>
@@ -549,7 +585,7 @@ export default function CreateTab() {
                   </View>
                   <Text style={styles.premiumSubtitle}>
                     {canUseAiAdaptive
-                      ? 'Adjusts difficulty using the patient’s answers, response time, time of day, and selected care level.'
+                      ? 'Adjusts decoy count and decides when to mix question types using answers, response time, time of day, and care level.'
                       : 'Upgrade to adapt quiz difficulty using patient performance and care level.'}
                   </Text>
                 </View>
@@ -563,6 +599,17 @@ export default function CreateTab() {
                 ios_backgroundColor="rgba(0,0,0,0.12)"
               />
             </View>
+            {aiAdaptiveEnabled && (
+              <View style={styles.aiLevelPanel}>
+                <View style={styles.aiLevelHeader}>
+                  <Text style={styles.aiLevelLabel}>Current AI level</Text>
+                  <Text style={styles.aiLevelBadge}>{formatDifficultyLabel(predictedDifficulty)}</Text>
+                </View>
+                <Text style={styles.aiLevelDescription}>
+                  {AI_LEVEL_DETAILS[predictedDifficulty]}
+                </Text>
+              </View>
+            )}
             {!canUseAiAdaptive && (
               <TouchableOpacity
                 style={styles.upgradeButton}
@@ -942,6 +989,42 @@ const getStyles = (isDark: boolean) => {
     color: themeColors.textMuted,
     marginTop: 2,
   },
+  aiLevelPanel: {
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(45,79,62,0.16)',
+    backgroundColor: 'rgba(45,79,62,0.06)',
+    padding: 12,
+    gap: 8,
+  },
+  aiLevelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  aiLevelLabel: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.textDark,
+  },
+  aiLevelBadge: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: '#FFFFFF',
+    backgroundColor: themeColors.secondary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  aiLevelDescription: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: themeColors.textMuted,
+  },
   upgradeButton: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -970,6 +1053,6 @@ const getStyles = (isDark: boolean) => {
     flex: 1,
     backgroundColor: themeColors.neutral,
   },
-});
+  });
 };
 // styles are computed at render time via `useTheme()` inside the component
