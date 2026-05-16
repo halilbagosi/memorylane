@@ -543,7 +543,7 @@ const getStyles = (isDark: boolean) => {
 
   // List
   listContent: {
-    paddingBottom: 100,
+    paddingBottom: 180, // Clear the navigation bar
     paddingTop: 4,
   },
   yearHeader: {
@@ -636,9 +636,10 @@ const getStyles = (isDark: boolean) => {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.72)'),
+    backgroundColor: (isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255,255,255,0.85)'),
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
   },
   previewSheerDetails: {
     position: 'absolute',
@@ -700,7 +701,7 @@ const getStyles = (isDark: boolean) => {
   previewNote: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.9)'),
+    color: (isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255,255,255,0.95)'),
     lineHeight: 22,
     marginTop: 2,
   },

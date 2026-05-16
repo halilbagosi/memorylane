@@ -186,6 +186,42 @@ export default function QuizTab() {
   const [hintVisible, setHintVisible] = useState(false);
   const [lastWrong, setLastWrong] = useState<string | null>(null);
 
+  const scrollViewRef = useRef<ScrollView>(null);
+  const swipeUpBounce = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // We make the bounce a bit more pronounced as requested
+    const bounceAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(swipeUpBounce, { 
+          toValue: -14, 
+          duration: 700, 
+          useNativeDriver: true 
+        }),
+        Animated.spring(swipeUpBounce, {
+          toValue: 0,
+          friction: 4,
+          tension: 40,
+          useNativeDriver: true
+        }),
+        Animated.delay(200),
+      ])
+    );
+
+    // Trigger a very subtle haptic tap at the start of each bounce cycle
+    // to give it a "physical" feel without being annoying.
+    const hapticInterval = setInterval(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    }, 1600); // Matches the total duration of the bounce cycle (700+700+200 approx)
+
+    bounceAnimation.start();
+    
+    return () => {
+      bounceAnimation.stop();
+      clearInterval(hapticInterval);
+    };
+  }, [swipeUpBounce]);
+
   const wrongShake = useRef(new Animated.Value(0)).current;
   const questionFade = useRef(new Animated.Value(1)).current;
   const photoFade = useRef(new Animated.Value(0)).current;
@@ -228,12 +264,12 @@ export default function QuizTab() {
   }, [memories, notes]);
 
   const leaveMemoriesScrollGap = useMemo(
-    () => ({ minHeight: Math.max(88, Math.floor(height * 0.28)) }),
-    [height],
+    () => ({ minHeight: 120 }), // Increased spacing as requested
+    [],
   );
 
   const introPrimaryMinHeight = useMemo(
-    () => Math.max(360, Math.floor(height * 0.52)),
+    () => Math.max(450, Math.floor(height * 0.75)),
     [height],
   );
 
@@ -690,6 +726,7 @@ export default function QuizTab() {
       
       setNewNote('');
       setSelectedMedia(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined); // Success feedback
       loadData(true); // Refresh feed
     } catch (error: any) {
       console.error('Save failed:', error);
@@ -862,37 +899,89 @@ export default function QuizTab() {
   );
 
   const renderNoMedia = () => (
-    <View style={styles.centerFill}>
-      <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={themeColors.primary} />
-      <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
-      <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
-    </View>
+    <ScrollView
+      ref={scrollViewRef}
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
+        <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={themeColors.primary} />
+        <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
+        <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
+        
+        {renderSwipeUpHint()}
+      </View>
+      {renderLeaveMemoriesSection()}
+    </ScrollView>
   );
 
   const renderInsufficientIdentities = (count: number) => (
-    <View style={styles.centerFill}>
-      <AppIcon iosName="sparkles" androidFallback="*" size={52} color={themeColors.primary} />
-      <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
-      <Text style={styles.emptySubtitle}>
-        Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
-      </Text>
-    </View>
+    <ScrollView
+      ref={scrollViewRef}
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
+        <AppIcon iosName="sparkles" androidFallback="*" size={52} color={themeColors.primary} />
+        <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
+        <Text style={styles.emptySubtitle}>
+          Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
+        </Text>
+
+        {renderSwipeUpHint()}
+      </View>
+      {renderLeaveMemoriesSection()}
+    </ScrollView>
+  );
+
+  const renderSwipeUpHint = () => (
+    <Animated.View style={{ transform: [{ translateY: swipeUpBounce }], marginTop: 'auto', paddingTop: 24, paddingBottom: 16 }}>
+      <TouchableOpacity 
+        onPress={() => {
+           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+           scrollViewRef.current?.scrollToEnd({ animated: true });
+        }}
+        activeOpacity={0.7}
+        style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}
+      >
+        <AppIcon iosName="chevron.up" androidFallback="^" size={26} color={themeColors.primary} />
+        <Text style={{ 
+          fontFamily: typography.fontFamily.bold, 
+          fontSize: 18, // Slightly larger
+          color: themeColors.primary,
+          textAlign: 'center',
+          letterSpacing: -0.3, // Modern touch
+        }}>
+          Swipe up to leave memory
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   const renderIntro = () => (
     <ScrollView
+      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.introScrollContent}
       showsVerticalScrollIndicator
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.introContent, { minHeight: introPrimaryMinHeight }]}>
-        <Text style={styles.introText}>
-          {`Good morning${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
-        </Text>
-        <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
-          <Text style={styles.startButtonText}>Start</Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+          <Text style={styles.introText}>
+            {`Good morning${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
+          </Text>
+          <View style={{ height: 48 }} />
+          <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
+            <Text style={styles.startButtonText}>Start</Text>
+          </TouchableOpacity>
+        </View>
+
+        {renderSwipeUpHint()}
       </View>
       {renderLeaveMemoriesSection()}
     </ScrollView>
@@ -918,33 +1007,37 @@ export default function QuizTab() {
 
   const renderModeSelect = () => (
     <ScrollView
+      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.modeSelectContent}
       showsVerticalScrollIndicator
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
-      <View style={styles.modeButtonsCol}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-          return (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
-            >
-              <AppIcon
-                iosName={cfg.icon}
-                androidFallback={cfg.androidFallback}
-                size={24}
-                color={hasMedia ? themeColors.neutralLight : '#888888'}
-              />
-              <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={{ minHeight: height * 0.7, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
+        <View style={styles.modeButtonsCol}>
+          {enabledModes.map((mode) => {
+            const cfg = MODE_CONFIG[mode];
+            const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
+                onPress={() => hasMedia && startSet(mode)}
+                activeOpacity={hasMedia ? 0.75 : 1}
+              >
+                <AppIcon
+                  iosName={cfg.icon}
+                  androidFallback={cfg.androidFallback}
+                  size={24}
+                  color={hasMedia ? themeColors.neutralLight : '#888888'}
+                />
+                <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {renderSwipeUpHint()}
       </View>
       {renderLeaveMemoriesSection()}
     </ScrollView>
@@ -1052,54 +1145,61 @@ export default function QuizTab() {
 
     return (
       <ScrollView
+        ref={scrollViewRef}
         style={styles.phaseScroll}
         contentContainerStyle={styles.summaryContent}
         showsVerticalScrollIndicator
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.summaryMessageBlock}>
-          <Text style={styles.summaryTitle}>
-            Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
-          </Text>
-        </View>
-
-        <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
-          <Text style={styles.photosButtonText}>Go to my photos</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.summaryPrompt}>Practice again:</Text>
-        {showAdaptiveRetry && (
-          <TouchableOpacity
-            style={[styles.adaptivePracticeChoice, !hasAdaptiveMedia && styles.modePillDisabled]}
-            onPress={() => hasAdaptiveMedia && startAdaptiveSet()}
-            activeOpacity={hasAdaptiveMedia ? 0.78 : 1}
-          >
-            <AppIcon
-              iosName="brain.head.profile"
-              androidFallback="AI"
-              size={18}
-              color={hasAdaptiveMedia ? themeColors.neutralLight : '#888888'}
-            />
-            <Text style={[styles.adaptivePracticeChoiceText, !hasAdaptiveMedia && styles.modePillTextDisabled]}>
-              Practice together
+        <View style={{ minHeight: height * 0.75, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={styles.summaryMessageBlock}>
+            <Text style={styles.summaryTitle}>
+              Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
             </Text>
+          </View>
+
+          <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
+            <Text style={styles.photosButtonText}>Go to my photos</Text>
           </TouchableOpacity>
-        )}
-        <View style={styles.practiceChoiceGrid}>
-          {enabledModes.map((mode) => {
-            const cfg = MODE_CONFIG[mode];
-            const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-            return (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
-                onPress={() => hasMedia && startSet(mode)}
-                activeOpacity={hasMedia ? 0.75 : 1}
-              >
-                <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
+
+          <Text style={styles.summaryPrompt}>Practice again:</Text>
+          
+          {showAdaptiveRetry && (
+            <TouchableOpacity
+              style={[styles.adaptivePracticeChoice, !hasAdaptiveMedia && styles.modePillDisabled]}
+              onPress={() => hasAdaptiveMedia && startAdaptiveSet()}
+              activeOpacity={hasAdaptiveMedia ? 0.78 : 1}
+            >
+              <AppIcon
+                iosName="brain.head.profile"
+                androidFallback="AI"
+                size={18}
+                color={hasAdaptiveMedia ? themeColors.neutralLight : '#888888'}
+              />
+              <Text style={[styles.adaptivePracticeChoiceText, !hasAdaptiveMedia && styles.modePillTextDisabled]}>
+                Practice together
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.practiceChoiceGrid}>
+            {enabledModes.map((mode) => {
+              const cfg = MODE_CONFIG[mode];
+              const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
+                  onPress={() => hasMedia && startSet(mode)}
+                  activeOpacity={hasMedia ? 0.75 : 1}
+                >
+                  <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {renderSwipeUpHint()}
         </View>
         {renderLeaveMemoriesSection()}
       </ScrollView>
@@ -1170,7 +1270,7 @@ const getStyles = (isDark: boolean) => {
   },
   introScrollContent: {
     flexGrow: 1,
-    paddingBottom: 40,
+    paddingBottom: 180, // Clear the navigation bar
   },
   leaveMemoriesSection: {
     width: '100%',
@@ -1397,7 +1497,7 @@ const getStyles = (isDark: boolean) => {
   modeSelectContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 180, // Generous padding to clear the floating navigation bar
     alignItems: 'center',
     width: '100%',
   },
@@ -1580,7 +1680,7 @@ const getStyles = (isDark: boolean) => {
   summaryContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 180, // Generous padding to clear the floating navigation bar
     alignItems: 'center',
     gap: 24,
     width: '100%',
