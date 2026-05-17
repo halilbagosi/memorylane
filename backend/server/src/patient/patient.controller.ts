@@ -94,17 +94,14 @@ export class PatientController {
   @Post(':id/quiz-results')
   async recordQuizResults(
     @Param('id') patientId: string,
-    @Body() body: { attempts?: Array<{
-      publicId: string;
-      mode?: string;
-      difficulty?: string;
-      firstTapCorrect: boolean;
-      totalTaps: number;
-      timeToCorrectMs: number;
-      hadHint?: boolean;
-    }> },
+    @Body() body: any,
   ) {
-    return this.patientService.recordQuizResults(patientId, body.attempts ?? []);
+    try {
+      return await this.patientService.recordQuizResults(patientId, body.attempts ?? []);
+    } catch (e) {
+      require('fs').writeFileSync('C:/Users/User/Desktop/School/MemoryLane/memorylane/backend/server/error.log', e.stack || e.message);
+      throw e;
+    }
   }
 
   @Patch(':id/biometric-recovery')

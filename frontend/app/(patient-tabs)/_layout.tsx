@@ -21,7 +21,7 @@ function IOSTabLayout() {
   return (
     <NativeTabs tintColor={colors.primary}>
       <NativeTabs.Trigger name="quiz">
-        <Icon sf={{ default: 'questionmark.circle', selected: 'questionmark.circle.fill' }} />
+        <Icon sf={{ default: 'brain.head.profile', selected: 'brain.head.profile' }} />
         <Label>Quiz</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="relive">
@@ -47,8 +47,8 @@ function AndroidTabLayout() {
           title: 'Quiz',
           tabBarIcon: ({ color, size }) => (
             <AppIcon
-              iosName="questionmark.circle.fill"
-              androidFallback="Q"
+              iosName="brain.head.profile"
+              androidFallback="Brain"
               size={size}
               color={color}
             />

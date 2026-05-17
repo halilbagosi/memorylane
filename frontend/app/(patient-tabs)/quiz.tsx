@@ -56,6 +56,21 @@ import {
   uniqueIdentityCount,
 } from '../../src/services/quiz';
 
+const EMOJI_STAGES = [
+  { max: 20, emoji: '🥺', label: 'Needs encouragement' },
+  { max: 40, emoji: '😕', label: 'Getting started' },
+  { max: 60, emoji: '😐', label: 'Making progress' },
+  { max: 80, emoji: '🙂', label: 'Doing well' },
+  { max: 100, emoji: '🤩', label: 'Excellent!' },
+];
+
+function getEmojiStage(percent: number) {
+  for (const stage of EMOJI_STAGES) {
+    if (percent <= stage.max) return stage;
+  }
+  return EMOJI_STAGES[EMOJI_STAGES.length - 1];
+}
+
 type Phase =
   | { type: 'loading' }
   | { type: 'error'; message: string }
@@ -216,17 +231,10 @@ export default function QuizTab() {
       ])
     );
 
-    // Trigger a very subtle haptic tap at the start of each bounce cycle
-    // to give it a "physical" feel without being annoying.
-    const hapticInterval = setInterval(() => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    }, 1600); // Matches the total duration of the bounce cycle (700+700+200 approx)
-
     bounceAnimation.start();
     
     return () => {
       bounceAnimation.stop();
-      clearInterval(hapticInterval);
     };
   }, [swipeUpBounce]);
 
@@ -743,7 +751,7 @@ export default function QuizTab() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined); // Success feedback
       loadData(true); // Refresh feed
     } catch (error: any) {
-      console.error('Save failed:', error);
+      console.error('Save failed:', error.response?.data || error);
       Alert.alert('Error', error.message || 'Failed to save. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -1184,11 +1192,11 @@ export default function QuizTab() {
       <ScrollView
         ref={scrollViewRef}
         style={styles.phaseScroll}
-        contentContainerStyle={styles.summaryContent}
+        contentContainerStyle={[styles.summaryContent, { paddingTop: 40, paddingBottom: 60 }]}
         showsVerticalScrollIndicator
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ minHeight: height * 0.75, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: '100%', alignItems: 'center', gap: 32 }}>
           <View style={styles.summaryMessageBlock}>
             <Text style={styles.summaryTitle}>
               Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
@@ -1196,26 +1204,42 @@ export default function QuizTab() {
           </View>
 
           {stats && stats.goal && (
-            <View style={[styles.patientGoalCard, { marginBottom: 24, marginTop: 0 }]}>
-              <View style={styles.patientGoalHeader}>
-                <Text style={styles.patientGoalTitle}>Your Goal</Text>
-                <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+            <>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 64, marginBottom: 4 }}>
+                  {getEmojiStage(Math.min(100, Math.round((stats.currentAccuracy / stats.goal.targetAccuracy) * 100))).emoji}
+                </Text>
+                <Text style={{ fontFamily: typography.fontFamily.medium, fontSize: 15, color: themeColors.textMuted }}>
+                  {getEmojiStage(Math.min(100, Math.round((stats.currentAccuracy / stats.goal.targetAccuracy) * 100))).label}
+                </Text>
               </View>
-              <View style={styles.patientGoalTrack}>
-                <View 
-                  style={[
-                    styles.patientGoalFill, 
-                    { width: `${Math.min(100, (stats.currentAccuracy / stats.goal.targetAccuracy) * 100)}%` }
-                  ]} 
-                />
-                <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]} />
+
+              <View style={styles.patientGoalCard}>
+                <View style={styles.patientGoalHeader}>
+                  <Text style={styles.patientGoalTitle}>Accuracy Goal</Text>
+                  <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+                </View>
+                <View style={styles.patientGoalTrack}>
+                  <View 
+                    style={[
+                      styles.patientGoalFill, 
+                      { width: `${Math.min(100, stats.currentAccuracy)}%` }
+                    ]} 
+                  />
+                  <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]}>
+                    <View style={styles.patientGoalMarkerLine} />
+                    <View style={styles.patientGoalMarkerPill}>
+                      <Text style={styles.patientGoalMarkerLabel}>🎯 {stats.goal.targetAccuracy}%</Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.patientGoalSubtext}>
+                  {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                    ? '🎉 You reached your goal!' 
+                    : `Target: ${stats.goal.targetAccuracy}% accuracy`}
+                </Text>
               </View>
-              <Text style={styles.patientGoalSubtext}>
-                {stats.currentAccuracy >= stats.goal.targetAccuracy 
-                  ? '🎉 You reached your goal!' 
-                  : `${stats.goal.targetAccuracy}% accuracy target`}
-              </Text>
-            </View>
+            </>
           )}
 
           <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
@@ -1996,18 +2020,39 @@ const getStyles = (isDark: boolean) => {
     position: 'relative',
   },
   patientGoalFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
     height: 12,
     borderRadius: 6,
     backgroundColor: '#4CAF50',
   },
   patientGoalMarker: {
     position: 'absolute',
-    width: 2,
-    height: 24,
-    backgroundColor: isDark ? '#F5FBF7' : '#1A1A1A',
-    top: -6,
-    transform: [{ translateX: -1 }],
-    borderRadius: 1,
+    top: 14,
+    marginLeft: -24,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  patientGoalMarkerLine: {
+    width: 0,
+    height: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: isDark ? 'rgba(245,251,247,0.5)' : 'rgba(0,0,0,0.3)',
+  },
+  patientGoalMarkerPill: {
+    backgroundColor: isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? 'rgba(76,175,80,0.4)' : 'rgba(76,175,80,0.3)',
+  },
+  patientGoalMarkerLabel: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 10,
+    color: isDark ? '#A8D5BA' : '#2E7D32',
   },
   patientGoalSubtext: {
     fontFamily: typography.fontFamily.medium,

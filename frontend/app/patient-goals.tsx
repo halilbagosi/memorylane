@@ -8,9 +8,10 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
-  Alert,
   TextInput,
   KeyboardAvoidingView,
+  InputAccessoryView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,6 +20,7 @@ import { lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { AppIcon } from '../src/components/AppIcon';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
+import { M3Dialog, type M3DialogAction } from '../src/components/M3Dialog';
 import { API_BASE_URL } from '../src/config/api';
 import { getToken } from '../src/utils/auth';
 
@@ -71,6 +73,19 @@ export default function PatientGoalsScreen() {
   const [goalInput, setGoalInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
+  // M3 Dialog state
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogTitle, setDialogTitle] = useState('');
+  const [dialogBody, setDialogBody] = useState('');
+  const [dialogActions, setDialogActions] = useState<M3DialogAction[]>([]);
+
+  const showDialog = (title: string, body: string, actions?: M3DialogAction[]) => {
+    setDialogTitle(title);
+    setDialogBody(body);
+    setDialogActions(actions ?? [{ label: 'OK', onPress: () => setDialogVisible(false) }]);
+    setDialogVisible(true);
+  };
+
   // Animation refs
   const progressAnim = useRef(new Animated.Value(0)).current;
   const emojiScale = useRef(new Animated.Value(0)).current;
@@ -88,7 +103,7 @@ export default function PatientGoalsScreen() {
       setStats(data);
       setGoalInput(data.goal?.targetAccuracy?.toString() ?? '');
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Could not load patient stats.');
+      showDialog('Error', e instanceof Error ? e.message : 'Could not load patient stats.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +115,7 @@ export default function PatientGoalsScreen() {
   useEffect(() => {
     if (!stats) return;
     const goalTarget = stats.goal?.targetAccuracy ?? 100;
-    const ratio = Math.min(1, stats.currentAccuracy / goalTarget);
+    const ratio = Math.min(1, stats.currentAccuracy / 100); // Always out of 100
 
     Animated.parallel([
       Animated.timing(progressAnim, {
@@ -125,7 +140,7 @@ export default function PatientGoalsScreen() {
   const saveGoal = async () => {
     const value = parseInt(goalInput, 10);
     if (isNaN(value) || value < 1 || value > 100) {
-      Alert.alert('Invalid Goal', 'Please enter a number between 1 and 100.');
+      showDialog('Invalid Goal', 'Please enter a number between 1 and 100.');
       return;
     }
     try {
@@ -141,7 +156,7 @@ export default function PatientGoalsScreen() {
       setIsEditing(false);
       await fetchStats();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Could not save goal.');
+      showDialog('Error', e instanceof Error ? e.message : 'Could not save goal.');
     } finally {
       setSaving(false);
     }
@@ -160,7 +175,7 @@ export default function PatientGoalsScreen() {
       setIsEditing(false);
       await fetchStats();
     } catch (e) {
-      Alert.alert('Error', 'Could not remove goal.');
+      showDialog('Error', 'Could not remove goal.');
     } finally {
       setSaving(false);
     }
@@ -195,6 +210,7 @@ export default function PatientGoalsScreen() {
   const maxBarValue = Math.max(...stats.recentSnapshots.map(s => s.accuracy), 1);
 
   return (
+    <>
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
@@ -240,7 +256,9 @@ export default function PatientGoalsScreen() {
               {goalTarget && (
                 <View style={[styles.goalMarker, { left: `${Math.min(100, goalTarget)}%` }]}>
                   <View style={styles.goalMarkerLine} />
-                  <Text style={styles.goalMarkerLabel}>{goalTarget}%</Text>
+                  <View style={styles.goalMarkerPill}>
+                    <Text style={styles.goalMarkerLabel}>🎯 {goalTarget}%</Text>
+                  </View>
                 </View>
               )}
             </View>
@@ -337,6 +355,9 @@ export default function PatientGoalsScreen() {
                   keyboardType="number-pad"
                   maxLength={3}
                   autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={saveGoal}
+                  inputAccessoryViewID="goalInputAccessory"
                 />
                 <Text style={styles.goalInputSuffix}>%</Text>
                 <TouchableOpacity style={styles.goalSaveBtn} onPress={saveGoal} disabled={saving}>
@@ -354,7 +375,27 @@ export default function PatientGoalsScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+      {Platform.OS === 'ios' && isEditing && (
+        <InputAccessoryView nativeID="goalInputAccessory">
+          <View style={styles.keyboardToolbar}>
+            <TouchableOpacity onPress={() => Keyboard.dismiss()} style={styles.keyboardToolbarBtn}>
+              <Text style={styles.keyboardToolbarBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { saveGoal(); Keyboard.dismiss(); }} style={styles.keyboardToolbarSaveBtn}>
+              <Text style={styles.keyboardToolbarSaveBtnText}>{saving ? 'Saving…' : 'Save Goal'}</Text>
+            </TouchableOpacity>
+          </View>
+        </InputAccessoryView>
+      )}
     </SafeAreaView>
+      <M3Dialog
+        visible={dialogVisible}
+        title={dialogTitle}
+        body={dialogBody}
+        actions={dialogActions}
+        onDismiss={() => setDialogVisible(false)}
+      />
+    </>
   );
 }
 
@@ -439,27 +480,71 @@ const getStyles = (isDark: boolean) => {
       position: 'relative',
     },
     progressBarFill: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
       height: 14,
       borderRadius: 7,
       backgroundColor: themeColors.secondary,
     },
     goalMarker: {
       position: 'absolute',
-      top: -8,
-      transform: [{ translateX: -1 }],
+      top: 16,
+      marginLeft: -24,
       alignItems: 'center',
+      zIndex: 10,
     },
     goalMarkerLine: {
-      width: 2,
-      height: 30,
-      backgroundColor: isDark ? '#F5FBF7' : '#1A1A1A',
-      borderRadius: 1,
+      width: 0,
+      height: 8,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: isDark ? 'rgba(245,251,247,0.5)' : 'rgba(0,0,0,0.3)',
+    },
+    goalMarkerPill: {
+      backgroundColor: isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.12)',
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 6,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: isDark ? 'rgba(76,175,80,0.4)' : 'rgba(76,175,80,0.3)',
     },
     goalMarkerLabel: {
       fontFamily: typography.fontFamily.bold,
       fontSize: 10,
-      color: isDark ? '#F5FBF7' : '#1A1A1A',
-      marginTop: 2,
+      color: isDark ? '#A8D5BA' : '#2E7D32',
+    },
+
+    // Keyboard toolbar
+    keyboardToolbar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: isDark ? '#1A2A1F' : '#F0F0F0',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)',
+    },
+    keyboardToolbarBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+    },
+    keyboardToolbarBtnText: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 15,
+      color: themeColors.textMuted,
+    },
+    keyboardToolbarSaveBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      backgroundColor: themeColors.secondary,
+      borderRadius: 8,
+    },
+    keyboardToolbarSaveBtnText: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 15,
+      color: isDark ? '#17231D' : '#FFFFFF',
     },
     progressSubtext: {
       fontFamily: typography.fontFamily.regular,
