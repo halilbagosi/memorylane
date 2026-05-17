@@ -12,6 +12,7 @@ import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
 import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
+import { syncCaregiverPushToken } from '../src/services/syncPushToken';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
@@ -179,6 +180,7 @@ export default function SignupScreen() {
 
       if (data.accessToken) await saveToken(data.accessToken);
       if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+      syncCaregiverPushToken().catch(() => undefined);
 
       router.replace('/dashboard');
     } catch (error: any) {

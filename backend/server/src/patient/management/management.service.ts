@@ -1,10 +1,14 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { decryptPatientNamesWithOptionalReencrypt } from '../encryption.util';
+import { PushService } from '../../push/push.service';
 
 @Injectable()
 export class ManagementService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly pushService: PushService,
+  ) {}
 
   async delegatePrimaryRole(patientId: string, currentPrimaryId: string, targetCaregiverId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -55,36 +59,61 @@ export class ManagementService {
       where: { patientId, status: 'PENDING' },
     });
 
+    const pushAfterDelete: Array<{ caregiverId: string; title: string; body: string }> = [];
+    let deletedNotifications: Array<{
+      caregiverId: string;
+      type: 'PATIENT_DELETED';
+      title: string;
+      body: string;
+    }> = [];
+    let voidedDelegationNotifications: Array<{
+      caregiverId: string;
+      type: 'DELEGATION_CANCELLED';
+      title: string;
+      body: string;
+    }> = [];
+
+    if (patient) {
+      const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+      const patientName = `${pn} ${ps}`;
+      const deleterName = primaryCaregiver
+        ? `${primaryCaregiver.name} ${primaryCaregiver.surname}`
+        : 'The primary caregiver';
+
+      if (secondaryLinks.length > 0) {
+        const title = 'Patient profile removed';
+        const body = `${deleterName} has deleted the profile for ${patientName}.`;
+        deletedNotifications = secondaryLinks.map((link) => ({
+          caregiverId: link.caregiverId,
+          type: 'PATIENT_DELETED' as const,
+          title,
+          body,
+        }));
+        pushAfterDelete.push(...deletedNotifications);
+      }
+
+      if (pendingDelegations.length > 0) {
+        const title = 'Transfer request void';
+        const body = `The profile for ${patientName} has been deleted. The pending transfer request is no longer valid.`;
+        const uniqueSecondaryIds = [...new Set(pendingDelegations.map((d) => d.toCaregiverId))];
+        voidedDelegationNotifications = uniqueSecondaryIds.map((caregiverId) => ({
+          caregiverId,
+          type: 'DELEGATION_CANCELLED' as const,
+          title,
+          body,
+        }));
+        pushAfterDelete.push(...voidedDelegationNotifications);
+      }
+    }
+
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        // Notify all secondary caregivers that the patient profile is gone
-        if (secondaryLinks.length > 0 && patient) {
-          const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(tx, patient);
-          const patientName = `${pn} ${ps}`;
-          const deleterName = primaryCaregiver ? `${primaryCaregiver.name} ${primaryCaregiver.surname}` : 'The primary caregiver';
-          await tx.notification.createMany({
-            data: secondaryLinks.map(link => ({
-              caregiverId: link.caregiverId,
-              type: 'PATIENT_DELETED' as const,
-              title: 'Patient profile removed',
-              body: `${deleterName} has deleted the profile for ${patientName}.`,
-            })),
-          });
+      const result = await this.prisma.$transaction(async (tx) => {
+        if (deletedNotifications.length > 0) {
+          await tx.notification.createMany({ data: deletedNotifications });
         }
 
-        // Notify secondaries who had pending delegation requests that the request is void
-        if (pendingDelegations.length > 0 && patient) {
-          const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(tx, patient);
-          const patientName = `${pn} ${ps}`;
-          const uniqueSecondaryIds = [...new Set(pendingDelegations.map(d => d.toCaregiverId))];
-          await tx.notification.createMany({
-            data: uniqueSecondaryIds.map(secId => ({
-              caregiverId: secId,
-              type: 'DELEGATION_CANCELLED' as any,
-              title: 'Transfer request void',
-              body: `The profile for ${patientName} has been deleted. The pending transfer request is no longer valid.`,
-            })),
-          });
+        if (voidedDelegationNotifications.length > 0) {
+          await tx.notification.createMany({ data: voidedDelegationNotifications });
         }
 
         // Mark delegation requests as declined before cascade deletes them
@@ -108,6 +137,15 @@ export class ManagementService {
 
         return { message: 'Patient profile and all caregiver links deleted successfully' };
       });
+
+      for (const item of pushAfterDelete) {
+        await this.pushService.sendToCaregiver(item.caregiverId, {
+          title: item.title,
+          body: item.body,
+        });
+      }
+
+      return result;
     } catch (error) {
       console.error('DATABASE ERROR:', error);
       throw new InternalServerErrorException('Failed to delete patient from database');

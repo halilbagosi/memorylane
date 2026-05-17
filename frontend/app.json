@@ -13,6 +13,11 @@
       "resizeMode": "contain",
       "backgroundColor": "#F5FBF7"
     },
+    "extra": {
+      "eas": {
+        "projectId": "72125389-abd1-48a8-92fa-99af7986623d"
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.memorylane.app",
@@ -26,6 +31,9 @@
         }
       }
     },
+    
+    "owner": "halilbagosi",
+    
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -86,7 +94,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
+          "iosUrlScheme": "com.googleusercontent.apps.1006582252554-9h90j34o6g4tphhu6drp49r3d20vohfu"
         }
       ]
     ]

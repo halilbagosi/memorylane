@@ -161,6 +161,7 @@ model Patient {
   aiDifficultyModel  Json?               @map("ai_difficulty_model")
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
+  reminderTimezone   String?             @map("reminder_timezone")
 
   creator             Caregiver           @relation(fields: [createdBy], references: [id])
   patientCaregivers   PatientCaregiver[]
