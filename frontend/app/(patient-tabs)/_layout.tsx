@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
-import { Tabs, useNavigation } from 'expo-router';
+import { Tabs, useNavigation, useRouter } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
@@ -14,6 +14,8 @@ import {
   markPatientBiometricVerified,
   unlockPatientWithBiometrics,
 } from '../../src/utils/patientBiometric';
+import { addNotificationResponseListener } from '../../src/services/pushNotifications';
+import { syncPatientDeviceToken } from '../../src/services/syncPushToken';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -75,7 +77,17 @@ function AndroidTabLayout() {
 
 export default function PatientTabsLayout() {
   const navigation = useNavigation();
+  const router = useRouter();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const subscription = addNotificationResponseListener((screen) => {
+      if (screen === 'quiz') {
+        router.push('/(patient-tabs)/quiz');
+      }
+    });
+    return () => subscription.remove();
+  }, [router]);
 
   useEffect(() => {
     const checkPairing = async () => {
@@ -86,6 +98,9 @@ export default function PatientTabsLayout() {
         const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/paired-status`);
         if (!res.ok) return;
         const data = await res.json();
+        if (data.paired) {
+          syncPatientDeviceToken(patient.id).catch(() => undefined);
+        }
         if (!data.paired) {
           await deletePatientInfo();
           navigation.dispatch(

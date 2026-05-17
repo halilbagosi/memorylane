@@ -9,6 +9,7 @@ import { ChangeEmailDto } from '../dto/change-email.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { DeclineReasonDto } from '../dto/decline-reason.dto';
+import { PushTokenDto } from '../dto/push-token.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
@@ -212,5 +213,11 @@ export class AuthController {
   @Patch('notifications/mark-all-read')
   markAllNotificationsRead(@Request() req: any) {
     return this.authService.markAllNotificationsRead(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('push-token')
+  updatePushToken(@Request() req: any, @Body() dto: PushTokenDto) {
+    return this.authService.updatePushToken(req.user.userId, dto.token);
   }
 }

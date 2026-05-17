@@ -5,6 +5,7 @@ import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { JoinPatientDto } from './dto/join-patient.dto';
 import { SetQuizRemindersDto } from './dto/set-quiz-reminders.dto';
+import { DeviceTokenDto } from './dto/device-token.dto';
 import { UpsertGoalDto } from './dto/upsert-goal.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ManagementService } from './management/management.service';
@@ -45,6 +46,11 @@ export class PatientController {
   @Get(':id/paired-status')
   async getPairedStatus(@Param('id') patientId: string) {
     return this.patientService.getPairedStatus(patientId);
+  }
+
+  @Patch(':id/device-token')
+  async updateDeviceToken(@Param('id') patientId: string, @Body() dto: DeviceTokenDto) {
+    return this.patientService.updateDeviceToken(patientId, dto.token, dto.timezone);
   }
 
   @Get(':id/greeting-spark')

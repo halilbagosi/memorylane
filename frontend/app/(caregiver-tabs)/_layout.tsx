@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { syncCaregiverPushToken } from '../../src/services/syncPushToken';
 import { Tabs } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { useTheme } from '../../src/theme/ThemeProvider';
@@ -93,5 +94,9 @@ function AndroidTabLayout() {
 }
 
 export default function CaregiverTabsLayout() {
+  useEffect(() => {
+    syncCaregiverPushToken().catch(() => undefined);
+  }, []);
+
   return Platform.OS === 'ios' ? <IOSTabLayout /> : <AndroidTabLayout />;
 }

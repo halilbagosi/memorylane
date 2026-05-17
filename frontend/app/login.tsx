@@ -22,6 +22,7 @@ import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
 import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
+import { syncCaregiverPushToken } from '../src/services/syncPushToken';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
@@ -141,6 +142,7 @@ export default function LoginScreen() {
 
       await saveToken(data.accessToken);
       if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+      syncCaregiverPushToken().catch(() => undefined);
 
       router.replace('/dashboard');
     } catch (error: any) {
@@ -275,6 +277,7 @@ export default function LoginScreen() {
 
       await saveToken(data.accessToken);
       if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+      syncCaregiverPushToken().catch(() => undefined);
 
       router.replace('/dashboard');
     } catch (error: any) {
@@ -301,6 +304,7 @@ export default function LoginScreen() {
       if (res.ok) {
         await saveToken(data.accessToken);
         if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+        syncCaregiverPushToken().catch(() => undefined);
 
         if (data.roleChanged && data.roleChangedPatients?.length > 0) {
           // Show the "Welcome back" screen explaining secondary status

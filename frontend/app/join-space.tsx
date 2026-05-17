@@ -24,6 +24,7 @@ import { AdaptiveCard } from '../src/components/AdaptiveCard';
 import { AppIcon } from '../src/components/AppIcon';
 import { API_BASE_URL } from '../src/config/api';
 import { savePatientInfo } from '../src/utils/auth';
+import { syncPatientDeviceToken } from '../src/services/syncPushToken';
 import { markPatientBiometricVerified } from '../src/utils/patientBiometric';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -114,6 +115,7 @@ export default function JoinSpaceScreen() {
         avatarUrl: data.avatarUrl ?? null,
         biometricRecoveryEnabled: false,
       });
+      syncPatientDeviceToken(data.id).catch(() => undefined);
 
       setSuccessInfo({
         id: data.id,

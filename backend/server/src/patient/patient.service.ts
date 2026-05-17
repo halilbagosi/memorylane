@@ -5,6 +5,7 @@ import { randomBytes } from 'crypto';
 import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
 import { AiDifficultyService, QuizDifficulty } from './ai-difficulty.service';
 import { getPlanLimits } from '../auth/subscription.constants';
+import { PushService } from '../push/push.service';
 
 export type CareLevelValue = 'PREVENTATIVE' | 'DEMENTIA';
 
@@ -38,6 +39,7 @@ export class PatientService {
   constructor(
     private prisma: PrismaService,
     private readonly aiDifficulty: AiDifficultyService,
+    private readonly pushService: PushService,
   ) {}
 
   async create(createPatientDto: CreatePatientDto, caregiverId: string) {
@@ -137,14 +139,17 @@ export class PatientService {
     });
     if (primaryLink && joiner && primaryLink.caregiverId !== caregiverId) {
       const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+      const title = 'New team member';
+      const body = `${joiner.name} ${joiner.surname} joined the care team for ${pn} ${ps}.`;
       await this.prisma.notification.create({
         data: {
           caregiverId: primaryLink.caregiverId,
           type: 'SECONDARY_ADDED' as any,
-          title: 'New team member',
-          body: `${joiner.name} ${joiner.surname} joined the care team for ${pn} ${ps}.`,
+          title,
+          body,
         },
       });
+      await this.pushService.sendToCaregiver(primaryLink.caregiverId, { title, body });
     }
 
     const shown = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
@@ -189,14 +194,17 @@ export class PatientService {
       for (const del of pendingDelegations) {
         const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, del.patient);
         const patientName = `${pn} ${ps}`;
+        const title = 'Caregiver unavailable';
+        const body = `${leaverName} has left the care team for ${patientName} and is no longer available to take over. Please select a new successor.`;
         await this.prisma.notification.create({
           data: {
             caregiverId: del.fromCaregiverId,
             type: 'DELEGATION_DECLINED' as any,
-            title: 'Caregiver unavailable',
-            body: `${leaverName} has left the care team for ${patientName} and is no longer available to take over. Please select a new successor.`,
+            title,
+            body,
           },
         });
+        await this.pushService.sendToCaregiver(del.fromCaregiverId, { title, body });
       }
     }
 
@@ -257,6 +265,27 @@ export class PatientService {
       paired: patient.paired,
       biometricRecoveryEnabled: patient.biometricRecoveryEnabled,
     };
+  }
+
+  async updateDeviceToken(patientId: string, token: string, timezone?: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { paired: true, reminderTimezone: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) {
+      throw new ConflictException('Device must be paired before registering for notifications');
+    }
+
+    await this.prisma.patient.update({
+      where: { id: patientId },
+      data: {
+        deviceToken: token,
+        reminderTimezone: timezone ?? patient.reminderTimezone ?? 'UTC',
+      },
+    });
+
+    return { message: 'Device token saved' };
   }
 
   async getGreetingSpark(patientId: string) {
@@ -347,7 +376,12 @@ export class PatientService {
 
     await this.prisma.patient.update({
       where: { id: patientId },
-      data: { paired: false, deviceToken: null, biometricRecoveryEnabled: false },
+      data: {
+        paired: false,
+        deviceToken: null,
+        reminderTimezone: null,
+        biometricRecoveryEnabled: false,
+      },
     });
 
     return { message: 'Device unpaired successfully' };
@@ -859,14 +893,19 @@ export class PatientService {
     const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
     const patientName = `${pn} ${ps}`;
     if (caregiverLinks.length > 0) {
-      await this.prisma.notification.createMany({
-        data: caregiverLinks.map(link => ({
-          caregiverId: link.caregiverId,
-          type: 'DEVICE_PAIRED' as any,
-          title: 'Device paired',
-          body: `A device has been successfully paired for ${patientName}.`,
-        })),
-      });
+      const title = 'Device paired';
+      const body = `A device has been successfully paired for ${patientName}.`;
+      const notifications = caregiverLinks.map(link => ({
+        caregiverId: link.caregiverId,
+        type: 'DEVICE_PAIRED' as any,
+        title,
+        body,
+      }));
+      await this.prisma.notification.createMany({ data: notifications });
+      await this.pushService.sendToCaregivers(
+        caregiverLinks.map((link) => link.caregiverId),
+        { title, body },
+      );
     }
 
     const joined = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);

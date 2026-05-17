@@ -15,6 +15,7 @@ import { OAuth2Client } from 'google-auth-library';
 import * as jwksRsa from 'jwks-rsa';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { getPlanLimits } from './subscription.constants';
 import { SignupDto } from '../dto/signup.dto';
 import { LoginDto } from '../dto/login.dto';
@@ -33,6 +34,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private pushService: PushService,
   ) {
     this.googleClient = new OAuth2Client();
     this.appleJwksClient = jwksRsa({
@@ -758,6 +760,7 @@ export class AuthService {
           }),
       );
       await this.prisma.notification.createMany({ data: delegationNotes });
+      await this.pushCaregiverNotifications(delegationNotes);
     }
 
     // Set status to DEACTIVATED and schedule permanent deletion in 10 days
@@ -815,6 +818,7 @@ export class AuthService {
         }),
       );
       await this.prisma.notification.createMany({ data: cancelNotes });
+      await this.pushCaregiverNotifications(cancelNotes);
     }
 
     // Restore to active
@@ -904,14 +908,17 @@ export class AuthService {
     const patientName = await this.patientFullDisplayName(patient);
     const requesterName = `${requester.name} ${requester.surname}`;
 
+    const title = 'Role Request';
+    const body = `${requesterName} would like to become the Primary caregiver for ${patientName}.`;
     await this.prisma.notification.create({
       data: {
         caregiverId: primaryLink.caregiverId,
         type: 'ROLE_REQUEST_RECEIVED' as any,
-        title: 'Role Request',
-        body: `${requesterName} would like to become the Primary caregiver for ${patientName}.`,
+        title,
+        body,
       },
     });
+    await this.pushCaregiverNotification(primaryLink.caregiverId, title, body);
 
     return { message: 'Request sent successfully.' };
   }
@@ -973,6 +980,8 @@ export class AuthService {
     const primaryName = `${roleRequest.currentPrimary.name} ${roleRequest.currentPrimary.surname}`;
 
     if (action === 'APPROVE') {
+      const approvedTitle = 'Request approved';
+      const approvedBody = `${primaryName} approved your request. You are now the Primary caregiver for ${patientName}.`;
       await this.prisma.$transaction(async (tx) => {
         await tx.patientCaregiver.update({
           where: { caregiverId_patientId: { caregiverId: primaryId, patientId: roleRequest.patientId } },
@@ -990,14 +999,17 @@ export class AuthService {
           data: {
             caregiverId: roleRequest.requesterId,
             type: 'ROLE_REQUEST_APPROVED' as any,
-            title: 'Request approved',
-            body: `${primaryName} approved your request. You are now the Primary caregiver for ${patientName}.`,
+            title: approvedTitle,
+            body: approvedBody,
           },
         });
       });
+      await this.pushCaregiverNotification(roleRequest.requesterId, approvedTitle, approvedBody);
     } else {
       const declineReason = this.normalizeDeclineReason(reason);
       const reasonSuffix = declineReason ? ` Reason: "${declineReason}"` : '';
+      const declinedTitle = 'Request declined';
+      const declinedBody = `${primaryName} declined your request for the primary role for ${patientName}.${reasonSuffix}`;
       await this.prisma.$transaction(async (tx) => {
         await tx.roleRequest.update({
           where: { id: requestId },
@@ -1007,12 +1019,13 @@ export class AuthService {
           data: {
             caregiverId: roleRequest.requesterId,
             type: 'ROLE_REQUEST_DECLINED' as any,
-            title: 'Request declined',
-            body: `${primaryName} declined your request for the primary role for ${patientName}.${reasonSuffix}`,
+            title: declinedTitle,
+            body: declinedBody,
             declineReason,
           },
         });
       });
+      await this.pushCaregiverNotification(roleRequest.requesterId, declinedTitle, declinedBody);
     }
 
     return { message: action === 'APPROVE' ? 'Request approved.' : 'Request declined.' };
@@ -1098,14 +1111,17 @@ export class AuthService {
     const reasonSuffix = declineReason ? ` Reason: "${declineReason}"` : '';
 
     if (action === 'ACCEPT') {
+      const acceptedTitle = 'Request accepted';
+      const acceptedBody = `${responderName} accepted your handover request for ${patientName}.`;
       await this.prisma.notification.create({
         data: {
           caregiverId: request.fromCaregiverId,
           type: 'DELEGATION_ACCEPTED' as any,
-          title: 'Request accepted',
-          body: `${responderName} accepted your handover request for ${patientName}.`,
+          title: acceptedTitle,
+          body: acceptedBody,
         },
       });
+      await this.pushCaregiverNotification(request.fromCaregiverId, acceptedTitle, acceptedBody);
     } else {
       // DECLINE — send only ONE notification (not two)
       const remainingPending = await this.prisma.delegationRequest.count({
@@ -1117,27 +1133,31 @@ export class AuthService {
       });
 
       if (remainingPending === 0) {
-        // All secondaries for this patient have declined → transfer failed
+        const failedTitle = 'Transfer failed';
+        const failedBody = `${responderName} declined the handover for ${patientName}. No other caregivers are pending. Please pick another or cancel.${reasonSuffix}`;
         await this.prisma.notification.create({
           data: {
             caregiverId: request.fromCaregiverId,
             type: 'DELEGATION_DECLINED' as any,
-            title: 'Transfer failed',
-            body: `${responderName} declined the handover for ${patientName}. No other caregivers are pending. Please pick another or cancel.${reasonSuffix}`,
+            title: failedTitle,
+            body: failedBody,
             declineReason,
           },
         });
+        await this.pushCaregiverNotification(request.fromCaregiverId, failedTitle, failedBody);
       } else {
-        // Some are still pending → simple decline notification
+        const declinedTitle = 'Request declined';
+        const declinedBody = `${responderName} declined your handover request for ${patientName}.${reasonSuffix}`;
         await this.prisma.notification.create({
           data: {
             caregiverId: request.fromCaregiverId,
             type: 'DELEGATION_DECLINED' as any,
-            title: 'Request declined',
-            body: `${responderName} declined your handover request for ${patientName}.${reasonSuffix}`,
+            title: declinedTitle,
+            body: declinedBody,
             declineReason,
           },
         });
+        await this.pushCaregiverNotification(request.fromCaregiverId, declinedTitle, declinedBody);
       }
     }
 
@@ -1216,6 +1236,30 @@ export class AuthService {
   }
 
   // ─── Notifications ─────────────────────────────────────────────────────────
+
+  async updatePushToken(caregiverId: string, token: string) {
+    await this.prisma.caregiver.update({
+      where: { id: caregiverId },
+      data: { pushToken: token },
+    });
+    return { message: 'Push token saved' };
+  }
+
+  private async pushCaregiverNotification(
+    caregiverId: string,
+    title: string,
+    body: string,
+  ): Promise<void> {
+    await this.pushService.sendToCaregiver(caregiverId, { title, body });
+  }
+
+  private async pushCaregiverNotifications(
+    items: Array<{ caregiverId: string; title: string; body: string }>,
+  ): Promise<void> {
+    for (const item of items) {
+      await this.pushCaregiverNotification(item.caregiverId, item.title, item.body);
+    }
+  }
 
   async getNotifications(caregiverId: string) {
     return this.prisma.notification.findMany({
