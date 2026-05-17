@@ -9,6 +9,10 @@
 # Note: container-local disk under /app/uploads/media is not durable across deploys/restarts
 # on App Platform unless you add persistent storage or switch media to object storage (e.g. Spaces).
 #
+# On each container start, docker-entrypoint.sh runs `prisma migrate deploy` before the API boots.
+# If patient create returns 500 right after first deploy, run migrate once manually (see README)
+# or redeploy after this entrypoint is in place.
+#
 # Dockerfile path is relative to repository root; source_dir is the build context.
 
 name: memorylane-api
