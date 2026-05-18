@@ -779,6 +779,53 @@ export class PatientService {
     return { biometricRecoveryEnabled: enabled };
   }
 
+  async updatePatientLocation(
+    patientId: string,
+    data: { latitude: number; longitude: number; capturedAt?: string; locationShareToken?: string },
+  ) {
+    const latitude = Number(data.latitude);
+    const longitude = Number(data.longitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+      throw new BadRequestException('Latitude must be between -90 and 90');
+    }
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      throw new BadRequestException('Longitude must be between -180 and 180');
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, paired: true, patientJoinCode: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) throw new ConflictException('Device must be paired before sharing location');
+    if (!data.locationShareToken || data.locationShareToken !== patient.patientJoinCode) {
+      throw new ForbiddenException('Invalid location share token');
+    }
+
+    const capturedAt = data.capturedAt ? new Date(data.capturedAt) : new Date();
+    const lastLocationAt = Number.isNaN(capturedAt.getTime()) ? new Date() : capturedAt;
+
+    const updated = await this.prisma.patient.update({
+      where: { id: patientId },
+      data: {
+        lastLatitude: latitude,
+        lastLongitude: longitude,
+        lastLocationAt,
+      },
+      select: {
+        lastLatitude: true,
+        lastLongitude: true,
+        lastLocationAt: true,
+      },
+    });
+
+    return {
+      latitude: updated.lastLatitude,
+      longitude: updated.lastLongitude,
+      updatedAt: updated.lastLocationAt,
+    };
+  }
+
   async setQuizReminders(patientId: string, caregiverId: string, times: string[]) {
     const link = await this.prisma.patientCaregiver.findUnique({
       where: { caregiverId_patientId: { caregiverId, patientId } },
@@ -873,6 +920,7 @@ export class PatientService {
       surname: joined.surname,
       dateOfBirth: patient.dateOfBirth,
       avatarUrl: patient.avatarUrl ?? null,
+      locationShareToken: patient.patientJoinCode,
       caregiver: {
         name: patient.creator.name,
         surname: patient.creator.surname,

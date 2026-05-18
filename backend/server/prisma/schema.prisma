@@ -160,6 +160,9 @@ model Patient {
   aiDifficultyModel  Json?               @map("ai_difficulty_model")
   createdAt          DateTime            @default(now()) @map("created_at")
   deviceToken        String?             @map("device_token")
+  lastLatitude       Float?              @map("last_latitude")
+  lastLongitude      Float?              @map("last_longitude")
+  lastLocationAt     DateTime?           @map("last_location_at")
 
   creator             Caregiver           @relation(fields: [createdBy], references: [id])
   patientCaregivers   PatientCaregiver[]

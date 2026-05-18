@@ -48,6 +48,59 @@ interface PatientItem {
   primaryCaregiver: { id: string; name: string; surname: string; avatarUrl: string | null } | null;
   secondaryCaregivers: { id: string; name: string; surname: string; avatarUrl: string | null }[];
   hasPendingRoleRequest?: boolean;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocationAt?: string | null;
+}
+
+interface PatientMapLocation {
+  latitude: number;
+  longitude: number;
+  label: string;
+  area: string;
+  updatedAt: string;
+}
+
+const OPEN_MAP_ZOOM = 14;
+
+function lonToTileX(longitude: number, zoom: number) {
+  return Math.floor(((longitude + 180) / 360) * Math.pow(2, zoom));
+}
+
+function latToTileY(latitude: number, zoom: number) {
+  const latRad = latitude * Math.PI / 180;
+  return Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
+    Math.pow(2, zoom)
+  );
+}
+
+function getOpenMapTileUrl(location: PatientMapLocation) {
+  const x = lonToTileX(location.longitude, OPEN_MAP_ZOOM);
+  const y = latToTileY(location.latitude, OPEN_MAP_ZOOM);
+  return `https://tile.openstreetmap.org/${OPEN_MAP_ZOOM}/${x}/${y}.png`;
+}
+
+function getOpenMapUrl(location: PatientMapLocation) {
+  return `https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=${OPEN_MAP_ZOOM}/${location.latitude}/${location.longitude}`;
+}
+
+function formatLocationTime(updatedAt: string) {
+  return new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function getPatientLocation(patient: PatientItem): PatientMapLocation | null {
+  const latitude = Number(patient.lastLatitude);
+  const longitude = Number(patient.lastLongitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  return {
+    latitude,
+    longitude,
+    label: 'Current GPS position',
+    area: 'Reported by patient device',
+    updatedAt: patient.lastLocationAt ?? new Date().toISOString(),
+  };
 }
 
 function calculateAge(dateOfBirth: string): number {
@@ -613,6 +666,8 @@ export default function PatientsTab() {
                         </Text>
                       </View>
 
+                      <PatientLocationPreview patient={patient} />
+
                       {/* Care team pills */}
                       {patient.secondaryCaregivers?.length > 0 && (
                         <>
@@ -678,6 +733,7 @@ export default function PatientsTab() {
                               {patient.paired ? 'Device linked' : 'Waiting for device'}
                             </Text>
                           </View>
+                          <PatientLocationPreview patient={patient} compact />
                         </View>
                         <View style={styles.secondaryArrow}>
                           <AppIcon iosName="chevron.right" androidFallback="›" size={18} color="#7B73C0" />
@@ -749,6 +805,133 @@ export default function PatientsTab() {
       />
 
     </SafeAreaView>
+  );
+}
+
+function PatientLocationPreview({ patient, compact = false }: { patient: PatientItem; compact?: boolean }) {
+  const location = getPatientLocation(patient);
+  if (!location) {
+    return (
+      <View style={[styles.locationPreview, compact && styles.locationPreviewCompact]}>
+        <View style={[styles.locationIconCircle, styles.locationIconCircleMuted]}>
+          <AppIcon iosName="location.slash" androidFallback="-" size={compact ? 18 : 20} color={colors.textMuted} />
+        </View>
+        <View style={styles.locationPreviewText}>
+          <Text style={styles.locationPreviewLastSeen} numberOfLines={1}>
+            Last seen at: --
+          </Text>
+          <Text style={styles.locationPreviewCoords} numberOfLines={1}>
+            Coordinates: unavailable
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const openMap = () => Linking.openURL(getOpenMapUrl(location));
+
+  return (
+    <Pressable
+      style={[styles.locationPreview, compact && styles.locationPreviewCompact]}
+      onPress={openMap}
+      android_ripple={{ color: 'rgba(45, 79, 62, 0.08)', borderless: false }}
+    >
+      <View style={styles.locationIconCircle}>
+        <AppIcon iosName="mappin.and.ellipse" androidFallback="•" size={compact ? 19 : 21} color="#FFFFFF" />
+      </View>
+      <View style={styles.locationPreviewText}>
+        <Text style={styles.locationPreviewLastSeen} numberOfLines={1}>
+          Last seen at: {formatLocationTime(location.updatedAt)}
+        </Text>
+        <Text style={styles.locationPreviewCoords} numberOfLines={1}>
+          Coordinates: {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+        </Text>
+      </View>
+      <AppIcon iosName="arrow.up.right" androidFallback="↗" size={15} color={colors.textMuted} />
+    </Pressable>
+  );
+}
+
+function PatientLocationPanel({ patient }: { patient: PatientItem }) {
+  const location = getPatientLocation(patient);
+  if (!location) {
+    return (
+      <View style={styles.locationPanel}>
+        <View style={styles.locationPanelHeader}>
+          <View>
+            <Text style={styles.locationPanelEyebrow}>OpenStreetMap</Text>
+            <Text style={styles.locationPanelTitle}>Location</Text>
+          </View>
+          <View style={styles.locationPanelStatus}>
+            <View style={[styles.liveDot, { backgroundColor: '#C8A24D' }]} />
+            <Text style={styles.locationPanelStatusText}>Waiting</Text>
+          </View>
+        </View>
+        <View style={[styles.locationMapFrame, styles.locationMapFrameEmpty]}>
+          <AppIcon iosName="location.slash" androidFallback="-" size={28} color={colors.textMuted} />
+          <Text style={styles.locationEmptyTitle}>Coordinates unavailable</Text>
+          <Text style={styles.locationEmptyText}>
+            Last seen at: --
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const openMap = () => Linking.openURL(getOpenMapUrl(location));
+
+  return (
+    <View style={styles.locationPanel}>
+      <View style={styles.locationPanelHeader}>
+        <View>
+          <Text style={styles.locationPanelEyebrow}>OpenStreetMap</Text>
+          <Text style={styles.locationPanelTitle}>Location</Text>
+        </View>
+        <View style={styles.locationPanelStatus}>
+          <View style={styles.liveDot} />
+          <Text style={styles.locationPanelStatusText}>Updated {formatLocationTime(location.updatedAt)}</Text>
+        </View>
+      </View>
+
+      <Pressable
+        style={styles.locationMapFrame}
+        onPress={openMap}
+        android_ripple={{ color: 'rgba(255,255,255,0.16)', borderless: false }}
+      >
+        <Image source={{ uri: getOpenMapTileUrl(location) }} style={styles.locationPanelTile} />
+        <LinearGradient
+          colors={['rgba(10, 32, 24, 0.08)', 'rgba(10, 32, 24, 0.52)']}
+          style={styles.locationMapGradient}
+        />
+        <View style={styles.locationPulseOuter}>
+          <View style={styles.locationPulseInner}>
+            <AppIcon iosName="location.fill" androidFallback="•" size={18} color="#FFFFFF" />
+          </View>
+        </View>
+        <View style={styles.locationMapFooter}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.locationMapName}>{patient.name} {patient.surname}</Text>
+            <Text style={styles.locationMapAddress}>{location.label}, {location.area}</Text>
+          </View>
+          <View style={styles.locationOpenButton}>
+            <AppIcon iosName="map" androidFallback="□" size={15} color={colors.secondary} />
+            <Text style={styles.locationOpenButtonText}>Open</Text>
+          </View>
+        </View>
+      </Pressable>
+
+      <View style={styles.locationMetaRow}>
+        <View style={styles.locationMetaItem}>
+          <Text style={styles.locationMetaLabel}>Latitude</Text>
+          <Text style={styles.locationMetaValue}>{location.latitude.toFixed(5)}</Text>
+        </View>
+        <View style={styles.locationMetaDivider} />
+        <View style={styles.locationMetaItem}>
+          <Text style={styles.locationMetaLabel}>Longitude</Text>
+          <Text style={styles.locationMetaValue}>{location.longitude.toFixed(5)}</Text>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -1259,6 +1442,8 @@ function PatientDetailContent({
         </Text>
       </View>
 
+      <PatientLocationPanel patient={patient} />
+
       {/* QR / restricted */}
       {patient.isPrimary ? (
         <View style={styles.qrSection}>
@@ -1609,6 +1794,166 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textDark,
   },
+  locationPanel: {
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.52)' : '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.08)',
+    marginBottom: 24,
+  },
+  locationPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  locationPanelEyebrow: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  locationPanelTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 18,
+    color: colors.textDark,
+    marginTop: 2,
+  },
+  locationPanelStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(45,79,62,0.08)',
+  },
+  locationPanelStatusText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: colors.secondary,
+  },
+  locationMapFrame: {
+    height: 190,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(45,79,62,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationMapFrameEmpty: {
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.035)',
+  },
+  locationPanelTile: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  locationMapGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  locationEmptyTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: colors.textDark,
+    marginTop: 12,
+  },
+  locationEmptyText: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  locationPulseOuter: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(3,87,58,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.62)',
+  },
+  locationPulseInner: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  locationMapFooter: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  locationMapName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  locationMapAddress: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 2,
+  },
+  locationOpenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  locationOpenButtonText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: colors.secondary,
+  },
+  locationMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(45,79,62,0.06)',
+    paddingVertical: 10,
+  },
+  locationMetaItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  locationMetaLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  locationMetaValue: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: colors.textDark,
+    marginTop: 3,
+  },
+  locationMetaDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 32,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
 
   qrSection: {
     alignItems: 'center',
@@ -1840,6 +2185,119 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
     color: colors.textMuted,
+  },
+  locationPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    marginTop: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.48)' : 'rgba(255,255,255,0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(45,79,62,0.13)',
+    overflow: 'hidden',
+  },
+  locationPreviewCompact: {
+    marginTop: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+  },
+  locationIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  locationIconCircleMuted: {
+    backgroundColor: 'rgba(0,0,0,0.07)',
+    borderColor: 'rgba(255,255,255,0.72)',
+  },
+  locationMiniMap: {
+    width: 54,
+    height: 48,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(45,79,62,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationMiniMapEmpty: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  locationTile: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  locationTileOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(30,77,48,0.10)',
+  },
+  locationMarker: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  locationPreviewText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  locationPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  locationPreviewTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: colors.textDark,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(45,79,62,0.10)',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#31A354',
+  },
+  liveBadgeText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 10,
+    color: colors.secondary,
+  },
+  locationPreviewArea: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: colors.textDark,
+  },
+  locationPreviewLastSeen: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: colors.textDark,
+  },
+  locationPreviewCoords: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 3,
   },
   careTeamDivider: {
     height: StyleSheet.hairlineWidth,
@@ -2399,4 +2857,3 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 });
-

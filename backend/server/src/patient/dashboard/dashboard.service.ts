@@ -42,6 +42,9 @@ export class DashboardService {
           patientJoinCode: patient.patientJoinCode,
           paired: patient.paired,
           quizReminderTimes: patient.quizReminderTimes ?? [],
+          lastLatitude: patient.lastLatitude,
+          lastLongitude: patient.lastLongitude,
+          lastLocationAt: patient.lastLocationAt,
           createdAt: patient.createdAt,
           primaryCaregiver: primaryLink
             ? {

@@ -19,6 +19,7 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account.",
+        "NSLocationWhenInUseUsageDescription": "MemoryLane shares the patient's live location with their care team while the patient app is open.",
         "NSFaceIDUsageDescription": "MemoryLane uses Face ID to help the patient get back to their photos easily.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -36,7 +37,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.memorylane.app"
     },
@@ -46,6 +49,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MemoryLane shares the patient's live location with their care team while the patient app is open."
+        }
+      ],
       [
         "expo-camera",
         {

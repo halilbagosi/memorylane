@@ -60,6 +60,11 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'gauge.with.dots.needle.50percent': 'speedometer-medium',
   'flame.fill': 'fire',
   'face.smiling': 'emoticon-happy-outline',
+  'mappin.and.ellipse': 'map-marker-radius-outline',
+  'location.fill': 'crosshairs-gps',
+  'location.slash': 'map-marker-off-outline',
+  'map': 'map-outline',
+  'arrow.up.right': 'open-in-new',
 };
 
 interface AppIconProps {
