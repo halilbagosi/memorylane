@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
+import * as Location from 'expo-location';
+import { Tabs, useNavigation } from 'expo-router';
 import { Tabs, useNavigation, useRouter } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { CommonActions } from '@react-navigation/native';
@@ -18,6 +20,7 @@ import { addNotificationResponseListener } from '../../src/services/pushNotifica
 import { syncPatientDeviceToken } from '../../src/services/syncPushToken';
 
 const POLL_INTERVAL_MS = 15000;
+const LOCATION_INTERVAL_MS = 60000;
 
 function IOSTabLayout() {
   return (
@@ -79,6 +82,54 @@ export default function PatientTabsLayout() {
   const navigation = useNavigation();
   const router = useRouter();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const sendCurrentLocation = async () => {
+      const patient = await getPatientInfo();
+      if (!patient?.locationShareToken || cancelled) return;
+
+      try {
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        await fetch(`${API_BASE_URL}/patients/${patient.id}/location`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            capturedAt: new Date(position.timestamp).toISOString(),
+            locationShareToken: patient.locationShareToken,
+          }),
+        });
+      } catch {
+        // Location is best-effort; the patient app should continue working without it.
+      }
+    };
+
+    const startLocationSharing = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== Location.PermissionStatus.GRANTED || cancelled) return;
+
+        await sendCurrentLocation();
+        locationIntervalRef.current = setInterval(sendCurrentLocation, LOCATION_INTERVAL_MS);
+      } catch {
+        // Permission prompts and GPS availability vary by device.
+      }
+    };
+
+    startLocationSharing();
+
+    return () => {
+      cancelled = true;
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const subscription = addNotificationResponseListener((screen) => {
