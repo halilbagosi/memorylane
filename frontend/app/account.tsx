@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch,
   ActivityIndicator, Platform, Modal, TextInput, Image, Alert, Linking,
@@ -7,7 +8,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
+import { useTheme, type AppearanceMode } from '../src/theme/ThemeProvider';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import {
@@ -45,6 +47,8 @@ interface DeletionState {
 }
 
 export default function AccountScreen() {
+  const { isDark, appearance, setAppearance, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
   const navigation = useNavigation();
   const { openDeletion } = useLocalSearchParams<{ openDeletion?: string }>();
@@ -52,6 +56,15 @@ export default function AccountScreen() {
   const [token, setToken] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const goToCaregiverPatients = () => {
+    setDeletionModalVisible(false);
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    router.replace('/(caregiver-tabs)/patients');
+  };
   const [profile, setProfile] = useState<CaregiverInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -425,6 +438,7 @@ export default function AccountScreen() {
     }
   };
 
+
   // ─── Sessions ──────────────────────────────────────────────────────────────
 
   const revokeSession = (sessionId: string) => {
@@ -639,7 +653,7 @@ export default function AccountScreen() {
     return (
       <View style={styles.safeArea}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={themeColors.primary} />
         </View>
       </View>
     );
@@ -659,7 +673,7 @@ export default function AccountScreen() {
             <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.8} style={styles.avatarWrapper}>
               {uploadingAvatar ? (
                 <View style={styles.avatarCircle}>
-                  <ActivityIndicator color={colors.textLight} />
+                  <ActivityIndicator color={themeColors.textLight} />
                 </View>
               ) : profile?.avatarUrl ? (
                 <Image source={{ uri: profile.avatarUrl }} style={styles.avatarCircle} />
@@ -685,7 +699,7 @@ export default function AccountScreen() {
           <View style={[styles.subscriptionCard, profile?.isSubscribed && styles.subscriptionCardPremium]}>
             <View style={styles.subscriptionCardHeader}>
               <View style={[styles.rowIcon, { backgroundColor: profile?.isSubscribed ? 'rgba(255,193,7,0.18)' : 'rgba(0,0,0,0.05)' }]}>
-                <AppIcon iosName="star.fill" androidFallback="⭐" size={18} color={profile?.isSubscribed ? '#FFC107' : colors.textMuted} />
+                <AppIcon iosName="star.fill" androidFallback="⭐" size={18} color={profile?.isSubscribed ? '#FFC107' : themeColors.textMuted} />
               </View>
               <View style={styles.subscriptionCardInfo}>
                 <Text style={styles.subscriptionCardTitle}>{getPlanName(profile?.isSubscribed ?? false)} Plan</Text>
@@ -697,6 +711,16 @@ export default function AccountScreen() {
                 </Text>
               </View>
             </View>
+            
+            {!profile?.isSubscribed && (
+              <View style={styles.premiumUpsellContainer}>
+                <Text style={styles.premiumUpsellTitle}>⭐ Upgrade to Premium to unlock:</Text>
+                <Text style={styles.premiumUpsellDesc}>
+                  Unlimited patients, caregivers, video/audio uploads, and AI-powered features.
+                </Text>
+              </View>
+            )}
+
             <View style={styles.subscriptionToggleRow}>
               <Text style={styles.subscriptionToggleLabel}>
                 {profile?.isSubscribed ? 'Active' : 'Upgrade'}
@@ -705,7 +729,7 @@ export default function AccountScreen() {
                 value={profile?.isSubscribed ?? false}
                 onValueChange={toggleSubscription}
                 trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-                thumbColor={profile?.isSubscribed ? colors.secondary : isIOS ? '#fff' : '#f4f4f4'}
+                thumbColor={profile?.isSubscribed ? themeColors.secondary : isIOS ? '#fff' : '#f4f4f4'}
                 ios_backgroundColor="rgba(0,0,0,0.08)"
               />
             </View>
@@ -716,26 +740,26 @@ export default function AccountScreen() {
           <View style={styles.card}>
             <TouchableOpacity style={styles.row} onPress={openEditName} activeOpacity={0.7}>
               <View style={[styles.rowIcon, { backgroundColor: 'rgba(45,79,62,0.1)' }]}>
-                <AppIcon iosName="person" androidFallback="👤" size={18} color={colors.secondary} />
+                <AppIcon iosName="person" androidFallback="👤" size={18} color={themeColors.secondary} />
               </View>
               <View style={styles.rowContent}>
                 <Text style={styles.rowLabel}>Full Name</Text>
                 <Text style={styles.rowValue}>{profile?.name} {profile?.surname}</Text>
               </View>
-              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={themeColors.textMuted} />
             </TouchableOpacity>
 
             <View style={styles.separator} />
 
             <TouchableOpacity style={styles.row} onPress={openEmailModal} activeOpacity={0.7}>
               <View style={[styles.rowIcon, { backgroundColor: 'rgba(180,174,232,0.2)' }]}>
-                <AppIcon iosName="envelope" androidFallback="✉" size={18} color={colors.primary} />
+                <AppIcon iosName="envelope" androidFallback="✉" size={18} color={themeColors.primary} />
               </View>
               <View style={styles.rowContent}>
                 <Text style={styles.rowLabel}>Email Address</Text>
                 <Text style={styles.rowValue} numberOfLines={1}>{profile?.email}</Text>
               </View>
-              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={themeColors.textMuted} />
             </TouchableOpacity>
 
             <View style={styles.separator} />
@@ -748,8 +772,55 @@ export default function AccountScreen() {
                 <Text style={styles.rowLabel}>Change Password</Text>
                 <Text style={styles.rowValue}>••••••••</Text>
               </View>
-              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={themeColors.textMuted} />
             </TouchableOpacity>
+          </View>
+
+          {/* ── Preferences ── */}
+          <Text style={styles.sectionLabel}>Preferences</Text>
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <View style={[styles.rowIcon, { backgroundColor: (isDark ? 'rgba(201, 195, 255, 0.16)' : 'rgba(123,115,192,0.15)') }]}>
+                <AppIcon iosName="moon.stars.fill" androidFallback="🌙" size={18} color={(isDark ? '#F5FBF7' : '#7B73C0')} />
+              </View>
+              <View style={styles.rowContent}>
+                <Text style={styles.rowLabel}>App Appearance</Text>
+                <Text style={styles.rowValue}>Choose your preferred theme</Text>
+              </View>
+            </View>
+            <View style={styles.separator} />
+            <View style={styles.appearanceRow}>
+              {(['light', 'dark', 'system'] as AppearanceMode[]).map((mode) => {
+                const isActive = appearance === mode;
+                const label = mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'System';
+                const icon = mode === 'light' ? 'sun.max.fill' : mode === 'dark' ? 'moon.fill' : 'gear';
+                const fallback = mode === 'light' ? '☀' : mode === 'dark' ? '🌙' : '⚙';
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.appearanceOption,
+                      isActive && { backgroundColor: (isDark ? '#183426' : '#E8F5EC'), borderColor: (isDark ? '#9BE7B4' : '#1E4D30') },
+                    ]}
+                    onPress={() => setAppearance(mode)}
+                    activeOpacity={0.7}
+                  >
+                    <AppIcon
+                      iosName={icon as any}
+                      androidFallback={fallback}
+                      size={18}
+                      color={isActive ? (isDark ? '#9BE7B4' : '#1E4D30') : (isDark ? '#AEBDAF' : '#666666')}
+                    />
+                    <Text style={[
+                      styles.appearanceLabel,
+                      isActive && { color: (isDark ? '#9BE7B4' : '#1E4D30'), fontFamily: typography.fontFamily.bold },
+                    ]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           {/* ── Active Sessions ── */}
@@ -770,7 +841,7 @@ export default function AccountScreen() {
                         backgroundColor: isCurrent ? 'rgba(45,79,62,0.1)' : 'rgba(0,0,0,0.05)',
                       }]}>
                         <AppIcon iosName="iphone" androidFallback="📱" size={18}
-                          color={isCurrent ? colors.secondary : colors.textMuted} />
+                          color={isCurrent ? themeColors.secondary : themeColors.textMuted} />
                       </View>
                       <View style={styles.rowContent}>
                         <Text style={styles.rowLabel}>
@@ -808,7 +879,7 @@ export default function AccountScreen() {
                 <Text style={[styles.rowLabel, { color: '#C0392B' }]}>Log Out</Text>
                 <Text style={styles.rowValue}>Log out of this device</Text>
               </View>
-              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={colors.textMuted} />
+              <AppIcon iosName="chevron.right" androidFallback="›" size={16} color={themeColors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -865,9 +936,9 @@ export default function AccountScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit Name</Text>
             <TextInput style={styles.modalInput} value={editName} onChangeText={setEditName}
-              placeholder="First name" placeholderTextColor={colors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false} />
+              placeholder="First name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false} />
             <TextInput style={[styles.modalInput, { marginTop: 10 }]} value={editSurname} onChangeText={setEditSurname}
-              placeholder="Last name" placeholderTextColor={colors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false} />
+              placeholder="Last name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false} />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditNameVisible(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -895,14 +966,14 @@ export default function AccountScreen() {
                     value={emailPassword}
                     onChangeText={setEmailPassword}
                     placeholder="Current password"
-                    placeholderTextColor={colors.textMuted}
+                    placeholderTextColor={themeColors.textMuted}
                     secureTextEntry={!showEmailPw}
                     autoCorrect={false}
                     spellCheck={false}
                     autoFocus
                   />
                   <TouchableOpacity onPress={() => setShowEmailPw(v => !v)} style={styles.modalEyeBtn}>
-                    <AppIcon iosName={showEmailPw ? 'eye.slash' : 'eye'} androidFallback={showEmailPw ? '🙈' : '👁'} size={18} color={colors.textMuted} />
+                    <AppIcon iosName={showEmailPw ? 'eye.slash' : 'eye'} androidFallback={showEmailPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
                   </TouchableOpacity>
                 </View>
                 {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
@@ -924,7 +995,7 @@ export default function AccountScreen() {
                   value={newEmail}
                   onChangeText={setNewEmail}
                   placeholder="New email address"
-                  placeholderTextColor={colors.textMuted}
+                  placeholderTextColor={themeColors.textMuted}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -955,25 +1026,25 @@ export default function AccountScreen() {
 
             <View style={styles.modalInputRow}>
               <TextInput style={styles.modalInputInner} value={currentPassword} onChangeText={setCurrentPassword}
-                placeholder="Current password" placeholderTextColor={colors.textMuted} secureTextEntry={!showCurrentPw} autoCorrect={false} spellCheck={false} />
+                placeholder="Current password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showCurrentPw} autoCorrect={false} spellCheck={false} />
               <TouchableOpacity onPress={() => setShowCurrentPw(v => !v)} style={styles.modalEyeBtn}>
-                <AppIcon iosName={showCurrentPw ? 'eye.slash' : 'eye'} androidFallback={showCurrentPw ? '🙈' : '👁'} size={18} color={colors.textMuted} />
+                <AppIcon iosName={showCurrentPw ? 'eye.slash' : 'eye'} androidFallback={showCurrentPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
               </TouchableOpacity>
             </View>
 
             <View style={[styles.modalInputRow, { marginTop: 10 }]}>
               <TextInput style={styles.modalInputInner} value={newPassword} onChangeText={setNewPassword}
-                placeholder="New password" placeholderTextColor={colors.textMuted} secureTextEntry={!showNewPw} autoCorrect={false} spellCheck={false} />
+                placeholder="New password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showNewPw} autoCorrect={false} spellCheck={false} />
               <TouchableOpacity onPress={() => setShowNewPw(v => !v)} style={styles.modalEyeBtn}>
-                <AppIcon iosName={showNewPw ? 'eye.slash' : 'eye'} androidFallback={showNewPw ? '🙈' : '👁'} size={18} color={colors.textMuted} />
+                <AppIcon iosName={showNewPw ? 'eye.slash' : 'eye'} androidFallback={showNewPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
               </TouchableOpacity>
             </View>
 
             <View style={[styles.modalInputRow, { marginTop: 10 }]}>
               <TextInput style={styles.modalInputInner} value={confirmPassword} onChangeText={setConfirmPassword}
-                placeholder="Confirm new password" placeholderTextColor={colors.textMuted} secureTextEntry={!showConfirmPw} autoCorrect={false} spellCheck={false} />
+                placeholder="Confirm new password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showConfirmPw} autoCorrect={false} spellCheck={false} />
               <TouchableOpacity onPress={() => setShowConfirmPw(v => !v)} style={styles.modalEyeBtn}>
-                <AppIcon iosName={showConfirmPw ? 'eye.slash' : 'eye'} androidFallback={showConfirmPw ? '🙈' : '👁'} size={18} color={colors.textMuted} />
+                <AppIcon iosName={showConfirmPw ? 'eye.slash' : 'eye'} androidFallback={showConfirmPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -1010,7 +1081,7 @@ export default function AccountScreen() {
           setDeletionModalVisible(false);
           if (token) await loadProfile(token);
         }}
-        onNavigateToCareTeams={() => router.push('/(caregiver-tabs)/patients')}
+        onNavigateToCareTeams={goToCaregiverPatients}
       />
     </View>
   );
@@ -1023,8 +1094,10 @@ const CARD_SHADOW = isIOS ? {
   shadowRadius: 8,
 } : { elevation: 1 };
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   scrollContent: { padding: 20, paddingTop: 24, paddingBottom: 60 },
@@ -1035,14 +1108,14 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 34,
-    color: colors.textLight,
+    color: themeColors.textLight,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -1052,19 +1125,19 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.neutral,
+    borderColor: themeColors.neutral,
   },
-  avatarName: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: colors.textDark },
-  avatarEmail: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textMuted, marginTop: 2 },
+  avatarName: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: themeColors.textDark },
+  avatarEmail: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textMuted, marginTop: 2 },
 
   sectionLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 8,
@@ -1073,21 +1146,21 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.7)' : '#FFFFFF',
+    backgroundColor: themeColors.glassCardBg,
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: themeColors.glassBorder,
     ...CARD_SHADOW,
   },
   dangerCard: {
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.7)' : '#FFFFFF',
+    backgroundColor: themeColors.glassCardBg,
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(231,76,60,0.2)',
+    borderColor: (isDark ? themeColors.glassBorder : 'rgba(231,76,60,0.2)'),
     ...CARD_SHADOW,
   },
 
@@ -1113,14 +1186,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowContent: { flex: 1 },
-  rowLabel: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: colors.textDark },
-  rowValue: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, marginTop: 1 },
-  currentBadge: { fontFamily: typography.fontFamily.medium, fontSize: 12, color: colors.secondary },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,0,0,0.07)', marginLeft: 64 },
+  rowLabel: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: themeColors.textDark },
+  rowValue: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: themeColors.textMuted, marginTop: 1 },
+  currentBadge: { fontFamily: typography.fontFamily.medium, fontSize: 12, color: themeColors.secondary },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.07)'), marginLeft: 64 },
   emptySessionsText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     padding: 16,
     textAlign: 'center',
   },
@@ -1129,57 +1202,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(231,76,60,0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(231,76,60,0.08)'),
   },
-  revokeBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#C0392B' },
+  revokeBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: (isDark ? '#FFB4A8' : '#C0392B') },
 
   logoutOthersBtn: {
     marginBottom: 20,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(231,76,60,0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(231,76,60,0.08)'),
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(231,76,60,0.2)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(231,76,60,0.2)'),
   },
-  logoutOthersText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#C0392B' },
+  logoutOthersText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: (isDark ? '#FFB4A8' : '#C0392B') },
 
   // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.4)'),
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalCard: {
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     borderRadius: 28,
     padding: 24,
     width: '100%',
     maxWidth: 380,
     elevation: 3,
   },
-  modalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: colors.textDark, marginBottom: 6 },
-  modalSubtitle: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, marginBottom: 16 },
+  modalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: themeColors.textDark, marginBottom: 6 },
+  modalSubtitle: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: themeColors.textMuted, marginBottom: 16 },
   modalInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.12)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.12)'),
     borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.02)'),
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.12)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.12)'),
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textDark,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    color: themeColors.textDark,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.02)'),
   },
   modalInputInner: {
     flex: 1,
@@ -1187,7 +1260,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   modalEyeBtn: {
     paddingHorizontal: 12,
@@ -1195,30 +1268,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: '#C0392B', marginTop: 8 },
+  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: (isDark ? '#FFB4A8' : '#C0392B'), marginTop: 8 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 20 },
-  modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
-  modalCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
-  modalSaveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
-  modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#FFFFFF' },
+  modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)') },
+  modalCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.textMuted },
+  modalSaveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: themeColors.secondary },
+  modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: (isDark ? '#17231D' : '#FFFFFF') },
 
   // Subscription
   premiumBadge: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: '#D4A017',
+    color: (isDark ? '#F2C66D' : '#D4A017'),
   },
   subscriptionCard: {
     borderRadius: 16,
     padding: 16,
     marginBottom: 24,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.55)') : (isDark ? '#17231D' : '#FFFFFF'),
     borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.08)',
+    borderColor: Platform.OS === 'ios' ? (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.1)') : (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
   },
   subscriptionCardPremium: {
-    borderColor: 'rgba(212,160,23,0.35)',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,248,225,0.6)' : '#FFFDE7',
+    borderColor: (isDark ? themeColors.primary + '33' : 'rgba(212,160,23,0.35)'),
+    backgroundColor: (isDark ? themeColors.patientCardBg : (Platform.OS === 'ios' ? 'rgba(255,248,225,0.6)' : '#FFFDE7')),
   },
   subscriptionCardHeader: {
     flexDirection: 'row',
@@ -1232,13 +1305,13 @@ const styles = StyleSheet.create({
   subscriptionCardTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 2,
   },
   subscriptionCardSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   subscriptionToggleRow: {
     flexDirection: 'row',
@@ -1246,12 +1319,54 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
+    borderTopColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
   },
   subscriptionToggleLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
-
+  appearanceRow: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+  },
+  appearanceOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(0,0,0,0.03)'),
+    gap: 8,
+  },
+  appearanceLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textMuted,
+  },
+  premiumUpsellContainer: {
+    marginTop: -4,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.03)' : 'rgba(0,0,0,0.02)'),
+    borderRadius: 8,
+  },
+  premiumUpsellTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.textDark,
+    marginBottom: 4,
+  },
+  premiumUpsellDesc: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: themeColors.textMuted,
+    lineHeight: 18,
+  },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

@@ -2,9 +2,6 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as brain from 'brain.js';
 
-// The default Node bundle imports gpu.js, which tries to load native headless-gl.
-// The browser bundle still provides the CPU NeuralNetwork and avoids that crash.
-
 export type QuizDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 export interface DifficultyInputs {

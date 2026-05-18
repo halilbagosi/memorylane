@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Patch, Body, UseGuards, Req, Param } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Put, Body, UseGuards, Req, Param } from '@nestjs/common';
 import { PatientService } from './patient.service';
 import { DashboardService } from './dashboard/dashboard.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
@@ -6,6 +6,8 @@ import { UpdatePatientDto } from './dto/update-patient.dto';
 import { JoinPatientDto } from './dto/join-patient.dto';
 import { SetQuizRemindersDto } from './dto/set-quiz-reminders.dto';
 import { UpdatePatientLocationDto } from './dto/update-patient-location.dto';
+import { DeviceTokenDto } from './dto/device-token.dto';
+import { UpsertGoalDto } from './dto/upsert-goal.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ManagementService } from './management/management.service';
 
@@ -45,6 +47,11 @@ export class PatientController {
   @Get(':id/paired-status')
   async getPairedStatus(@Param('id') patientId: string) {
     return this.patientService.getPairedStatus(patientId);
+  }
+
+  @Patch(':id/device-token')
+  async updateDeviceToken(@Param('id') patientId: string, @Body() dto: DeviceTokenDto) {
+    return this.patientService.updateDeviceToken(patientId, dto.token, dto.timezone);
   }
 
   @Get(':id/greeting-spark')
@@ -94,17 +101,14 @@ export class PatientController {
   @Post(':id/quiz-results')
   async recordQuizResults(
     @Param('id') patientId: string,
-    @Body() body: { attempts?: Array<{
-      publicId: string;
-      mode?: string;
-      difficulty?: string;
-      firstTapCorrect: boolean;
-      totalTaps: number;
-      timeToCorrectMs: number;
-      hadHint?: boolean;
-    }> },
+    @Body() body: any,
   ) {
-    return this.patientService.recordQuizResults(patientId, body.attempts ?? []);
+    try {
+      return await this.patientService.recordQuizResults(patientId, body.attempts ?? []);
+    } catch (e) {
+      require('fs').writeFileSync('C:/Users/User/Desktop/School/MemoryLane/memorylane/backend/server/error.log', e.stack || e.message);
+      throw e;
+    }
   }
 
   @Patch(':id/biometric-recovery')
@@ -159,9 +163,42 @@ export class PatientController {
     return this.patientService.removeCaregiver(patientId, req.user.userId, caregiverId);
   }
 
+  // ── Stats & Goals ──────────────────────────────────────────────────
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/stats')
+  async getPatientStats(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.getPatientStats(patientId, req.user.userId);
+  }
+
+  @Get(':id/patient-stats')
+  async getPublicPatientStats(@Param('id') patientId: string) {
+    // Allows the patient app (which doesn't have a JWT token) to fetch their own progress
+    return this.patientService.getPatientStats(patientId, null);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/goal')
+  async getGoal(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.getGoal(patientId, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put(':id/goal')
+  async upsertGoal(@Param('id') patientId: string, @Body() body: UpsertGoalDto, @Req() req: any) {
+    return this.patientService.upsertGoal(patientId, req.user.userId, body.targetAccuracy);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id/goal')
+  async deleteGoal(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.deleteGoal(patientId, req.user.userId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
   async remove(@Param('id') patientId: string, @Req() req: any) {
     return this.managementService.deletePatient(patientId, req.user.userId);
   }
 }
+

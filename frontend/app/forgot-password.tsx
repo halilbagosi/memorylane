@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
     View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
@@ -15,6 +16,8 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
 
 export default function ForgotPasswordScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
     const router = useRouter();
 
     const [email, setEmail] = useState('');
@@ -75,13 +78,13 @@ export default function ForgotPasswordScreen() {
                         <View style={styles.topSpacer} />
 
                         <View style={styles.sentIconWrap}>
-                            <AppIcon iosName="envelope.badge.fill" androidFallback="✉️" size={44} color={colors.primary} />
+                            <AppIcon iosName="envelope.badge.fill" androidFallback="✉️" size={44} color={themeColors.primary} />
                         </View>
 
                         <Text style={styles.headline}>Check Your Email</Text>
                         <Text style={styles.subheadline}>
                             We've sent a 6-digit reset code to{' '}
-                            <Text style={{ fontFamily: typography.fontFamily.bold, color: colors.textDark }}>
+                            <Text style={{ fontFamily: typography.fontFamily.bold, color: themeColors.textDark }}>
                                 {email.trim().toLowerCase()}
                             </Text>
                             . It expires in 15 minutes.
@@ -165,8 +168,10 @@ export default function ForgotPasswordScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: themeColors.neutral },
     container: { flex: 1 },
     scrollContent: {
         paddingHorizontal: 24,
@@ -178,20 +183,20 @@ const styles = StyleSheet.create({
     headline: {
         fontFamily: typography.fontFamily.bold,
         fontSize: 28,
-        color: colors.textDark,
+        color: themeColors.textDark,
         marginBottom: 6,
         textAlign: 'center',
     },
     subheadline: {
         fontFamily: typography.fontFamily.regular,
         fontSize: 15,
-        color: colors.textMuted,
+        color: themeColors.textMuted,
         marginBottom: SCREEN_HEIGHT * 0.04,
         textAlign: 'center',
         lineHeight: 22,
     },
     apiErrorText: {
-        color: '#C0392B',
+        color: (isDark ? '#FFB4A8' : '#C0392B'),
         fontFamily: typography.fontFamily.regular,
         fontSize: 14,
         textAlign: 'center',
@@ -200,7 +205,7 @@ const styles = StyleSheet.create({
     ghostText: {
         fontFamily: typography.fontFamily.medium,
         fontSize: 14,
-        color: colors.textMuted,
+        color: themeColors.textMuted,
         textTransform: 'none',
         letterSpacing: 0,
     },
@@ -208,9 +213,11 @@ const styles = StyleSheet.create({
         width: 88,
         height: 88,
         borderRadius: 44,
-        backgroundColor: 'rgba(30, 77, 48, 0.08)',
+        backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 24,
     },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

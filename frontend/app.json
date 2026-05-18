@@ -1,17 +1,22 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "MemoryLane",
+    "slug": "memorylane",
     "scheme": "memorylane",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F5FBF7"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "72125389-abd1-48a8-92fa-99af7986623d"
+      }
     },
     "ios": {
       "supportsTablet": true,
@@ -27,10 +32,13 @@
         }
       }
     },
+    
+    "owner": "halilbagosi",
+    
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#F5FBF7"
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
@@ -67,19 +75,24 @@
           "android": {
             "datePicker": {
               "colorAccent": {
-                "light": "#2D4F3E"
+                "light": "#9BE7B4",
+                "dark": "#9BE7B4"
               },
               "colorControlActivated": {
-                "light": "#2D4F3E"
+                "light": "#9BE7B4",
+                "dark": "#9BE7B4"
               },
               "textColorPrimary": {
-                "light": "#1A1A1A"
+                "light": "#F5FBF7",
+                "dark": "#F5FBF7"
               },
               "textColorSecondary": {
-                "light": "#666666"
+                "light": "#AEBDAF",
+                "dark": "#AEBDAF"
               },
               "windowBackground": {
-                "light": "#F2F0E6"
+                "light": "#17231D",
+                "dark": "#17231D"
               }
             }
           }
@@ -90,7 +103,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
+          "iosUrlScheme": "com.googleusercontent.apps.1006582252554-9h90j34o6g4tphhu6drp49r3d20vohfu"
         }
       ]
     ]

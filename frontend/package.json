@@ -6,7 +6,10 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "prebuild": "expo prebuild --clean",
+    "eas:init": "eas init",
+    "eas:credentials": "eas credentials"
   },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.4.2",
@@ -36,6 +39,7 @@
     "expo-linking": "~8.0.12",
     "expo-local-authentication": "~17.0.8",
     "expo-location": "~19.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-print": "~15.0.8",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
@@ -54,6 +58,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eas-cli": "^18.13.0",
     "typescript": "~5.9.2"
   },
   "private": true

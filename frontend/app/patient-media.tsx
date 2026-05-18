@@ -1,12 +1,15 @@
 import React, { useLayoutEffect } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { MemoryLibrarySheetContent } from '../src/components/MemoryLibraryModal';
 
 export default function PatientMediaScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const navigation = useNavigation();
   const params = useLocalSearchParams<{ patientId?: string; patientName?: string }>();
   const patientId = typeof params.patientId === 'string' ? params.patientId : undefined;
@@ -35,8 +38,12 @@ export default function PatientMediaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  errorText: { color: '#C0392B', fontSize: 16 },
+  errorText: { color: (isDark ? '#FFB4A8' : '#C0392B'), fontSize: 16 },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

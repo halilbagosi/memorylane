@@ -1,4 +1,5 @@
 import React, { ReactNode, useCallback, useState } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   View,
   TextInput,
@@ -9,7 +10,7 @@ import {
   ViewStyle,
   TouchableOpacity,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 interface AdaptiveInputProps extends TextInputProps {
@@ -35,6 +36,8 @@ export function AdaptiveInput({
 }: AdaptiveInputProps) {
   const isIOS = Platform.OS === 'ios';
   const [isFocused, setIsFocused] = useState(false);
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
 
   const handleFocus = useCallback((e: any) => {
     if (!isIOS) setIsFocused(true);
@@ -66,13 +69,13 @@ export function AdaptiveInput({
             { flex: 1 },
             style,
           ]}
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={themeColors.textMuted}
           autoCorrect={false}
           spellCheck={false}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          cursorColor={isIOS ? undefined : colors.secondary}
-          selectionColor={isIOS ? undefined : colors.secondary + '40'}
+          cursorColor={isIOS ? undefined : themeColors.secondary}
+          selectionColor={isIOS ? undefined : themeColors.secondary + '40'}
           {...inputProps}
         />
         {suffix && (
@@ -88,13 +91,15 @@ export function AdaptiveInput({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     marginBottom: 18,
   },
   label: {
     fontFamily: typography.fontFamily.medium,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
   },
   iosLabel: {
@@ -103,7 +108,7 @@ const styles = StyleSheet.create({
   androidLabel: {
     fontSize: 13,
     letterSpacing: 0.2,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   inputWrapper: {
@@ -112,28 +117,28 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   iosInputWrapper: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255, 255, 255, 0.5)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0, 0, 0, 0.12)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.12)'),
     borderRadius: 14,
   },
   androidInputWrapper: {
-    backgroundColor: colors.neutralLight,
+    backgroundColor: themeColors.neutralLight,
     borderWidth: 2,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
     borderRadius: 16,
   },
   androidInputWrapperFocused: {
-    borderColor: colors.secondary,
+    borderColor: themeColors.secondary,
   },
   inputError: {
-    borderColor: '#C0392B',
+    borderColor: (isDark ? '#FFB4A8' : '#C0392B'),
   },
 
   input: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   iosInput: {
     padding: 16,
@@ -152,13 +157,15 @@ const styles = StyleSheet.create({
   suffixText: {
     fontSize: 13,
     fontFamily: typography.fontFamily.medium,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   errorText: {
-    color: '#C0392B',
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     marginTop: 4,
   },
 });
+};
+// Styles are created per-render based on `isDark` via useTheme

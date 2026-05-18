@@ -5,6 +5,7 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { AiDifficultyService } from '../patient/ai-difficulty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { KeyWrapService } from './crypto/key-wrap.service';
 import { MediaCryptoService } from './crypto/media-crypto.service';
@@ -14,6 +15,9 @@ import { MediaService } from './media.service';
 import { STORAGE_SERVICE, StorageService } from './storage/storage.interface';
 
 const makePrisma = () => ({
+  caregiver: {
+    findUnique: jest.fn().mockResolvedValue({ isSubscribed: true }),
+  },
   patientCaregiver: {
     findUnique: jest.fn(),
   },
@@ -46,6 +50,7 @@ describe('MediaService', () => {
     | 'validateAndProcessQuizPhoto'
     | 'validateQuizPhoto'
     | 'checkForDuplicateFace'
+    | 'findDuplicateFaceExternalImageIds'
     | 'indexFaceInCollection'
     | 'removeFaceFromCollection'
   >;
@@ -54,6 +59,7 @@ describe('MediaService', () => {
     process.env.MEDIA_MASTER_KEY =
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
     process.env.MEDIA_SIGNED_URL_SECRET = 'unit-test-secret';
+    process.env.QUIZ_BLOCK_DUPLICATE_FACES = 'true';
 
     keyWrap = new KeyWrapService();
     keyWrap.onModuleInit();
@@ -72,6 +78,7 @@ describe('MediaService', () => {
       })),
       validateQuizPhoto: jest.fn(async () => ({ accepted: true })),
       checkForDuplicateFace: jest.fn(async () => false),
+      findDuplicateFaceExternalImageIds: jest.fn(async () => []),
       indexFaceInCollection: jest.fn(async () => 'aws-face-1'),
       removeFaceFromCollection: jest.fn(async () => undefined),
     };
@@ -84,6 +91,16 @@ describe('MediaService', () => {
         { provide: MediaCryptoService, useValue: mediaCrypto },
         { provide: SignedUrlService, useValue: signedUrls },
         { provide: FaceVerificationService, useValue: faceVerification },
+        {
+          provide: AiDifficultyService,
+          useValue: {
+            normalizeResponseTime: jest.fn(() => 1),
+            timeOfDayScore: jest.fn(() => 0.5),
+            difficultyToComplexity: jest.fn(() => 0.5),
+            predict: jest.fn(() => ({ difficulty: 'MEDIUM', targetComplexity: 0.5, source: 'AI' })),
+            ruleBased: jest.fn(() => ({ difficulty: 'MEDIUM', targetComplexity: 0.5, source: 'RULE_BASED' })),
+          },
+        },
         { provide: STORAGE_SERVICE, useValue: storage },
       ],
     }).compile();
@@ -394,7 +411,7 @@ describe('MediaService', () => {
       await service.storeUploadedPayload(token, plaintext);
 
       expect(faceVerification.validateAndProcessQuizPhoto).toHaveBeenCalledWith(plaintext);
-      expect(faceVerification.checkForDuplicateFace).toHaveBeenCalled();
+      expect(faceVerification.findDuplicateFaceExternalImageIds).toHaveBeenCalled();
       expect(faceVerification.indexFaceInCollection).toHaveBeenCalled();
       expect(fakeRow.awsFaceId).toBe('aws-face-1');
       expect(fakeRow.birthYear).toBe(2004);
@@ -406,8 +423,10 @@ describe('MediaService', () => {
   describe('verifyQuizPhoto', () => {
     it('rejects a quiz photo that already matches an indexed face', async () => {
       prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
-      prisma.media.findFirst.mockResolvedValueOnce(null);
-      (faceVerification.checkForDuplicateFace as jest.Mock).mockResolvedValueOnce(true);
+      prisma.media.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'matching-face-media' });
+      (faceVerification.findDuplicateFaceExternalImageIds as jest.Mock).mockResolvedValueOnce(['matching-public-id']);
 
       const result = await service.verifyQuizPhoto(
         'cg-1',

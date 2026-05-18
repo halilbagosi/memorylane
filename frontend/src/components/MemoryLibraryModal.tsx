@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   ActivityIndicator,
   Dimensions,
@@ -25,7 +26,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { AppIcon } from './AppIcon';
 import { M3Dialog, type M3DialogAction } from './M3Dialog';
@@ -119,6 +120,8 @@ export function MemoryLibrarySheetContent({
   isPrimary = true,
   myId = '',
 }: MemoryLibrarySheetContentProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const [items, setItems] = useState<MediaTileVM[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -830,7 +833,7 @@ export function MemoryLibrarySheetContent({
 
         {(uploading || verifyingQuizPhoto) && (
           <View style={styles.uploadBanner}>
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={themeColors.neutralLight} />
             <Text style={styles.uploadBannerText}>
               {verifyingQuizPhoto ? 'Verifying clarity...' : `Uploading ${uploadProgress?.current} of ${uploadProgress?.total}…`}
             </Text>
@@ -841,7 +844,7 @@ export function MemoryLibrarySheetContent({
       {/* Grid Content */}
       {loading ? (
         <View style={styles.centerFlex}>
-          <ActivityIndicator size="large" color={colors.secondary} />
+          <ActivityIndicator size="large" color={themeColors.secondary} />
         </View>
       ) : error ? (
         <View style={styles.centerFlex}>
@@ -853,7 +856,7 @@ export function MemoryLibrarySheetContent({
       ) : filteredItems.length === 0 ? (
         <View style={styles.centerFlex}>
           <View style={styles.emptyIconWrap}>
-            <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={32} color={colors.textMuted} />
+            <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={32} color={themeColors.textMuted} />
           </View>
           <Text style={styles.emptyTitle}>No files yet</Text>
           <Text style={styles.emptyBody}>
@@ -934,10 +937,10 @@ export function MemoryLibrarySheetContent({
           disabled={selected.size === 0 || bulkDeleting}
         >
           {bulkDeleting ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={themeColors.neutralLight} />
           ) : (
             <>
-              <AppIcon iosName="trash.fill" androidFallback="Del" size={20} color="#fff" />
+              <AppIcon iosName="trash.fill" androidFallback="Del" size={20} color={themeColors.neutralLight} />
               <Text style={styles.deleteFabText}>Delete ({selected.size})</Text>
             </>
           )}
@@ -950,9 +953,9 @@ export function MemoryLibrarySheetContent({
           disabled={uploading || verifyingQuizPhoto}
         >
           {uploading || verifyingQuizPhoto ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={themeColors.neutralLight} />
           ) : (
-            <AppIcon iosName="plus" androidFallback="+" size={24} color="#fff" weight="medium" />
+            <AppIcon iosName="plus" androidFallback="+" size={24} color={themeColors.neutralLight} weight="medium" />
           )}
         </TouchableOpacity>
       )}
@@ -963,9 +966,9 @@ export function MemoryLibrarySheetContent({
           <View style={styles.guidanceModal}>
             <Text style={styles.quizModalTitle}>Tips for a Great Quiz</Text>
             <View style={styles.guidanceTips}>
-              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="person.fill" androidFallback="1" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>One person only</Text></View>
-              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="sun.max.fill" androidFallback="*" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>Clear and bright</Text></View>
-              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={colors.secondary} /></View><Text style={styles.guidanceTipText}>Looking at the camera</Text></View>
+              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="person.fill" androidFallback="1" size={18} color={themeColors.secondary} /></View><Text style={styles.guidanceTipText}>One person only</Text></View>
+              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="sun.max.fill" androidFallback="*" size={18} color={themeColors.secondary} /></View><Text style={styles.guidanceTipText}>Clear and bright</Text></View>
+              <View style={styles.guidanceTip}><View style={styles.guidanceIcon}><AppIcon iosName="face.smiling.fill" androidFallback=":" size={18} color={themeColors.secondary} /></View><Text style={styles.guidanceTipText}>Looking at the camera</Text></View>
               <View style={styles.guidanceTip}><View style={[styles.guidanceIcon, styles.guidanceIconError]}><AppIcon iosName="xmark.circle.fill" androidFallback="X" size={18} color="#C0392B" /></View><Text style={styles.guidanceTipText}>Same photo not allowed</Text></View>
             </View>
             <View style={styles.quizModalActions}>
@@ -982,15 +985,15 @@ export function MemoryLibrarySheetContent({
             <View style={styles.quizModal}>
               <Text style={styles.quizModalTitle}>Add Quiz Info</Text>
               <Text style={styles.quizModalBody}>Add who is in the photo or speaking in the audio before saving this quiz media.</Text>
-              <TextInput style={styles.detailInput} value={quizFirstName} onChangeText={setQuizFirstName} placeholder="Person name" placeholderTextColor={colors.textMuted} />
-              <TextInput style={styles.detailInput} value={quizRelationship} onChangeText={setQuizRelationship} placeholder="Relationship with patient" placeholderTextColor={colors.textMuted} />
-              <TextInput style={styles.detailInput} value={quizBirthYear} onChangeText={setQuizBirthYear} placeholder="Birth year" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
-              <TextInput style={[styles.detailInput, styles.noteInput]} value={quizHint} onChangeText={setQuizHint} placeholder="Patient Hint (optional)" placeholderTextColor={colors.textMuted} multiline />
-              <TextInput style={styles.detailInput} value={quizNickname} onChangeText={setQuizNickname} placeholder="Personal nickname (optional)" placeholderTextColor={colors.textMuted} />
+              <TextInput style={styles.detailInput} value={quizFirstName} onChangeText={setQuizFirstName} placeholder="Person name" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={styles.detailInput} value={quizRelationship} onChangeText={setQuizRelationship} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={styles.detailInput} value={quizBirthYear} onChangeText={setQuizBirthYear} placeholder="Birth year" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={quizHint} onChangeText={setQuizHint} placeholder="Patient Hint (optional)" placeholderTextColor={themeColors.textMuted} multiline />
+              <TextInput style={styles.detailInput} value={quizNickname} onChangeText={setQuizNickname} placeholder="Personal nickname (optional)" placeholderTextColor={themeColors.textMuted} />
               
               {pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/')) && (
                 <View style={[styles.verificationBox, quizPhotoVerified && styles.verificationBoxSuccess]}>
-                  {verifyingQuizPhoto ? <ActivityIndicator size="small" color={colors.secondary} /> : <AppIcon iosName={quizPhotoVerified ? 'checkmark.circle.fill' : 'info.circle.fill'} androidFallback={quizPhotoVerified ? '✓' : 'i'} size={18} color={colors.secondary} />}
+                  {verifyingQuizPhoto ? <ActivityIndicator size="small" color={themeColors.secondary} /> : <AppIcon iosName={quizPhotoVerified ? 'checkmark.circle.fill' : 'info.circle.fill'} androidFallback={quizPhotoVerified ? '✓' : 'i'} size={18} color={themeColors.secondary} />}
                   <Text style={styles.verificationText}>{verifyingQuizPhoto ? 'Verifying clarity...' : quizVerificationMessage ?? 'To help recognition, this photo needs one clear, front-facing face.'}</Text>
                 </View>
               )}
@@ -1011,8 +1014,8 @@ export function MemoryLibrarySheetContent({
           <View style={styles.quizModal}>
             <Text style={styles.quizModalTitle}>Memory Details</Text>
             <Text style={styles.quizModalBody}>Add a note and optionally the year this memory took place.</Text>
-            <TextInput style={[styles.detailInput, styles.noteInput]} value={memoryNote} onChangeText={setMemoryNote} placeholder="Describe this memory" placeholderTextColor={colors.textMuted} multiline />
-            <TextInput style={styles.detailInput} value={memoryYear} onChangeText={setMemoryYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
+            <TextInput style={[styles.detailInput, styles.noteInput]} value={memoryNote} onChangeText={setMemoryNote} placeholder="Describe this memory" placeholderTextColor={themeColors.textMuted} multiline />
+            <TextInput style={styles.detailInput} value={memoryYear} onChangeText={setMemoryYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
             <TouchableOpacity style={styles.approxRow} onPress={() => setMemoryIsApproximate((v) => !v)} activeOpacity={0.7}>
               <View style={[styles.approxCheckbox, memoryIsApproximate && styles.approxCheckboxActive]}>
                 {memoryIsApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
@@ -1037,6 +1040,8 @@ export function MemoryLibrarySheetContent({
 
 // ── YearHeader ────────────────────────────────────────────────────────────────
 function YearHeader({ label }: { label: string }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const decadeMatch = label.match(/^(\d+)(s)$/);
   return (
     <View style={styles.yearHeader}>
@@ -1049,11 +1054,13 @@ function YearHeader({ label }: { label: string }) {
 
 // ── MemoryTile ────────────────────────────────────────────────────────────────
 function MemoryTile({ item, tileSize = TILE_SIZE, seamless = false, editMode, isSelected, canDelete, isPrimary, onImageError, onPress, onLongPress }: { item: MediaTileVM; tileSize?: number; seamless?: boolean; editMode: boolean; isSelected: boolean; canDelete: boolean; isPrimary: boolean; onImageError?: () => void; onPress: () => void; onLongPress: () => void; }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const tileStyle = { width: tileSize, height: tileSize };
   const baseTileStyle = [styles.tile, tileStyle, seamless && styles.tileSeamless];
-  if (item.status !== 'READY') return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={colors.secondary} /><Text style={styles.tilePendingText}>Uploading…</Text></View>);
+  if (item.status !== 'READY') return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={themeColors.secondary} /><Text style={styles.tilePendingText}>Uploading…</Text></View>);
   if (item.urlError) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" /><Text style={styles.tilePendingText}>Error</Text></View>);
-  if (!item.signedUrl) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={colors.secondary} /></View>);
+  if (!item.signedUrl) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={themeColors.secondary} /></View>);
 
   const isSelectableInEdit = editMode && (isPrimary || canDelete);
 
@@ -1062,14 +1069,14 @@ function MemoryTile({ item, tileSize = TILE_SIZE, seamless = false, editMode, is
       <Image source={{ uri: item.signedUrl }} style={styles.tileImage} resizeMode="cover" onError={onImageError} />
       {item.kind !== 'PHOTO' && (
         <View style={styles.kindBadge}>
-          <AppIcon iosName={item.kind === 'VIDEO' ? 'video.fill' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'} androidFallback={item.kind === 'VIDEO' ? '▶' : item.kind === 'AUDIO' ? '♪' : '📄'} size={11} color="#fff" />
+          <AppIcon iosName={item.kind === 'VIDEO' ? 'video.fill' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'} androidFallback={item.kind === 'VIDEO' ? '▶' : item.kind === 'AUDIO' ? '♪' : '📄'} size={11} color={themeColors.neutralLight} />
         </View>
       )}
       {editMode && (
         <View style={[styles.selectOverlay, isSelected && styles.selectOverlayActive]}>
           {isSelectableInEdit && (
             <View style={[styles.selectCircle, isSelected && styles.selectCircleActive]}>
-              {isSelected && <AppIcon iosName="checkmark" androidFallback="✓" size={12} color="#fff" weight="bold" />}
+              {isSelected && <AppIcon iosName="checkmark" androidFallback="✓" size={12} color={themeColors.neutralLight} weight="bold" />}
             </View>
           )}
         </View>
@@ -1084,6 +1091,8 @@ function MediaDetailsModal({ item, onClose, onEdit }: { item: MediaTileVM | null
   const [imageLoading, setImageLoading] = useState(false);
 
   useEffect(() => { setImageFailed(false); setImageLoading(item?.kind === 'PHOTO' && !!item.signedUrl); }, [item?.publicId, item?.signedUrl]);
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
 
   if (!item) return null;
   const title = item.collection === 'QUIZ' ? item.kind === 'AUDIO' ? 'Audio' : 'Photo' : item.kind === 'PHOTO' ? 'Photo' : item.kind === 'VIDEO' ? 'Video' : item.kind === 'AUDIO' ? 'Audio' : 'File';
@@ -1095,15 +1104,15 @@ function MediaDetailsModal({ item, onClose, onEdit }: { item: MediaTileVM | null
         <View style={styles.previewModal}>
           <View style={styles.previewHeader}>
             <Text style={styles.quizModalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><AppIcon iosName="xmark" androidFallback="x" size={16} color={colors.textDark} /></TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><AppIcon iosName="xmark" androidFallback="x" size={16} color={themeColors.textDark} /></TouchableOpacity>
           </View>
           {item.kind === 'PHOTO' && item.signedUrl && !imageFailed ? (
             <View style={styles.previewMediaImageFrame}>
-              {imageLoading && <View style={styles.previewImageLoading}><ActivityIndicator size="small" color={colors.secondary} /></View>}
+              {imageLoading && <View style={styles.previewImageLoading}><ActivityIndicator size="small" color={themeColors.secondary} /></View>}
               <Image source={{ uri: item.signedUrl }} style={styles.previewMediaImage} resizeMode="contain" onError={() => setImageFailed(true)} onLoadEnd={() => setImageLoading(false)} />
             </View>
           ) : (
-            <View style={styles.previewMediaFallback}><AppIcon iosName={item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? 'Audio' : item.kind === 'VIDEO' ? 'Video' : 'File'} size={40} color={colors.secondary} /></View>
+            <View style={styles.previewMediaFallback}><AppIcon iosName={item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? 'Audio' : item.kind === 'VIDEO' ? 'Video' : 'File'} size={40} color={themeColors.secondary} /></View>
           )}
           <View style={styles.detailsList}>
             {!!primaryDetail && <Text style={styles.detailLine}>{primaryDetail}</Text>}
@@ -1123,6 +1132,8 @@ function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTi
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => { if (item) { setImageLoading(true); setImageFailed(false); } }, [item?.publicId, item?.signedUrl]);
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
 
   if (!item) return null;
   const isPhoto = item.kind === 'PHOTO';
@@ -1133,14 +1144,14 @@ function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTi
     <Modal visible animationType="fade" onRequestClose={onClose}>
       <View style={styles.fsPreviewScreen}>
         {(isPhoto || isVideo) && item.signedUrl && !imageFailed ? (
-          <><ZoomableImage uri={item.signedUrl} onLoad={() => setImageLoading(false)} onError={() => { setImageLoading(false); setImageFailed(true); }} />{imageLoading && <View style={styles.fsPreviewLoadingOverlay}><ActivityIndicator size="large" color="#fff" /></View>}</>
+          <><ZoomableImage uri={item.signedUrl} onLoad={() => setImageLoading(false)} onError={() => { setImageLoading(false); setImageFailed(true); }} />{imageLoading && <View style={styles.fsPreviewLoadingOverlay}><ActivityIndicator size="large" color={themeColors.neutralLight} /></View>}</>
         ) : (
           <View style={styles.fsPreviewFallback}>
-            <AppIcon iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'} size={56} color={colors.secondary} />
+            <AppIcon iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? '♪' : item.kind === 'VIDEO' ? '▶' : '📄'} size={56} color={themeColors.secondary} />
             <Text style={styles.fsPreviewKindLabel}>{imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}</Text>
           </View>
         )}
-        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close"><AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={colors.textDark} /></TouchableOpacity>
+        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close"><AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={themeColors.textDark} /></TouchableOpacity>
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.72)']} style={styles.fsPreviewDetails}>
           {item.collection === 'QUIZ' ? (
             <>
@@ -1165,6 +1176,9 @@ function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTi
 }
 
 function EditMetadataModal({ item, firstName, relationship, birthYear, hint, nickname, note, year, isApproximate, saving, onChangeFirstName, onChangeRelationship, onChangeBirthYear, onChangeHint, onChangeNickname, onChangeNote, onChangeYear, onToggleApproximate, onClose, onSave }: any) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+
   return (
     <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
@@ -1172,16 +1186,16 @@ function EditMetadataModal({ item, firstName, relationship, birthYear, hint, nic
           <Text style={styles.quizModalTitle}>Edit Details</Text>
           {item?.collection === 'QUIZ' ? (
             <>
-              <TextInput style={styles.detailInput} value={firstName} onChangeText={onChangeFirstName} placeholder="Name" placeholderTextColor={colors.textMuted} />
-              <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={colors.textMuted} />
-              <TextInput style={styles.detailInput} value={birthYear} onChangeText={onChangeBirthYear} placeholder="Birth year" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
-              <TextInput style={[styles.detailInput, styles.noteInput]} value={hint} onChangeText={onChangeHint} placeholder="Patient Hint (optional)" placeholderTextColor={colors.textMuted} multiline />
-              <TextInput style={styles.detailInput} value={nickname} onChangeText={onChangeNickname} placeholder="Personal nickname (optional)" placeholderTextColor={colors.textMuted} />
+              <TextInput style={styles.detailInput} value={firstName} onChangeText={onChangeFirstName} placeholder="Name" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={styles.detailInput} value={birthYear} onChangeText={onChangeBirthYear} placeholder="Birth year" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={hint} onChangeText={onChangeHint} placeholder="Patient Hint (optional)" placeholderTextColor={themeColors.textMuted} multiline />
+              <TextInput style={styles.detailInput} value={nickname} onChangeText={onChangeNickname} placeholder="Personal nickname (optional)" placeholderTextColor={themeColors.textMuted} />
             </>
           ) : (
             <>
-              <TextInput style={[styles.detailInput, styles.noteInput]} value={note} onChangeText={onChangeNote} placeholder="Descriptive note" placeholderTextColor={colors.textMuted} multiline />
-              <TextInput style={styles.detailInput} value={year} onChangeText={onChangeYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={colors.textMuted} keyboardType="number-pad" maxLength={4} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={note} onChangeText={onChangeNote} placeholder="Descriptive note" placeholderTextColor={themeColors.textMuted} multiline />
+              <TextInput style={styles.detailInput} value={year} onChangeText={onChangeYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
               <TouchableOpacity style={styles.approxRow} onPress={onToggleApproximate} activeOpacity={0.7}>
                 <View style={[styles.approxCheckbox, isApproximate && styles.approxCheckboxActive]}>{isApproximate && <Text style={styles.approxCheckmark}>✓</Text>}</View>
                 <Text style={styles.approxLabel}>Approximate year</Text>
@@ -1199,121 +1213,124 @@ function EditMetadataModal({ item, firstName, relationship, birthYear, hint, nic
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   wrapper: { flex: 1, backgroundColor: 'transparent' },
   wrapperIOS: { flex: 1 },
   headerArea: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 12 },
   
   controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   filterChips: { flexDirection: 'row', gap: 8, flex: 1 },
-  filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
-  filterChipActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  filterChipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textMuted },
-  filterChipTextActive: { color: '#FFF' },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)'), borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)') },
+  filterChipActive: { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary },
+  filterChipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: themeColors.textMuted },
+  filterChipTextActive: { color: themeColors.neutralLight },
 
-  editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'transparent' },
-  editButtonActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  editButtonText: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: colors.textMuted },
-  editButtonTextActive: { color: '#FFF' },
+  editButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)'), borderWidth: 1, borderColor: 'transparent' },
+  editButtonActive: { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary },
+  editButtonText: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: themeColors.textMuted },
+  editButtonTextActive: { color: themeColors.neutralLight },
 
   secondaryFilterRow: { flexGrow: 0, marginTop: 12 },
   secondaryFilterContent: { gap: 8 },
-  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
-  chipActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  chipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: colors.textMuted },
-  chipTextActive: { color: '#fff' },
+  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: themeColors.neutralLight, borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)') },
+  chipActive: { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary },
+  chipText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: themeColors.textMuted },
+  chipTextActive: { color: themeColors.neutralLight },
 
-  uploadBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.secondary, paddingVertical: 9, borderRadius: 12, marginTop: 12 },
-  uploadBannerText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#fff' },
+  uploadBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: themeColors.secondary, paddingVertical: 9, borderRadius: 12, marginTop: 12 },
+  uploadBannerText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: themeColors.neutralLight },
 
   grid: { paddingHorizontal: GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
   memoryGrid: { paddingHorizontal: MEMORY_GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
   gridRow: { gap: GRID_GUTTER, marginBottom: GRID_GUTTER },
   memoryGridRow: { flexDirection: 'row', gap: MEMORY_GRID_GAP, marginBottom: MEMORY_GRID_GAP },
 
-  tile: { width: TILE_SIZE, height: TILE_SIZE, borderRadius: isIOS ? 10 : 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.04)' },
+  tile: { width: TILE_SIZE, height: TILE_SIZE, borderRadius: isIOS ? 10 : 14, overflow: 'hidden', backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)') },
   tileSeamless: { borderRadius: 0 },
   tileSelected: { opacity: 0.78, transform: [{ scale: 0.94 }] },
   tileDisabled: { opacity: 0.38 },
   tilePlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 4 },
-  tilePendingText: { fontFamily: typography.fontFamily.regular, fontSize: 10, color: colors.textMuted },
+  tilePendingText: { fontFamily: typography.fontFamily.regular, fontSize: 10, color: themeColors.textMuted },
   tileImage: { width: '100%', height: '100%', objectFit: 'cover' },
-  kindBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 3 },
+  kindBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.45)'), borderRadius: 6, paddingHorizontal: 5, paddingVertical: 3 },
   selectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'flex-end', padding: 6 },
-  selectOverlayActive: { backgroundColor: 'rgba(231,76,60,0.18)' },
-  selectCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
+  selectOverlayActive: { backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(231,76,60,0.18)') },
+  selectCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: themeColors.neutralLight, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.3)'), justifyContent: 'center', alignItems: 'center' },
   selectCircleActive: { backgroundColor: '#E74C3C', borderColor: '#E74C3C' },
 
   centerFlex: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 64 },
-  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  emptyTitle: { fontFamily: typography.fontFamily.bold, fontSize: 16, color: colors.textDark, marginTop: 6 },
-  emptyBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 4 },
-  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: '#C0392B', textAlign: 'center' },
-  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.primary, marginTop: 12 },
-  retryBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.05)'), justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  emptyTitle: { fontFamily: typography.fontFamily.bold, fontSize: 16, color: themeColors.textDark, marginTop: 6 },
+  emptyBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: themeColors.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 4 },
+  errorText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: (isDark ? '#FFB4A8' : '#C0392B'), textAlign: 'center' },
+  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, backgroundColor: themeColors.primary, marginTop: 12 },
+  retryBtnText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.neutralLight },
 
-  fab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 6, elevation: 8 },
+  fab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, width: 56, height: 56, borderRadius: 28, backgroundColor: themeColors.secondary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 6, elevation: 8 },
   deleteFab: { position: 'absolute', right: 24, bottom: Platform.OS === 'ios' ? 110 : 90, flexDirection: 'row', gap: 6, paddingHorizontal: 20, height: 56, borderRadius: 28, backgroundColor: '#E74C3C', justifyContent: 'center', alignItems: 'center', shadowColor: '#E74C3C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 8 },
-  deleteFabText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: '#FFF' },
+  deleteFabText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: themeColors.neutralLight },
   fabDisabled: { opacity: 0.55 },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalBackdrop: { flex: 1, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.45)'), alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalScroll: { width: '100%' },
   modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
-  quizModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: colors.neutral, padding: 18, gap: 10 },
-  guidanceModal: { width: '100%', borderRadius: 18, backgroundColor: colors.neutral, padding: 18, gap: 14 },
+  quizModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: themeColors.neutral, padding: 18, gap: 10 },
+  guidanceModal: { width: '100%', borderRadius: 18, backgroundColor: themeColors.neutral, padding: 18, gap: 14 },
   guidanceTips: { gap: 10 },
   guidanceTip: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 42 },
-  guidanceIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(3,87,58,0.1)' },
-  guidanceIconError: { backgroundColor: 'rgba(192,57,43,0.1)' },
-  guidanceTipText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textDark },
-  quizModalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: colors.textDark },
-  quizModalBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, lineHeight: 18, color: colors.textMuted },
-  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
+  guidanceIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3,87,58,0.1)') },
+  guidanceIconError: { backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.1)') },
+  guidanceTipText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 14, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  quizModalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  quizModalBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, lineHeight: 18, color: themeColors.textMuted },
+  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'), backgroundColor: themeColors.neutralLight, paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
   noteInput: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
-  verificationBox: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(3,87,58,0.16)', backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 12, paddingVertical: 10 },
-  verificationBoxSuccess: { backgroundColor: 'rgba(167,215,197,0.32)' },
-  verificationText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 13, lineHeight: 18, color: colors.secondary },
-  previewModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: colors.neutral, padding: 16, gap: 12 },
+  verificationBox: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 12, borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3,87,58,0.16)'), backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.72)'), paddingHorizontal: 12, paddingVertical: 10 },
+  verificationBoxSuccess: { backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(167,215,197,0.32)') },
+  verificationText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 13, lineHeight: 18, color: themeColors.secondary },
+  previewModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: themeColors.neutral, padding: 16, gap: 12 },
   previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
-  previewMediaImageFrame: { width: '100%', height: Math.min(SCREEN_WIDTH * 0.72, 360), alignSelf: 'center', borderRadius: 14, overflow: 'hidden', backgroundColor: colors.neutral },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: themeColors.neutralLight },
+  previewMediaImageFrame: { width: '100%', height: Math.min(SCREEN_WIDTH * 0.72, 360), alignSelf: 'center', borderRadius: 14, overflow: 'hidden', backgroundColor: themeColors.neutral },
   previewMediaImage: { width: '100%', height: '100%' },
   previewImageLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: themeColors.neutralLight, alignItems: 'center', justifyContent: 'center' },
   detailsList: { gap: 6 },
-  detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: colors.textDark },
-  detailMeta: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: colors.textMuted },
-  editDetailsBtn: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
-  editDetailsText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  detailMeta: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: themeColors.textMuted },
+  editDetailsBtn: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: themeColors.secondary },
+  editDetailsText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.neutralLight },
   quizModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
   quizCancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
-  quizCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
-  quizSaveBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.secondary },
-  quizSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: '#fff' },
+  quizCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.textMuted },
+  quizSaveBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: themeColors.secondary },
+  quizSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.neutralLight },
 
   yearHeader: { paddingHorizontal: GRID_PADDING, paddingTop: 20, paddingBottom: 8 },
-  yearHeaderText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
+  yearHeaderText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: themeColors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
   yearHeaderSuffix: { fontSize: 10 },
 
   approxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
-  approxCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.15)', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  approxCheckboxActive: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  approxCheckmark: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: '#fff' },
-  approxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textDark },
+  approxCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.15)'), backgroundColor: themeColors.neutralLight, alignItems: 'center', justifyContent: 'center' },
+  approxCheckboxActive: { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary },
+  approxCheckmark: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: themeColors.neutralLight },
+  approxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
 
   fsPreviewScreen: { flex: 1, backgroundColor: '#000' },
   fsPreviewImage: { width: '100%', height: '100%' },
   fsPreviewLoadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
-  fsPreviewFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.neutral },
-  fsPreviewKindLabel: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: colors.textMuted },
-  fsPreviewBackBtn: { position: 'absolute', top: isIOS ? 56 : 20, left: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' },
+  fsPreviewFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: themeColors.neutral },
+  fsPreviewKindLabel: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.textMuted },
+  fsPreviewBackBtn: { position: 'absolute', top: isIOS ? 56 : 20, left: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.72)'), alignItems: 'center', justifyContent: 'center' },
   fsPreviewDetails: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 56, paddingBottom: isIOS ? 44 : 28, gap: 5 },
-  fsPreviewName: { fontFamily: typography.fontFamily.bold, fontSize: 22, color: '#fff' },
-  fsPreviewRelationship: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: 'rgba(255,255,255,0.7)' },
-  fsPreviewYear: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: '#fff' },
-  fsPreviewCategory: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: 0.5 },
-  fsPreviewNote: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: 'rgba(255,255,255,0.9)', lineHeight: 22, marginTop: 2 },
-  fsPreviewEditBtn: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: 'rgba(255,255,255,0.18)' },
-  fsPreviewEditText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: '#fff' },
+  fsPreviewName: { fontFamily: typography.fontFamily.bold, fontSize: 22, color: themeColors.neutralLight },
+  fsPreviewRelationship: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.7)') },
+  fsPreviewYear: { fontFamily: typography.fontFamily.bold, fontSize: 20, color: themeColors.neutralLight },
+  fsPreviewCategory: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.65)'), textTransform: 'uppercase', letterSpacing: 0.5 },
+  fsPreviewNote: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.9)'), lineHeight: 22, marginTop: 2 },
+  fsPreviewEditBtn: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.18)') },
+  fsPreviewEditText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: themeColors.neutralLight },
 });
+};

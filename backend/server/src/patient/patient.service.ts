@@ -5,12 +5,14 @@ import { randomBytes } from 'crypto';
 import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.util';
 import { AiDifficultyService, QuizDifficulty } from './ai-difficulty.service';
 import { getPlanLimits } from '../auth/subscription.constants';
+import { PushService } from '../push/push.service';
 
 export type CareLevelValue = 'PREVENTATIVE' | 'DEMENTIA';
 
 export interface QuizSettings {
   quizModes: string[];
   quizDifficulty: string;
+  predictedDifficulty: QuizDifficulty;
   careLevel: CareLevelValue;
   aiAdaptiveEnabled: boolean;
   successRate: number;
@@ -37,6 +39,7 @@ export class PatientService {
   constructor(
     private prisma: PrismaService,
     private readonly aiDifficulty: AiDifficultyService,
+    private readonly pushService: PushService,
   ) {}
 
   async create(createPatientDto: CreatePatientDto, caregiverId: string) {
@@ -136,14 +139,17 @@ export class PatientService {
     });
     if (primaryLink && joiner && primaryLink.caregiverId !== caregiverId) {
       const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+      const title = 'New team member';
+      const body = `${joiner.name} ${joiner.surname} joined the care team for ${pn} ${ps}.`;
       await this.prisma.notification.create({
         data: {
           caregiverId: primaryLink.caregiverId,
           type: 'SECONDARY_ADDED' as any,
-          title: 'New team member',
-          body: `${joiner.name} ${joiner.surname} joined the care team for ${pn} ${ps}.`,
+          title,
+          body,
         },
       });
+      await this.pushService.sendToCaregiver(primaryLink.caregiverId, { title, body });
     }
 
     const shown = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
@@ -188,14 +194,17 @@ export class PatientService {
       for (const del of pendingDelegations) {
         const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, del.patient);
         const patientName = `${pn} ${ps}`;
+        const title = 'Caregiver unavailable';
+        const body = `${leaverName} has left the care team for ${patientName} and is no longer available to take over. Please select a new successor.`;
         await this.prisma.notification.create({
           data: {
             caregiverId: del.fromCaregiverId,
             type: 'DELEGATION_DECLINED' as any,
-            title: 'Caregiver unavailable',
-            body: `${leaverName} has left the care team for ${patientName} and is no longer available to take over. Please select a new successor.`,
+            title,
+            body,
           },
         });
+        await this.pushService.sendToCaregiver(del.fromCaregiverId, { title, body });
       }
     }
 
@@ -256,6 +265,27 @@ export class PatientService {
       paired: patient.paired,
       biometricRecoveryEnabled: patient.biometricRecoveryEnabled,
     };
+  }
+
+  async updateDeviceToken(patientId: string, token: string, timezone?: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { paired: true, reminderTimezone: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) {
+      throw new ConflictException('Device must be paired before registering for notifications');
+    }
+
+    await this.prisma.patient.update({
+      where: { id: patientId },
+      data: {
+        deviceToken: token,
+        reminderTimezone: timezone ?? patient.reminderTimezone ?? 'UTC',
+      },
+    });
+
+    return { message: 'Device token saved' };
   }
 
   async getGreetingSpark(patientId: string) {
@@ -346,7 +376,12 @@ export class PatientService {
 
     await this.prisma.patient.update({
       where: { id: patientId },
-      data: { paired: false, deviceToken: null, biometricRecoveryEnabled: false },
+      data: {
+        paired: false,
+        deviceToken: null,
+        reminderTimezone: null,
+        biometricRecoveryEnabled: false,
+      },
     });
 
     return { message: 'Device unpaired successfully' };
@@ -365,10 +400,11 @@ export class PatientService {
         careLevel: true,
         aiAdaptiveEnabled: true,
         successRate: true,
+        aiDifficultyModel: true,
       },
     });
     if (!patient) throw new NotFoundException('Patient not found');
-    return patient;
+    return this.withPredictedDifficulty(patientId, patient);
   }
 
   async updateQuizModes(
@@ -416,9 +452,10 @@ export class PatientService {
         careLevel: true,
         aiAdaptiveEnabled: true,
         successRate: true,
+        aiDifficultyModel: true,
       },
     });
-    return patient;
+    return this.withPredictedDifficulty(patientId, patient);
   }
 
   async recordQuizResults(patientId: string, attempts: QuizResultAttemptInput[]) {
@@ -903,14 +940,19 @@ export class PatientService {
     const { name: pn, surname: ps } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
     const patientName = `${pn} ${ps}`;
     if (caregiverLinks.length > 0) {
-      await this.prisma.notification.createMany({
-        data: caregiverLinks.map(link => ({
-          caregiverId: link.caregiverId,
-          type: 'DEVICE_PAIRED' as any,
-          title: 'Device paired',
-          body: `A device has been successfully paired for ${patientName}.`,
-        })),
-      });
+      const title = 'Device paired';
+      const body = `A device has been successfully paired for ${patientName}.`;
+      const notifications = caregiverLinks.map(link => ({
+        caregiverId: link.caregiverId,
+        type: 'DEVICE_PAIRED' as any,
+        title,
+        body,
+      }));
+      await this.prisma.notification.createMany({ data: notifications });
+      await this.pushService.sendToCaregivers(
+        caregiverLinks.map((link) => link.caregiverId),
+        { title, body },
+      );
     }
 
     const joined = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
@@ -925,6 +967,160 @@ export class PatientService {
         name: patient.creator.name,
         surname: patient.creator.surname,
       },
+    };
+  }
+
+  private async withPredictedDifficulty(
+    patientId: string,
+    patient: {
+      quizModes: string[];
+      quizDifficulty: string;
+      careLevel: CareLevelValue;
+      aiAdaptiveEnabled: boolean;
+      successRate: number;
+      aiDifficultyModel?: unknown;
+    },
+  ): Promise<QuizSettings> {
+    const attempts = await this.prisma.quizAttempt.findMany({
+      where: { session: { patientId } },
+      orderBy: { attemptedAt: 'desc' },
+      take: 10,
+      select: { timeToCorrectMs: true },
+    });
+    const averageTimeMs = attempts.length > 0
+      ? attempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / attempts.length
+      : 8000;
+    const latestTimeMs = attempts[0]?.timeToCorrectMs ?? averageTimeMs;
+    const inputs = {
+      accuracy: patient.successRate,
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, averageTimeMs),
+      timeOfDay: this.aiDifficulty.timeOfDayScore(),
+      currentDifficulty: this.aiDifficulty.difficultyToComplexity(patient.quizDifficulty),
+    };
+    const prediction = patient.aiAdaptiveEnabled
+      ? this.aiDifficulty.predict(inputs, patient.aiDifficultyModel)
+      : this.aiDifficulty.ruleBased(inputs);
+
+    return {
+      quizModes: patient.quizModes,
+      quizDifficulty: patient.quizDifficulty,
+      predictedDifficulty: patient.aiAdaptiveEnabled ? prediction.difficulty : (patient.quizDifficulty as QuizDifficulty),
+      careLevel: patient.careLevel,
+      aiAdaptiveEnabled: patient.aiAdaptiveEnabled,
+      successRate: patient.successRate,
+    };
+  }
+
+  // ── Goals ──────────────────────────────────────────────────────────
+
+  async upsertGoal(patientId: string, caregiverId: string, targetAccuracy: number) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    const goal = await this.prisma.caregiverGoal.upsert({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+      update: { targetAccuracy },
+      create: { caregiverId, patientId, targetAccuracy },
+    });
+
+    return { id: goal.id, targetAccuracy: goal.targetAccuracy };
+  }
+
+  async getGoal(patientId: string, caregiverId: string) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    const goal = await this.prisma.caregiverGoal.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+
+    return goal ? { id: goal.id, targetAccuracy: goal.targetAccuracy } : { id: null, targetAccuracy: null };
+  }
+
+  async deleteGoal(patientId: string, caregiverId: string) {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+
+    await this.prisma.caregiverGoal.deleteMany({
+      where: { caregiverId, patientId },
+    });
+
+    return { message: 'Goal removed' };
+  }
+
+  async getPatientStats(patientId: string, caregiverId: string | null) {
+    if (caregiverId) {
+      const link = await this.prisma.patientCaregiver.findUnique({
+        where: { caregiverId_patientId: { caregiverId, patientId } },
+      });
+      if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, name: true, surname: true, successRate: true, patientCaregivers: { where: { isPrimary: true }, select: { caregiverId: true } } },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    // Compute overall accuracy from all quiz attempts
+    const allAttempts = await this.prisma.quizAttempt.findMany({
+      where: { session: { patientId } },
+      select: { firstTapCorrect: true, timeToCorrectMs: true },
+    });
+
+    const totalAttempts = allAttempts.length;
+    const totalCorrect = allAttempts.filter((a) => a.firstTapCorrect).length;
+    const currentAccuracy = totalAttempts > 0
+      ? Math.round((totalCorrect / totalAttempts) * 100)
+      : 0;
+    const averageTimeMs = totalAttempts > 0
+      ? Math.round(allAttempts.reduce((sum, a) => sum + a.timeToCorrectMs, 0) / totalAttempts)
+      : 0;
+
+    // Get the last 7 analytics snapshots for the trend mini-chart
+    const recentSnapshots = await this.prisma.analyticsSnapshot.findMany({
+      where: { patientId },
+      orderBy: { date: 'desc' },
+      take: 7,
+      select: {
+        date: true,
+        accuracyPercentage: true,
+        totalAttempts: true,
+        totalCorrect: true,
+      },
+    });
+
+    // Get goal
+    const targetCaregiverId = caregiverId || patient.patientCaregivers[0]?.caregiverId;
+    let goal = null;
+    if (targetCaregiverId) {
+      goal = await this.prisma.caregiverGoal.findUnique({
+        where: { caregiverId_patientId: { caregiverId: targetCaregiverId, patientId } },
+      });
+    }
+
+    const { name, surname } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, patient);
+
+    return {
+      patientId,
+      patientName: `${name} ${surname}`,
+      currentAccuracy,
+      totalAttempts,
+      totalCorrect,
+      averageTimeMs,
+      goal: goal ? { id: goal.id, targetAccuracy: goal.targetAccuracy } : null,
+      recentSnapshots: recentSnapshots.reverse().map((s) => ({
+        date: s.date.toISOString().split('T')[0],
+        accuracy: Math.round(s.accuracyPercentage),
+        attempts: s.totalAttempts,
+        correct: s.totalCorrect,
+      })),
     };
   }
 }

@@ -1,11 +1,12 @@
+import { colors, lightColors, darkColors } from '../../src/theme/colors';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useRouter } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
@@ -439,6 +440,8 @@ function buildPdfHtml({
 }
 
 export default function AnalyticsTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
   const [draftFilter, setDraftFilter] = useState<FilterKey>('day');
   const [draftDateValue, setDraftDateValue] = useState(DATE_OPTIONS.day[0].value);
@@ -657,7 +660,7 @@ export default function AnalyticsTab() {
           summary,
           quizzes: selectedQuiz ? [selectedQuiz] : visibleDetailQuizzes,
           selectedQuiz,
-          patientName: selectedPatient?.label ?? 'No patient selected',
+          patientName: selectedPatient ? `${selectedPatient.name} ${selectedPatient.surname}` : 'No patient selected',
           caregiverName,
           exportedAt,
         }),
@@ -710,7 +713,7 @@ export default function AnalyticsTab() {
                 }
               }}
             >
-              <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={colors.secondary} />
+              <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={themeColors.secondary} />
               <Text style={styles.backButtonText}>{selectedQuizId ? detailTitle : 'All quiz types'}</Text>
             </Pressable>
 
@@ -796,7 +799,7 @@ export default function AnalyticsTab() {
                       iosName={isPatientDropdownOpen ? 'chevron.up' : 'chevron.down'}
                       androidFallback={isPatientDropdownOpen ? '↑' : '↓'}
                       size={14}
-                      color={colors.textMuted}
+                      color={themeColors.textMuted}
                     />
                   </TouchableOpacity>
 
@@ -819,7 +822,7 @@ export default function AnalyticsTab() {
                             {patient.name} {patient.surname}
                           </Text>
                           {selectedPatientId === patient.id && (
-                            <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={colors.secondary} />
+                            <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={themeColors.secondary} />
                           )}
                         </TouchableOpacity>
                       ))}
@@ -931,6 +934,8 @@ function SelectDropdown({
   disabled?: boolean;
   icon?: 'calendar';
 }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const [open, setOpen] = useState(false);
 
   return (
@@ -942,7 +947,7 @@ function SelectDropdown({
         }}
       >
         {icon === 'calendar' && (
-          <AppIcon iosName="calendar" androidFallback="C" size={16} color={colors.secondary} />
+          <AppIcon iosName="calendar" androidFallback="C" size={16} color={themeColors.secondary} />
         )}
         <Text style={[styles.selectText, disabled && styles.selectTextDisabled]} numberOfLines={1}>
           {label}
@@ -984,10 +989,12 @@ function CalendarField({
   label: string;
   onPress: () => void;
 }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   return (
     <View style={styles.selectWrap}>
       <Pressable style={styles.selectButton} onPress={onPress}>
-        <AppIcon iosName="calendar" androidFallback="C" size={16} color={colors.secondary} />
+        <AppIcon iosName="calendar" androidFallback="C" size={16} color={themeColors.secondary} />
         <Text style={styles.selectText} numberOfLines={1}>{label}</Text>
         <Text style={styles.selectChevron}>v</Text>
       </Pressable>
@@ -1006,10 +1013,12 @@ function SectionHeader({
   title: string;
   helper?: string;
 }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionIconWrap}>
-        <AppIcon iosName={icon} androidFallback={fallback} size={16} color={colors.secondary} />
+        <AppIcon iosName={icon} androidFallback={fallback} size={16} color={themeColors.primary} />
       </View>
       <View style={styles.sectionHeaderText}>
         <Text style={styles.sectionTitle}>{title}</Text>
@@ -1032,13 +1041,15 @@ function ActionRow({
   onExport: () => void;
   exporting: boolean;
 }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   return (
     <View style={styles.actionRow}>
       <Pressable
         style={[styles.actionButton, styles.filterActionButton, activeFilterLabel && styles.filterActionButtonActive]}
         onPress={onOpenFilter}
       >
-        <AppIcon iosName="calendar" androidFallback="C" size={16} color={colors.secondary} />
+        <AppIcon iosName="calendar" androidFallback="C" size={16} color={themeColors.primary} />
         <Text style={styles.actionButtonText} numberOfLines={1}>
           {activeFilterLabel ?? 'Filter time'}
         </Text>
@@ -1059,7 +1070,7 @@ function ActionRow({
         onPress={onExport}
         disabled={exporting}
       >
-        <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={colors.textLight} />
+        <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={isDark ? themeColors.neutral : themeColors.textLight} />
         <Text style={styles.exportButtonText}>{exporting ? 'Creating PDF...' : 'Export as PDF'}</Text>
       </Pressable>
     </View>
@@ -1093,6 +1104,8 @@ function FilterModal({
   onApply: () => void;
   onClose: () => void;
 }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.96)).current;
 
@@ -1178,6 +1191,8 @@ function ReportPanel({
   summary: ReturnType<typeof summarize>;
   quizCount: number;
 }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   return (
     <AdaptiveCard style={styles.reportPanel}>
       <View>
@@ -1208,6 +1223,8 @@ function TypeRow({
   quizCount: number;
   onPress?: () => void;
 }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1218,7 +1235,7 @@ function TypeRow({
       disabled={!onPress}
     >
       <View style={styles.rowIconWrap}>
-        <AppIcon iosName="chart.bar.fill" androidFallback="Q" size={16} color={colors.secondary} />
+        <AppIcon iosName="chart.bar.fill" androidFallback="Q" size={16} color={themeColors.secondary} />
       </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{label}</Text>
@@ -1226,13 +1243,15 @@ function TypeRow({
         <Text style={styles.rowMeta}>{quizCount} quizzes</Text>
       </View>
       {onPress && (
-        <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={colors.textMuted} />
+        <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
       )}
     </Pressable>
   );
 }
 
 function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const summary = summarize([quiz]);
 
   return (
@@ -1245,7 +1264,7 @@ function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) 
       disabled={!onPress}
     >
       <View style={styles.rowIconWrap}>
-        <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={colors.secondary} />
+        <AppIcon iosName="questionmark.circle.fill" androidFallback="?" size={16} color={themeColors.secondary} />
       </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{quiz.name}</Text>
@@ -1258,13 +1277,15 @@ function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) 
         <Text style={styles.stage}>{thresholdStage(summary.averagePercent)}/5</Text>
       </View>
       {onPress && (
-        <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={colors.textMuted} />
+        <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
       )}
     </Pressable>
   );
 }
 
 function QuizAttemptDetails({ quiz }: { quiz: QuizReport }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const outcomes = quiz.questionOutcomes;
 
   return (
@@ -1308,6 +1329,8 @@ function ReportCharts({
   quizzes: QuizReport[];
   selectedFilter: FilterKey;
 }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const maxAttempts = Math.max(...quizzes.map((quiz) => quiz.attempts), 1);
   const stageCounts = [1, 2, 3, 4, 5].map((stage) => ({
     stage,
@@ -1383,6 +1406,8 @@ function ReportCharts({
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -1391,10 +1416,12 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     position: 'relative',
   },
   header: {
@@ -1411,12 +1438,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   headerSubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   scroll: {
@@ -1440,8 +1467,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
     paddingHorizontal: 14,
     marginHorizontal: 4,
     marginBottom: 8,
@@ -1451,19 +1478,19 @@ const styles = StyleSheet.create({
   },
   filterActionButtonActive: {
     justifyContent: 'flex-start',
-    borderColor: 'rgba(45,79,62,0.3)',
-    backgroundColor: 'rgba(45,79,62,0.08)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.3)'),
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.08)'),
   },
   actionButtonText: {
     flexShrink: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.secondary,
+    color: themeColors.secondary,
     marginLeft: 8,
   },
   exportButton: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
+    backgroundColor: themeColors.primary,
+    borderColor: themeColors.primary,
   },
   actionDisabled: {
     opacity: 0.6,
@@ -1471,7 +1498,7 @@ const styles = StyleSheet.create({
   exportButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textLight,
+    color: (isDark ? themeColors.neutral : themeColors.textLight),
     marginLeft: 8,
   },
   clearFilterButton: {
@@ -1484,7 +1511,7 @@ const styles = StyleSheet.create({
   clearFilterText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   modalOverlay: {
     position: 'absolute',
@@ -1494,16 +1521,16 @@ const styles = StyleSheet.create({
     left: 0,
     justifyContent: 'center',
     padding: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.42)'),
     zIndex: 100,
     elevation: 100,
   },
   filterModalCard: {
     borderRadius: isIOS ? 20 : 24,
     padding: 16,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.96)' : '#FFFFFF',
+    backgroundColor: themeColors.glassCardBg,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
     zIndex: 60,
     elevation: 60,
   },
@@ -1516,7 +1543,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 19,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   modalCloseButton: {
     width: 34,
@@ -1524,12 +1551,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.05)'),
   },
   modalCloseText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1545,20 +1572,20 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   modalCancelButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.05)'),
   },
   modalApplyButton: {
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
   },
   modalCancelText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   modalApplyText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textLight,
+    color: themeColors.textLight,
   },
   patientPanel: {
     padding: 16,
@@ -1570,8 +1597,8 @@ const styles = StyleSheet.create({
   dropdownContainer: {
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
     overflow: 'hidden',
   },
   patientSelector: {
@@ -1583,7 +1610,7 @@ const styles = StyleSheet.create({
   },
   patientSelectorOpen: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
   },
   patientSelectorLeft: {
     flexDirection: 'row',
@@ -1595,28 +1622,28 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(45,79,62,0.12)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.12)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   patientInitialText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   patientSelectorName: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   patientSelectorRole: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 1,
   },
   dropdownList: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.3)'),
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -1624,37 +1651,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.04)',
+    borderTopColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)'),
     gap: 12,
   },
   patientInitialCircleSmall: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.05)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
   patientInitialTextSmall: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   dropdownItemText: {
     flex: 1,
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   emptyText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   filterLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 10,
   },
   filterControls: {
@@ -1679,8 +1706,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
     paddingHorizontal: 12,
   },
   selectDisabled: {
@@ -1690,16 +1717,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginLeft: 6,
   },
   selectTextDisabled: {
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   selectChevron: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.secondary,
+    color: themeColors.secondary,
     marginLeft: 8,
   },
   selectMenu: {
@@ -1710,8 +1737,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
-    backgroundColor: colors.neutralLight,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
+    backgroundColor: themeColors.neutralLight,
     overflow: 'hidden',
     zIndex: 1200,
     elevation: 1200,
@@ -1724,19 +1751,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.05)'),
   },
   selectOptionActive: {
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3, 87, 58, 0.10)'),
   },
   selectOptionText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   selectOptionTextActive: {
     fontFamily: typography.fontFamily.bold,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   backButton: {
     flexDirection: 'row',
@@ -1749,7 +1776,7 @@ const styles = StyleSheet.create({
   backButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   reportPanel: {
     padding: 16,
@@ -1758,13 +1785,13 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.secondary,
+    color: themeColors.secondary,
     textTransform: 'uppercase',
   },
   reportTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 21,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 4,
   },
   scoreGrid: {
@@ -1780,24 +1807,24 @@ const styles = StyleSheet.create({
   metricLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   metricValue: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 2,
   },
   reportNote: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 10,
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1809,7 +1836,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1822,7 +1849,7 @@ const styles = StyleSheet.create({
   },
   helperTextInline: {
     fontFamily: typography.fontFamily.regular,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     fontSize: 12,
   },
   chartsSection: {
@@ -1842,13 +1869,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     paddingRight: 10,
   },
   chartRange: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   barRow: {
     flexDirection: 'row',
@@ -1863,37 +1890,37 @@ const styles = StyleSheet.create({
   barLabel: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   barSubLabel: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   barTrack: {
     flex: 1,
     height: 12,
     borderRadius: 6,
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3, 87, 58, 0.10)'),
     overflow: 'hidden',
   },
   scoreBar: {
     height: '100%',
     borderRadius: 6,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.primary,
   },
   attemptBar: {
     height: '100%',
     borderRadius: 6,
-    backgroundColor: '#7AAE8A',
+    backgroundColor: themeColors.primary,
   },
   barValue: {
     width: 42,
     textAlign: 'right',
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   stageChart: {
     height: 150,
@@ -1910,25 +1937,25 @@ const styles = StyleSheet.create({
     width: 24,
     height: 96,
     borderRadius: 8,
-    backgroundColor: 'rgba(3, 87, 58, 0.10)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3, 87, 58, 0.10)'),
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   stageBar: {
     width: '100%',
     borderRadius: 8,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
   },
   stageCount: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 6,
   },
   stageLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   row: {
@@ -1936,9 +1963,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: isIOS ? 14 : 16,
     padding: 14,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.55)' : '#FFFFFF',
+    backgroundColor: themeColors.glassCardBg,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
     marginBottom: 10,
   },
   rowPressed: {
@@ -1952,7 +1979,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(45,79,62,0.1)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1960,18 +1987,18 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   rowSubtitle: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   rowMeta: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 6,
   },
   rowScore: {
@@ -1981,18 +2008,18 @@ const styles = StyleSheet.create({
   percent: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   points: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 2,
   },
   stage: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.secondary,
+    color: themeColors.secondary,
     marginTop: 4,
   },
   questionCard: {
@@ -2008,7 +2035,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     paddingRight: 10,
   },
   questionStatus: {
@@ -2023,15 +2050,15 @@ const styles = StyleSheet.create({
   },
   statusCorrect: {
     color: '#1E6F43',
-    backgroundColor: 'rgba(30, 111, 67, 0.12)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 111, 67, 0.12)'),
   },
   statusWrong: {
     color: '#A33A2A',
-    backgroundColor: 'rgba(163, 58, 42, 0.12)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(163, 58, 42, 0.12)'),
   },
   statusSkipped: {
     color: '#7A5A12',
-    backgroundColor: 'rgba(122, 90, 18, 0.12)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(122, 90, 18, 0.12)'),
   },
   questionMetaGrid: {
     flexDirection: 'row',
@@ -2042,7 +2069,9 @@ const styles = StyleSheet.create({
   questionTakenAt: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 8,
   },
 });
+};
+// Styles are resolved per-render via `getStyles(isDark)` inside components

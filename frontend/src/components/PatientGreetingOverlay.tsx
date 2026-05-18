@@ -1,4 +1,6 @@
+import { colors, lightColors, darkColors } from '../theme/colors';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import {
   Animated,
   Easing,
@@ -24,6 +26,9 @@ export function PatientGreetingOverlay() {
   // Overlay itself is visible immediately so the gradient blocks the dashboard
   const [visible, setVisible] = useState(true);
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
 
   // Gradient fades out on dismiss
   const overlayOpacity = useRef(new Animated.Value(1)).current;
@@ -68,12 +73,11 @@ export function PatientGreetingOverlay() {
   };
 
   if (!visible) return null;
-
   return (
     <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={dismiss}>
         <LinearGradient
-          colors={['#EAF4EE', '#C5DDD1', '#98BEA9']}
+          colors={isDark ? [themeColors.neutral, themeColors.neutralLight] : ['#EAF4EE', '#C5DDD1', '#98BEA9']}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.3, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -89,7 +93,9 @@ export function PatientGreetingOverlay() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1000,
@@ -104,7 +110,7 @@ const styles = StyleSheet.create({
   quote: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 30,
-    color: '#1E4D30',
+    color: themeColors.textDark,
     textAlign: 'center',
     lineHeight: 46,
     letterSpacing: 0.2,
@@ -116,8 +122,10 @@ const styles = StyleSheet.create({
   tapCue: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: '#4A7C5E',
+    color: themeColors.textMuted,
     letterSpacing: 1.2,
     opacity: 0.7,
   },
 });
+};
+

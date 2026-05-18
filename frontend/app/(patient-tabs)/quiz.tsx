@@ -1,5 +1,7 @@
+import { colors, lightColors, darkColors } from '../../src/theme/colors';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +24,6 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { SFSymbol } from 'expo-symbols';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
@@ -32,6 +33,7 @@ import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/
 import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
 import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
 import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import {
@@ -50,8 +52,24 @@ import {
   buildQuizSet,
   buildQuizSetFromIds,
   QuizQuestion,
+  shouldMixQuestionTypes,
   uniqueIdentityCount,
 } from '../../src/services/quiz';
+
+const EMOJI_STAGES = [
+  { max: 20, emoji: '🥺', label: 'Needs encouragement' },
+  { max: 40, emoji: '😕', label: 'Getting started' },
+  { max: 60, emoji: '😐', label: 'Making progress' },
+  { max: 80, emoji: '🙂', label: 'Doing well' },
+  { max: 100, emoji: '🤩', label: 'Excellent!' },
+];
+
+function getEmojiStage(percent: number) {
+  for (const stage of EMOJI_STAGES) {
+    if (percent <= stage.max) return stage;
+  }
+  return EMOJI_STAGES[EMOJI_STAGES.length - 1];
+}
 
 type Phase =
   | { type: 'loading' }
@@ -82,9 +100,6 @@ interface ResumeSession {
 }
 
 const MIN_IDENTITIES = 4;
-const QUIZ_BACKGROUND = '#E8F5EC';
-const CREAM = '#FCFEF9';
-const FOREST_GREEN = '#1E4D30';
 const SESSION_KEY_PREFIX = 'memorylane_patient_quiz_session';
 
 const MODE_CONFIG: Record<QuizMode, { label: string; icon: SFSymbol; androidFallback: string }> = {
@@ -129,11 +144,14 @@ async function deleteSavedSession(patientId: string): Promise<void> {
 }
 
 export default function QuizTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
 
   const [patient, setPatient] = useState<PatientInfo | null>(null);
+  const [stats, setStats] = useState<any>(null);
   const [memories, setMemories] = useState<TimelineItem[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -159,6 +177,12 @@ export default function QuizTab() {
       ]);
       setMemories(timelineData);
       setNotes(notesData);
+
+      // Fetch patient stats for goal progress display
+      const statsRes = await fetch(`${API_BASE_URL}/patients/${info.id}/stats`);
+      if (statsRes.ok) {
+        setStats(await statsRes.json());
+      }
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -184,6 +208,35 @@ export default function QuizTab() {
   const [successMessage, setSuccessMessage] = useState('Well done.');
   const [hintVisible, setHintVisible] = useState(false);
   const [lastWrong, setLastWrong] = useState<string | null>(null);
+
+  const scrollViewRef = useRef<ScrollView>(null);
+  const swipeUpBounce = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // We make the bounce a bit more pronounced as requested
+    const bounceAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(swipeUpBounce, { 
+          toValue: -14, 
+          duration: 700, 
+          useNativeDriver: true 
+        }),
+        Animated.spring(swipeUpBounce, {
+          toValue: 0,
+          friction: 4,
+          tension: 40,
+          useNativeDriver: true
+        }),
+        Animated.delay(200),
+      ])
+    );
+
+    bounceAnimation.start();
+    
+    return () => {
+      bounceAnimation.stop();
+    };
+  }, [swipeUpBounce]);
 
   const wrongShake = useRef(new Animated.Value(0)).current;
   const questionFade = useRef(new Animated.Value(1)).current;
@@ -227,12 +280,12 @@ export default function QuizTab() {
   }, [memories, notes]);
 
   const leaveMemoriesScrollGap = useMemo(
-    () => ({ minHeight: Math.max(88, Math.floor(height * 0.28)) }),
-    [height],
+    () => ({ minHeight: 120 }), // Increased spacing as requested
+    [],
   );
 
   const introPrimaryMinHeight = useMemo(
-    () => Math.max(360, Math.floor(height * 0.52)),
+    () => Math.max(450, Math.floor(height * 0.75)),
     [height],
   );
 
@@ -355,7 +408,14 @@ export default function QuizTab() {
       const saved = await readSavedSession(p.id);
       if (saved && (saved.mode === 'MIXED' || quizModes.includes(saved.mode))) {
         const restoredQuestions = saved.mode === 'MIXED'
-          ? buildAdaptiveQuizSetFromIds(pool, quizModes, nextCareLevel ?? 'DEMENTIA', saved.questionIds, difficulty ?? 'MEDIUM')
+          ? buildAdaptiveQuizSetFromIds(
+            pool,
+            quizModes,
+            nextCareLevel ?? 'DEMENTIA',
+            saved.questionIds,
+            difficulty ?? 'MEDIUM',
+            nextAiAdaptiveEnabled === true,
+          )
           : buildQuizSetFromIds(pool, saved.mode, saved.questionIds, difficulty ?? 'MEDIUM');
         const currentIndex = Math.max(0, saved.currentIndex);
         if (restoredQuestions.length > currentIndex) {
@@ -401,14 +461,14 @@ export default function QuizTab() {
 
   const startAdaptiveSet = useCallback(() => {
     console.log(`[Quiz] Starting adaptive set. CareLevel: ${careLevel}, Modes: ${enabledModes.join(',')}, Pool: ${mediaPool.length}`);
-    const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty);
+    const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty, aiAdaptiveEnabled);
     console.log(`[Quiz] Generated ${qs.length} adaptive questions`);
     if (qs.length === 0) {
       console.warn('[Quiz] No adaptive questions generated, cannot start quiz');
       return;
     }
     setQuestions(qs);
-    setActiveMode(careLevel === 'PREVENTATIVE' ? 'MIXED' : qs[0].mode);
+    setActiveMode(shouldMixQuestionTypes(careLevel, quizDifficulty, aiAdaptiveEnabled) ? 'MIXED' : qs[0].mode);
     setQuestionIds(qs.map((q) => q.media.publicId));
     setQuestionIndex(0);
     setScore(0);
@@ -420,7 +480,7 @@ export default function QuizTab() {
     attemptResultsRef.current = [];
     questionStartTimeRef.current = Date.now();
     setPhase({ type: 'quiz' });
-  }, [careLevel, enabledModes, hintOpacity, mediaPool, quizDifficulty]);
+  }, [aiAdaptiveEnabled, careLevel, enabledModes, hintOpacity, mediaPool, quizDifficulty]);
 
   const continueSavedSession = useCallback(() => {
     if (!resumeSession) return;
@@ -458,13 +518,17 @@ export default function QuizTab() {
   }, [clearCurrentSession]);
 
   const handleIntroStart = useCallback(() => {
-    if (careLevel === 'PREVENTATIVE') {
+    if (aiAdaptiveEnabled || careLevel === 'PREVENTATIVE') {
       startAdaptiveSet();
+      return;
+    }
+    if (enabledModes.length > 1) {
+      setPhase({ type: 'mode_select' });
       return;
     }
     const preferredMode = enabledModes.includes('NAME') ? 'NAME' : enabledModes[0];
     if (preferredMode) startSet(preferredMode);
-  }, [careLevel, enabledModes, startAdaptiveSet, startSet]);
+  }, [aiAdaptiveEnabled, careLevel, enabledModes, startAdaptiveSet, startSet]);
 
   const showHint = useCallback(() => {
     const current = questions[questionIndexRef.current];
@@ -564,7 +628,12 @@ export default function QuizTab() {
       const p = patientRef.current;
       const attempts = attemptResultsRef.current;
       if (p && attempts.length > 0) {
-        submitQuizResults(p.id, attempts).catch(() => undefined);
+        submitQuizResults(p.id, attempts).then(() => {
+          fetch(`${API_BASE_URL}/patients/${p.id}/patient-stats`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if (data) setStats(data); })
+            .catch(() => undefined);
+        }).catch(() => undefined);
       }
       setPhase({ type: 'summary' });
     } else {
@@ -656,7 +725,8 @@ export default function QuizTab() {
     try {
       if (selectedMedia) {
         // Upload Media
-        const fileInfo = await FileSystem.getInfoAsync(selectedMedia.uri);
+        const file = new File(selectedMedia.uri);
+        const fileInfo = { exists: file.exists, size: file.size };
         if (!fileInfo.exists) throw new Error('File not found');
 
         await uploadMediaByPatient({
@@ -678,9 +748,10 @@ export default function QuizTab() {
       
       setNewNote('');
       setSelectedMedia(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined); // Success feedback
       loadData(true); // Refresh feed
     } catch (error: any) {
-      console.error('Save failed:', error);
+      console.error('Save failed:', error.response?.data || error);
       Alert.alert('Error', error.message || 'Failed to save. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -691,7 +762,7 @@ export default function QuizTab() {
     <View style={styles.leaveMemoriesSection}>
       <View style={[styles.leaveMemoriesSpacer, leaveMemoriesScrollGap]} />
       <View style={styles.scrollHintCard}>
-        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={FOREST_GREEN} />
+        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={themeColors.primary} />
         <Text style={styles.scrollHintTitle}>Leave a memory for family</Text>
         <Text style={styles.scrollHintBody}>
           Keep scrolling on this page — below your practice area you can write a note or share a photo, video, or voice
@@ -704,7 +775,7 @@ export default function QuizTab() {
         <TextInput
           style={styles.textInput}
           placeholder="Write a note or share a memory..."
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={themeColors.textMuted}
           multiline
           value={newNote}
           onChangeText={setNewNote}
@@ -720,7 +791,7 @@ export default function QuizTab() {
                   iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
                   androidFallback="M"
                   size={24}
-                  color={colors.primary}
+                  color={themeColors.primary}
                 />
                 <Text style={styles.mediaPlaceholderText}>
                   {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
@@ -734,13 +805,13 @@ export default function QuizTab() {
         )}
 
         <View style={styles.mediaButtons}>
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
-            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={colors.primary} />
+            <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
+            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={themeColors.primary} />
             <Text style={styles.mediaBtnText}>Photo</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('VIDEO')}>
-            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={colors.primary} />
+            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={themeColors.primary} />
             <Text style={styles.mediaBtnText}>Video</Text>
           </TouchableOpacity>
 
@@ -753,7 +824,7 @@ export default function QuizTab() {
               iosName={isRecording ? 'stop.fill' : 'mic.fill'}
               androidFallback="A"
               size={20}
-              color={isRecording ? '#fff' : colors.primary}
+              color={isRecording ? '#fff' : themeColors.primary}
             />
             <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
               {isRecording ? 'Recording...' : 'Voice'}
@@ -795,7 +866,7 @@ export default function QuizTab() {
                   }
                   androidFallback={item.type === 'NOTE' ? 'N' : 'P'}
                   size={16}
-                  color={colors.primary}
+                  color={themeColors.primary}
                 />
                 <Text style={styles.feedItemDate}>
                   {new Date(item.createdAt).toLocaleDateString('en-US', {
@@ -835,7 +906,7 @@ export default function QuizTab() {
   // We keep ALL the new UI screens that were added in alpha
   const renderLoading = () => (
     <View style={styles.centerFill}>
-      <ActivityIndicator size="large" color={FOREST_GREEN} />
+      <ActivityIndicator size="large" color={themeColors.primary} />
     </View>
   );
 
@@ -850,37 +921,112 @@ export default function QuizTab() {
   );
 
   const renderNoMedia = () => (
-    <View style={styles.centerFill}>
-      <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={FOREST_GREEN} />
-      <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
-      <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
-    </View>
+    <ScrollView
+      ref={scrollViewRef}
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
+        <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={themeColors.primary} />
+        <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
+        <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
+        
+        {renderSwipeUpHint()}
+      </View>
+      {renderLeaveMemoriesSection()}
+    </ScrollView>
   );
 
   const renderInsufficientIdentities = (count: number) => (
-    <View style={styles.centerFill}>
-      <AppIcon iosName="sparkles" androidFallback="*" size={52} color={FOREST_GREEN} />
-      <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
-      <Text style={styles.emptySubtitle}>
-        Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
-      </Text>
-    </View>
+    <ScrollView
+      ref={scrollViewRef}
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
+        <AppIcon iosName="sparkles" androidFallback="*" size={52} color={themeColors.primary} />
+        <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
+        <Text style={styles.emptySubtitle}>
+          Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
+        </Text>
+
+        {renderSwipeUpHint()}
+      </View>
+      {renderLeaveMemoriesSection()}
+    </ScrollView>
+  );
+
+  const renderSwipeUpHint = () => (
+    <Animated.View style={{ transform: [{ translateY: swipeUpBounce }], marginTop: 'auto', paddingTop: 24, paddingBottom: 16 }}>
+      <TouchableOpacity 
+        onPress={() => {
+           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+           scrollViewRef.current?.scrollToEnd({ animated: true });
+        }}
+        activeOpacity={0.7}
+        style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}
+      >
+        <AppIcon iosName="chevron.up" androidFallback="^" size={26} color={themeColors.primary} />
+        <Text style={{ 
+          fontFamily: typography.fontFamily.bold, 
+          fontSize: 18, // Slightly larger
+          color: themeColors.primary,
+          textAlign: 'center',
+          letterSpacing: -0.3, // Modern touch
+        }}>
+          Swipe up to leave memory
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   const renderIntro = () => (
     <ScrollView
+      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.introScrollContent}
       showsVerticalScrollIndicator
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.introContent, { minHeight: introPrimaryMinHeight }]}>
-        <Text style={styles.introText}>
-          {`Good morning${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
-        </Text>
-        <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
-          <Text style={styles.startButtonText}>Start</Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+          <Text style={styles.introText}>
+            {`Good morning${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
+          </Text>
+          <View style={{ height: 48 }} />
+          <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
+            <Text style={styles.startButtonText}>Start</Text>
+          </TouchableOpacity>
+
+          {stats && stats.goal && (
+            <View style={[styles.patientGoalCard, { marginTop: 48 }]}>
+              <View style={styles.patientGoalHeader}>
+                <Text style={styles.patientGoalTitle}>Your Goal</Text>
+                <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+              </View>
+              <View style={styles.patientGoalTrack}>
+                <View 
+                  style={[
+                    styles.patientGoalFill, 
+                    { width: `${Math.min(100, (stats.currentAccuracy / stats.goal.targetAccuracy) * 100)}%` }
+                  ]} 
+                />
+                <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]} />
+              </View>
+              <Text style={styles.patientGoalSubtext}>
+                {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                  ? '🎉 You reached your goal!' 
+                  : `${stats.goal.targetAccuracy}% accuracy target`}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {renderSwipeUpHint()}
       </View>
       {renderLeaveMemoriesSection()}
     </ScrollView>
@@ -906,33 +1052,37 @@ export default function QuizTab() {
 
   const renderModeSelect = () => (
     <ScrollView
+      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.modeSelectContent}
       showsVerticalScrollIndicator
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
-      <View style={styles.modeButtonsCol}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-          return (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
-            >
-              <AppIcon
-                iosName={cfg.icon}
-                androidFallback={cfg.androidFallback}
-                size={24}
-                color={hasMedia ? CREAM : '#888888'}
-              />
-              <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={{ minHeight: height * 0.7, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
+        <View style={styles.modeButtonsCol}>
+          {enabledModes.map((mode) => {
+            const cfg = MODE_CONFIG[mode];
+            const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
+                onPress={() => hasMedia && startSet(mode)}
+                activeOpacity={hasMedia ? 0.75 : 1}
+              >
+                <AppIcon
+                  iosName={cfg.icon}
+                  androidFallback={cfg.androidFallback}
+                  size={24}
+                  color={hasMedia ? themeColors.neutralLight : '#888888'}
+                />
+                <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {renderSwipeUpHint()}
       </View>
       {renderLeaveMemoriesSection()}
     </ScrollView>
@@ -982,7 +1132,7 @@ export default function QuizTab() {
         <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
           <View style={styles.photoClip}>
             <View style={styles.photoLoading}>
-              <ActivityIndicator size="small" color={FOREST_GREEN} />
+              <ActivityIndicator size="small" color={themeColors.primary} />
             </View>
             <Animated.Image
               key={`${q.media.publicId}-${q.imageUrl}`}
@@ -1033,43 +1183,112 @@ export default function QuizTab() {
     navigation.navigate('relive' as never);
   };
 
-  const renderSummary = () => (
-    <ScrollView
-      style={styles.phaseScroll}
-      contentContainerStyle={styles.summaryContent}
-      showsVerticalScrollIndicator
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.summaryMessageBlock}>
-        <Text style={styles.summaryTitle}>
-          Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
-        </Text>
-      </View>
+  const renderSummary = () => {
+    const showAdaptiveRetry = aiAdaptiveEnabled || careLevel === 'PREVENTATIVE';
+    const hasAdaptiveMedia = showAdaptiveRetry
+      && buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty, aiAdaptiveEnabled).length > 0;
 
-      <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
-        <Text style={styles.photosButtonText}>Go to my photos</Text>
-      </TouchableOpacity>
+    return (
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.phaseScroll}
+        contentContainerStyle={[styles.summaryContent, { paddingTop: 40, paddingBottom: 60 }]}
+        showsVerticalScrollIndicator
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ width: '100%', alignItems: 'center', gap: 32 }}>
+          <View style={styles.summaryMessageBlock}>
+            <Text style={styles.summaryTitle}>
+              Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
+            </Text>
+          </View>
 
-      <Text style={styles.summaryPrompt}>Practice again:</Text>
-      <View style={styles.practiceChoiceGrid}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-          return (
+          {stats && stats.goal && (
+            <>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 64, marginBottom: 4 }}>
+                  {getEmojiStage(Math.min(100, Math.round((stats.currentAccuracy / stats.goal.targetAccuracy) * 100))).emoji}
+                </Text>
+                <Text style={{ fontFamily: typography.fontFamily.medium, fontSize: 15, color: themeColors.textMuted }}>
+                  {getEmojiStage(Math.min(100, Math.round((stats.currentAccuracy / stats.goal.targetAccuracy) * 100))).label}
+                </Text>
+              </View>
+
+              <View style={styles.patientGoalCard}>
+                <View style={styles.patientGoalHeader}>
+                  <Text style={styles.patientGoalTitle}>Accuracy Goal</Text>
+                  <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+                </View>
+                <View style={styles.patientGoalTrack}>
+                  <View 
+                    style={[
+                      styles.patientGoalFill, 
+                      { width: `${Math.min(100, stats.currentAccuracy)}%` }
+                    ]} 
+                  />
+                  <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]}>
+                    <View style={styles.patientGoalMarkerLine} />
+                    <View style={styles.patientGoalMarkerPill}>
+                      <Text style={styles.patientGoalMarkerLabel}>🎯 {stats.goal.targetAccuracy}%</Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.patientGoalSubtext}>
+                  {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                    ? '🎉 You reached your goal!' 
+                    : `Target: ${stats.goal.targetAccuracy}% accuracy`}
+                </Text>
+              </View>
+            </>
+          )}
+
+          <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
+            <Text style={styles.photosButtonText}>Go to my photos</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.summaryPrompt}>Practice again:</Text>
+          
+          {showAdaptiveRetry && (
             <TouchableOpacity
-              key={mode}
-              style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
+              style={[styles.adaptivePracticeChoice, !hasAdaptiveMedia && styles.modePillDisabled]}
+              onPress={() => hasAdaptiveMedia && startAdaptiveSet()}
+              activeOpacity={hasAdaptiveMedia ? 0.78 : 1}
             >
-              <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+              <AppIcon
+                iosName="brain.head.profile"
+                androidFallback="AI"
+                size={18}
+                color={hasAdaptiveMedia ? themeColors.neutralLight : '#888888'}
+              />
+              <Text style={[styles.adaptivePracticeChoiceText, !hasAdaptiveMedia && styles.modePillTextDisabled]}>
+                Practice together
+              </Text>
             </TouchableOpacity>
-          );
-        })}
-      </View>
-      {renderLeaveMemoriesSection()}
-    </ScrollView>
-  );
+          )}
+
+          <View style={styles.practiceChoiceGrid}>
+            {enabledModes.map((mode) => {
+              const cfg = MODE_CONFIG[mode];
+              const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
+                  onPress={() => hasMedia && startSet(mode)}
+                  activeOpacity={hasMedia ? 0.75 : 1}
+                >
+                  <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {renderSwipeUpHint()}
+        </View>
+        {renderLeaveMemoriesSection()}
+      </ScrollView>
+    );
+  };
 
   const showTopBar = !['quiz', 'intro', 'resume_prompt', 'summary'].includes(phase.type);
   const showFocusModal = phase.type === 'resume_prompt' || phase.type === 'quiz';
@@ -1121,10 +1340,12 @@ export default function QuizTab() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     paddingHorizontal: 24,
   },
   phaseScroll: {
@@ -1133,7 +1354,7 @@ const styles = StyleSheet.create({
   },
   introScrollContent: {
     flexGrow: 1,
-    paddingBottom: 40,
+    paddingBottom: 180, // Clear the navigation bar
   },
   leaveMemoriesSection: {
     width: '100%',
@@ -1146,26 +1367,26 @@ const styles = StyleSheet.create({
   },
   scrollHintCard: {
     width: '100%',
-    backgroundColor: 'rgba(252, 254, 249, 0.95)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.95)'),
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.2)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
     gap: 8,
     alignItems: 'center',
   },
   scrollHintTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   scrollHintBody: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
-    color: FOREST_GREEN,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
     opacity: 0.92,
@@ -1173,7 +1394,7 @@ const styles = StyleSheet.create({
   recentMemoriesHeading: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginBottom: 10,
     marginTop: 4,
     width: '100%',
@@ -1183,9 +1404,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.12)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.12)'),
   },
   topRow: {
     flexDirection: 'row',
@@ -1196,7 +1417,7 @@ const styles = StyleSheet.create({
   greeting: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     flex: 1,
   },
   logoutBtn: {
@@ -1212,14 +1433,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   centerFill: {
     flex: 1,
@@ -1231,12 +1452,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     paddingHorizontal: 16,
   },
   retryBtn: {
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     borderRadius: 50,
     paddingVertical: 14,
     paddingHorizontal: 36,
@@ -1244,18 +1465,18 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   emptyTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 25,
     maxWidth: 300,
@@ -1271,14 +1492,14 @@ const styles = StyleSheet.create({
   introText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     lineHeight: 40,
     textAlign: 'center',
   },
   startButton: {
     minWidth: 190,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingVertical: 18,
     paddingHorizontal: 54,
     alignItems: 'center',
@@ -1295,11 +1516,11 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   resumeFill: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -1307,11 +1528,11 @@ const styles = StyleSheet.create({
   resumeCard: {
     width: '100%',
     borderRadius: 24,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 24,
     paddingVertical: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
     alignItems: 'center',
     gap: 24,
     ...Platform.select({
@@ -1328,7 +1549,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 25,
     lineHeight: 34,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   resumeActions: {
@@ -1337,37 +1558,37 @@ const styles = StyleSheet.create({
   },
   resumePrimaryBtn: {
     borderRadius: 999,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     paddingVertical: 16,
     alignItems: 'center',
   },
   resumePrimaryText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   resumeSecondaryBtn: {
     borderRadius: 999,
-    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
     paddingVertical: 15,
     alignItems: 'center',
   },
   resumeSecondaryText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   modeSelectContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 180, // Generous padding to clear the floating navigation bar
     alignItems: 'center',
     width: '100%',
   },
   modeSelectTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 28,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 36,
     marginBottom: 36,
@@ -1380,7 +1601,7 @@ const styles = StyleSheet.create({
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     borderRadius: 50,
     paddingVertical: 18,
     paddingHorizontal: 32,
@@ -1393,7 +1614,7 @@ const styles = StyleSheet.create({
   modePillText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: CREAM,
+    color: themeColors.neutralLight,
     flex: 1,
     textAlign: 'center',
   },
@@ -1402,7 +1623,7 @@ const styles = StyleSheet.create({
   },
   quizScreen: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     alignItems: 'center',
     paddingHorizontal: 20,
   },
@@ -1418,22 +1639,22 @@ const styles = StyleSheet.create({
     width: 34,
     height: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(30, 77, 48, 0.24)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.24)'),
   },
   progressDashActive: {
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
   },
   questionText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 38,
     marginBottom: 28,
   },
   photoShadow: {
     borderRadius: 30,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     marginBottom: 16,
     ...Platform.select({
       ios: {
@@ -1449,7 +1670,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 30,
     overflow: 'hidden',
-    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
   },
   photoLoading: {
     ...StyleSheet.absoluteFillObject,
@@ -1470,31 +1691,31 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 8,
-    backgroundColor: 'rgba(252, 254, 249, 0.58)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.58)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
   },
   hintButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textDecorationLine: 'underline',
   },
   hintBubble: {
     marginTop: 10,
     maxWidth: 320,
     borderRadius: 18,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
   },
   hintText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 21,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   choiceGrid: {
@@ -1512,7 +1733,7 @@ const styles = StyleSheet.create({
   choiceBtn: {
     minHeight: 66,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1533,7 +1754,7 @@ const styles = StyleSheet.create({
   choiceBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 23,
   },
@@ -1543,7 +1764,7 @@ const styles = StyleSheet.create({
   summaryContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 180, // Generous padding to clear the floating navigation bar
     alignItems: 'center',
     gap: 24,
     width: '100%',
@@ -1555,14 +1776,14 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 40,
   },
   photosButton: {
     minWidth: 230,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 34,
     paddingVertical: 18,
     alignItems: 'center',
@@ -1579,13 +1800,13 @@ const styles = StyleSheet.create({
   photosButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   summaryPrompt: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginTop: 18,
   },
   practiceChoiceGrid: {
@@ -1595,18 +1816,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
+  adaptivePracticeChoice: {
+    minWidth: 230,
+    maxWidth: 320,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  adaptivePracticeChoiceText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.neutralLight,
+    textAlign: 'center',
+  },
   practiceChoice: {
     borderRadius: 999,
-    backgroundColor: 'rgba(252, 254, 249, 0.9)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.9)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   practiceChoiceText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   mediaButtons: {
@@ -1620,16 +1859,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(180, 174, 232, 0.2)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.2)'),
   },
   mediaBtnText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.primary,
+    color: themeColors.primary,
   },
   recordingBtn: {
     backgroundColor: '#E74C3C',
@@ -1651,7 +1890,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 80,
     borderRadius: 12,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
@@ -1659,7 +1898,7 @@ const styles = StyleSheet.create({
   mediaPlaceholderText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.primary,
+    color: themeColors.primary,
   },
   removeMediaBtn: {
     position: 'absolute',
@@ -1670,35 +1909,35 @@ const styles = StyleSheet.create({
   },
   noteInputCard: {
     width: '100%',
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.15)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.15)'),
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginBottom: 10,
   },
   textInput: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.textDark,
     minHeight: 88,
     textAlignVertical: 'top',
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.2)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
     padding: 12,
     marginBottom: 14,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
   },
   saveBtn: {
     borderRadius: 999,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 4,
@@ -1709,7 +1948,7 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   feedItemHeader: {
     flexDirection: 'row',
@@ -1721,9 +1960,10 @@ const styles = StyleSheet.create({
   feedItemDate: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   feedImage: {
+
     width: '100%',
     height: 72,
     borderRadius: 8,
@@ -1732,20 +1972,94 @@ const styles = StyleSheet.create({
   feedContent: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: FOREST_GREEN,
+    color: themeColors.textDark,
     lineHeight: 16,
   },
   mediaIndicator: {
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     padding: 12,
     borderRadius: 10,
     marginBottom: 10,
     borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+    borderLeftColor: themeColors.primary,
   },
   mediaIndicatorText: {
     fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textDark,
+    fontSize: 13,
+    color: themeColors.primary,
+  },
+  patientGoalCard: {
+    width: '100%',
+    backgroundColor: (isDark ? 'rgba(76,175,80,0.08)' : 'rgba(76,175,80,0.05)'),
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.15)'),
+  },
+  patientGoalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  patientGoalTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.primary,
+  },
+  patientGoalPercent: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: '#4CAF50',
+  },
+  patientGoalTrack: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(0,0,0,0.06)'),
+    overflow: 'visible',
+    position: 'relative',
+  },
+  patientGoalFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4CAF50',
+  },
+  patientGoalMarker: {
+    position: 'absolute',
+    top: 14,
+    marginLeft: -24,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  patientGoalMarkerLine: {
+    width: 0,
+    height: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: isDark ? 'rgba(245,251,247,0.5)' : 'rgba(0,0,0,0.3)',
+  },
+  patientGoalMarkerPill: {
+    backgroundColor: isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? 'rgba(76,175,80,0.4)' : 'rgba(76,175,80,0.3)',
+  },
+  patientGoalMarkerLabel: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 10,
+    color: isDark ? '#A8D5BA' : '#2E7D32',
+  },
+  patientGoalSubtext: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textMuted,
+    marginTop: 18,
+    textAlign: 'center',
   },
 });
+};

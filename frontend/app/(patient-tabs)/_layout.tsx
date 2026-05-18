@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import { Tabs, useNavigation } from 'expo-router';
+import { Tabs, useNavigation, useRouter } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
@@ -15,6 +16,8 @@ import {
   markPatientBiometricVerified,
   unlockPatientWithBiometrics,
 } from '../../src/utils/patientBiometric';
+import { addNotificationResponseListener } from '../../src/services/pushNotifications';
+import { syncPatientDeviceToken } from '../../src/services/syncPushToken';
 
 const POLL_INTERVAL_MS = 15000;
 const LOCATION_INTERVAL_MS = 60000;
@@ -23,7 +26,7 @@ function IOSTabLayout() {
   return (
     <NativeTabs tintColor={colors.primary}>
       <NativeTabs.Trigger name="quiz">
-        <Icon sf={{ default: 'questionmark.circle', selected: 'questionmark.circle.fill' }} />
+        <Icon sf={{ default: 'brain.head.profile', selected: 'brain.head.profile' }} />
         <Label>Quiz</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="relive">
@@ -49,8 +52,8 @@ function AndroidTabLayout() {
           title: 'Quiz',
           tabBarIcon: ({ color, size }) => (
             <AppIcon
-              iosName="questionmark.circle.fill"
-              androidFallback="Q"
+              iosName="brain.head.profile"
+              androidFallback="Brain"
               size={size}
               color={color}
             />
@@ -77,6 +80,7 @@ function AndroidTabLayout() {
 
 export default function PatientTabsLayout() {
   const navigation = useNavigation();
+  const router = useRouter();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -128,6 +132,15 @@ export default function PatientTabsLayout() {
   }, []);
 
   useEffect(() => {
+    const subscription = addNotificationResponseListener((screen) => {
+      if (screen === 'quiz') {
+        router.push('/(patient-tabs)/quiz');
+      }
+    });
+    return () => subscription.remove();
+  }, [router]);
+
+  useEffect(() => {
     const checkPairing = async () => {
       const patient = await getPatientInfo();
       if (!patient) return;
@@ -136,6 +149,9 @@ export default function PatientTabsLayout() {
         const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/paired-status`);
         if (!res.ok) return;
         const data = await res.json();
+        if (data.paired) {
+          syncPatientDeviceToken(patient.id).catch(() => undefined);
+        }
         if (!data.paired) {
           await deletePatientInfo();
           navigation.dispatch(

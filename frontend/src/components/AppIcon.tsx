@@ -1,8 +1,9 @@
 import React from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 
 type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -11,6 +12,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'person.2.fill': 'account-group',
   'chart.bar': 'chart-bar',
   'chart.bar.fill': 'chart-bar',
+  'star.fill': 'star',
+  'star': 'star-outline',
   'questionmark.circle': 'help-circle-outline',
   'questionmark.circle.fill': 'help-circle',
   'photo.on.rectangle.angled': 'image-multiple-outline',
@@ -55,6 +58,14 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'tray': 'tray-arrow-down',
   'tray.fill': 'tray-full',
   'info.circle.fill': 'information',
+  'arrow.down.circle.fill': 'arrow-down-circle',
+  'video.fill': 'video',
+  'mic.fill': 'microphone',
+  'stop.fill': 'stop',
+  'note.text': 'note-text-outline',
+  'photo.fill': 'image',
+  'sparkles': 'auto-fix',
+  'exclamationmark.circle': 'alert-circle-outline',
   'brain.head.profile': 'brain',
   'sparkles': 'auto-fix',
   'gauge.with.dots.needle.50percent': 'speedometer-medium',
@@ -65,6 +76,16 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'location.slash': 'map-marker-off-outline',
   'map': 'map-outline',
   'arrow.up.right': 'open-in-new',
+  'moon.stars.fill': 'weather-night',
+  'sun.max.fill': 'white-balance-sunny',
+  'moon.fill': 'weather-night',
+  'gear': 'cog',
+  'chevron.up': 'chevron-up',
+  'chevron.down': 'chevron-down',
+  'person.badge.minus': 'account-remove-outline',
+  'checkmark.circle': 'check-circle-outline',
+  'scope': 'target',
+  'flag.fill': 'flag',
 };
 
 interface AppIconProps {
@@ -84,16 +105,20 @@ export function AppIcon({
   iosName,
   androidFallback,
   size = 22,
-  color = colors.textDark,
+  color,
   weight = 'medium',
   style,
 }: AppIconProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const resolvedColor = color ?? themeColors.textDark;
+
   if (supportsSymbols) {
     return (
       <SymbolView
         name={iosName}
         size={size}
-        tintColor={color}
+        tintColor={resolvedColor}
         weight={weight}
         style={[{ width: size, height: size }, style]}
       />
@@ -106,7 +131,7 @@ export function AppIcon({
       <MaterialCommunityIcons
         name={materialName}
         size={size}
-        color={color}
+        color={resolvedColor}
         style={style}
       />
     );
@@ -117,15 +142,19 @@ export function AppIcon({
       <MaterialCommunityIcons
         name="help-circle-outline"
         size={size}
-        color={color}
+        color={resolvedColor}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   androidContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
 });
+};
+// Styles are created per-render via `getStyles(isDark)` in `AppIcon`.
