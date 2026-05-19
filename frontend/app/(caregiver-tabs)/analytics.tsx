@@ -1,7 +1,7 @@
 import { colors, lightColors, darkColors } from '../../src/theme/colors';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity } from 'react-native';
+import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity, Modal, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useRouter } from 'expo-router';
@@ -78,6 +78,21 @@ type AppliedFilter = {
   customTo: string;
 };
 
+type InsightPost = {
+  id: string;
+  slug: string;
+  title: string;
+  introduction: string;
+  summary: string;
+  articleUrl: string;
+  publishedAt: string;
+  readingMinutes: number;
+  source: string;
+  institution: string;
+  tags: string[];
+  saved?: boolean;
+};
+
 const FILTERS: FilterOption[] = [
   { key: 'day', label: 'Day' },
   { key: 'week', label: 'Week' },
@@ -92,6 +107,81 @@ if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
 }
 const TODAY = new Date();
 const CAREGIVER_REGISTERED_AT = new Date(2024, 0, 12);
+
+const SEEDED_INSIGHT_POSTS: InsightPost[] = [
+  {
+    id: 'insight-tips-caregivers-2026',
+    slug: 'practical-caregiving-tips-for-dementia',
+    title: 'Practical Caregiving Tips for Dementia',
+    introduction: 'A caregiver-focused guide to everyday support, communication, routines, safety, and self-care when caring for someone living with dementia.',
+    summary: `This caregiver guide focuses on practical day-to-day support for people living with dementia, especially as memory, communication, judgment, and independence change over time.
+
+It emphasizes creating predictable routines because consistency can reduce confusion and help daily tasks feel less overwhelming. Small adjustments, such as keeping familiar items visible and simplifying choices, can make care easier for both the person with dementia and the caregiver.
+
+The article also highlights communication strategies. Speaking calmly, using simple wording, giving one instruction at a time, and allowing extra time can help reduce frustration during conversations or daily care.
+
+Safety is another major theme. The guide encourages caregivers to think ahead about wandering, medication management, falls, kitchen safety, driving, and other risks that may grow as symptoms progress.
+
+It also recognizes the emotional load of caregiving. Caregivers are encouraged to ask for help, take breaks, stay connected with others, and pay attention to their own physical and mental health.
+
+Overall, the resource works like a practical checklist for home care. It is most useful for caregivers who need concrete tips they can apply immediately in everyday routines.`,
+    articleUrl: 'https://www.alzheimers.gov/life-with-dementia/tips-caregivers',
+    publishedAt: '2026-05-15T00:00:00.000Z',
+    readingMinutes: 8,
+    source: 'Alzheimers.gov caregiver guidance',
+    institution: 'U.S. Department of Health and Human Services',
+    tags: ['tips', 'caregiver wellbeing', 'specific symptoms', 'stage 1', 'stage 2', 'stage 3', 'resources'],
+    saved: false,
+  },
+  {
+    id: 'insight-nia-caregiver-advances-2022',
+    slug: 'dementia-care-and-caregiver-research-advances',
+    title: 'Dementia Care and Caregiver Research Advances',
+    introduction: 'A research progress summary on dementia care models, caregiver support, and services intended to improve outcomes for people living with dementia and their families.',
+    summary: `This research summary reviews scientific advances related to dementia care and caregiver support, with attention to how care systems can better serve people living with dementia and their families.
+
+It frames caregiving as a major part of dementia treatment and quality of life, not just a private family responsibility. The article points to the need for supports that help caregivers manage symptoms, coordinate care, and reduce stress.
+
+The summary also highlights research on care models and services. These efforts aim to improve communication between families and clinicians, make care planning more effective, and connect caregivers with resources earlier.
+
+Caregiver wellbeing is a recurring theme. The article recognizes that caregiver burden can affect health, finances, work, and family life, which means caregiver support should be treated as part of dementia care.
+
+The article also reflects a broader shift toward person-centered dementia care. Instead of focusing only on disease progression, care research increasingly considers daily function, safety, dignity, and quality of life.
+
+For caregivers, the main takeaway is that support systems matter. Better training, better access to services, and better care coordination can make caregiving more sustainable.`,
+    articleUrl: 'https://www.nia.nih.gov/2021-2022-alzheimers-disease-related-dementias-scientific-advances/dementia-care-and-caregiver',
+    publishedAt: '2022-12-01T00:00:00.000Z',
+    readingMinutes: 6,
+    source: "2021-2022 Alzheimer's Disease and Related Dementias Scientific Advances",
+    institution: 'National Institute on Aging',
+    tags: ['research', 'caregiver wellbeing', 'study/treatment', 'resources', 'stage 2', 'stage 3'],
+    saved: false,
+  },
+  {
+    id: 'insight-latest-diagnosis-treatment-dementia-2023',
+    slug: 'latest-advances-diagnosis-treatment-dementia',
+    title: 'Latest Advances in the Diagnosis and Treatment of Dementia',
+    introduction: 'A peer-reviewed overview of current dementia diagnosis and treatment approaches, including clinical evaluation, biomarkers, medication options, and emerging research directions.',
+    summary: `This peer-reviewed article reviews current advances in dementia diagnosis and treatment, including the clinical tools and biological markers that can help clinicians better understand different forms of cognitive decline.
+
+The article explains that dementia diagnosis is not based on one observation alone. It typically involves clinical history, cognitive testing, functional assessment, neurological evaluation, and, when appropriate, imaging or laboratory support.
+
+Biomarkers and imaging are discussed as important areas of progress. These tools can help identify disease processes earlier and may improve the ability to distinguish Alzheimer’s disease from other causes of dementia.
+
+Treatment is presented as both medical and supportive. Medication may help manage symptoms or target specific disease pathways, but care planning, safety, behavioral support, and caregiver education remain central.
+
+The review also points toward emerging therapies and ongoing research. New treatments and trials continue to evolve, making it important for clinicians and families to stay informed about evidence, risks, and eligibility.
+
+For caregivers, the article is useful because it shows why diagnosis and treatment decisions can be complex. It reinforces the need for individualized care, regular reassessment, and close communication with healthcare professionals.`,
+    articleUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10787596/',
+    publishedAt: '2023-12-01T00:00:00.000Z',
+    readingMinutes: 12,
+    source: 'Hafiz R. et al., The latest advances in the diagnosis and treatment of dementia',
+    institution: 'National Library of Medicine / PubMed Central',
+    tags: ['research', 'medication updates', 'study/treatment', 'trial', 'specific symptoms', 'stage 1', 'stage 2'],
+    saved: false,
+  },
+];
 
 function ordinal(day: number) {
   if (day > 3 && day < 21) return `${day}th`;
@@ -439,6 +529,69 @@ function buildPdfHtml({
   `;
 }
 
+function formatInsightDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatReadingTime(minutes: number) {
+  if (minutes < 60) return `${minutes} min read`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} hr read` : `${hours} hr ${rest} min read`;
+}
+
+function isNewInsight(post: InsightPost) {
+  const publishedAt = new Date(post.publishedAt);
+  if (Number.isNaN(publishedAt.getTime())) return false;
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const ageMs = TODAY.getTime() - publishedAt.getTime();
+  return ageMs >= 0 && ageMs <= sevenDaysMs;
+}
+
+function sortInsightsByPublishedDate(posts: InsightPost[]) {
+  return [...posts].sort((a, b) => {
+    const bTime = new Date(b.publishedAt).getTime();
+    const aTime = new Date(a.publishedAt).getTime();
+    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+  });
+}
+
+function buildInsightPdfHtml(post: InsightPost) {
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; color: #1A1A1A; padding: 32px; }
+          h1 { font-size: 28px; margin: 0 0 12px; }
+          .meta { color: #666; font-size: 13px; margin-bottom: 18px; }
+          h2 { font-size: 17px; margin: 22px 0 8px; }
+          p { font-size: 14px; line-height: 1.5; }
+          .tags { margin-top: 18px; }
+          .tag { display: inline-block; border: 1px solid #dfe7e2; border-radius: 12px; padding: 5px 9px; margin: 3px; font-size: 11px; }
+          a { color: #03573a; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(post.title)}</h1>
+        <div class="meta">${escapeHtml(formatInsightDate(post.publishedAt))} · ${escapeHtml(formatReadingTime(post.readingMinutes))}</div>
+        <div class="tags">${post.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>
+        <h2>Introduction</h2>
+        <p>${escapeHtml(post.introduction)}</p>
+        <h2>Summary</h2>
+        <p>${escapeHtml(post.summary)}</p>
+        <h2>Full article</h2>
+        <p><a href="${escapeHtml(post.articleUrl)}">${escapeHtml(post.articleUrl)}</a></p>
+        <h2>Resources / Sources / Institution</h2>
+        <p>${escapeHtml(post.source)}<br />${escapeHtml(post.institution)}</p>
+      </body>
+    </html>
+  `;
+}
+
 export default function AnalyticsTab() {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
@@ -461,6 +614,9 @@ export default function AnalyticsTab() {
   const [quizTypes, setQuizTypes] = useState<QuizTypeReport[]>([]);
   const [caregiverName, setCaregiverName] = useState('Caregiver');
   const [exporting, setExporting] = useState(false);
+  const [insightPosts, setInsightPosts] = useState<InsightPost[]>(sortInsightsByPublishedDate(SEEDED_INSIGHT_POSTS));
+  const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
+  const [savedInsightsVisible, setSavedInsightsVisible] = useState(false);
 
   const animate = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -488,6 +644,14 @@ export default function AnalyticsTab() {
   const selectedPatient = useMemo(
     () => patients.find((p) => p.id === selectedPatientId) ?? null,
     [patients, selectedPatientId]
+  );
+  const selectedInsight = useMemo(
+    () => insightPosts.find((post) => post.id === selectedInsightId) ?? null,
+    [insightPosts, selectedInsightId]
+  );
+  const savedInsights = useMemo(
+    () => insightPosts.filter((post) => post.saved),
+    [insightPosts]
   );
 
   useEffect(() => {
@@ -547,6 +711,32 @@ export default function AnalyticsTab() {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchInsights = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await fetch(`${API_BASE_URL}/insights`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data)) {
+          setInsightPosts(sortInsightsByPublishedDate(data));
+        }
+      } catch {
+        if (!cancelled) setInsightPosts(sortInsightsByPublishedDate(SEEDED_INSIGHT_POSTS));
+      }
+    };
+
+    fetchInsights();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -682,6 +872,42 @@ export default function AnalyticsTab() {
       Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not create the PDF report.');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const toggleInsightSave = async (post: InsightPost) => {
+    const nextSaved = !post.saved;
+    setInsightPosts((current) => current.map((item) => item.id === post.id ? { ...item, saved: nextSaved } : item));
+    try {
+      const token = await getToken();
+      if (!token) return;
+      await fetch(`${API_BASE_URL}/insights/${encodeURIComponent(post.id)}/save`, {
+        method: nextSaved ? 'POST' : 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      setInsightPosts((current) => current.map((item) => item.id === post.id ? { ...item, saved: post.saved } : item));
+    }
+  };
+
+  const exportInsightPost = async (post: InsightPost) => {
+    try {
+      const pdf = await Print.printToFileAsync({
+        html: buildInsightPdfHtml(post),
+        base64: false,
+      });
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (!sharingAvailable) {
+        Alert.alert('PDF created', `The insight was created at ${pdf.uri}`);
+        return;
+      }
+      await Sharing.shareAsync(pdf.uri, {
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
+        dialogTitle: 'Share insight post',
+      });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Could not create the PDF.');
     }
   };
 
@@ -866,9 +1092,45 @@ export default function AnalyticsTab() {
                 No quiz types are active for this patient yet. Create a quiz configuration and add quiz media first.
               </Text>
             )}
+            <View style={styles.insightsDivider} />
+            <View style={styles.insightsTitleRow}>
+              <Text style={styles.insightsTitle}>Insights</Text>
+              <Pressable
+                style={styles.bookmarkButton}
+                onPress={() => setSavedInsightsVisible(true)}
+              >
+                <AppIcon iosName="bookmark.fill" androidFallback="B" size={18} color={themeColors.secondary} />
+              </Pressable>
+            </View>
+            {insightPosts.map((post) => (
+              <InsightRow
+                key={post.id}
+                post={post}
+                onPress={() => setSelectedInsightId(post.id)}
+              />
+            ))}
           </>
         )}
       </ScrollView>
+
+      <InsightDetailModal
+        post={selectedInsight}
+        onClose={() => setSelectedInsightId(null)}
+        onBackToProgress={() => setSelectedInsightId(null)}
+        onOpenLink={(url) => Linking.openURL(url)}
+        onExport={exportInsightPost}
+        onToggleSave={toggleInsightSave}
+      />
+
+      <SavedInsightsModal
+        visible={savedInsightsVisible}
+        posts={savedInsights}
+        onClose={() => setSavedInsightsVisible(false)}
+        onOpenPost={(post) => {
+          setSavedInsightsVisible(false);
+          setSelectedInsightId(post.id);
+        }}
+      />
 
       <FilterModal
         visible={filterOpen}
@@ -1074,6 +1336,273 @@ function ActionRow({
         <Text style={styles.exportButtonText}>{exporting ? 'Creating PDF...' : 'Export as PDF'}</Text>
       </Pressable>
     </View>
+  );
+}
+
+function InsightRow({ post, onPress }: { post: InsightPost; onPress: () => void }) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  return (
+    <Pressable style={({ pressed }) => [styles.row, pressed && styles.rowPressed]} onPress={onPress}>
+      <View style={styles.rowIconWrap}>
+        <AppIcon iosName="newspaper.fill" androidFallback="I" size={16} color={themeColors.secondary} />
+      </View>
+      <View style={styles.rowMain}>
+        <View style={styles.insightRowTitleLine}>
+          <Text style={[styles.rowTitle, styles.insightRowTitle]} numberOfLines={2}>{post.title}</Text>
+          {isNewInsight(post) && <Text style={styles.newBadge}>New</Text>}
+        </View>
+        <Text style={styles.rowSubtitle} numberOfLines={2}>{post.introduction}</Text>
+        <Text style={styles.rowMeta}>{formatInsightDate(post.publishedAt)} · {formatReadingTime(post.readingMinutes)}</Text>
+      </View>
+      <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
+    </Pressable>
+  );
+}
+
+function InsightDetailModal({
+  post,
+  onClose,
+  onBackToProgress,
+  onOpenLink,
+  onExport,
+  onToggleSave,
+}: {
+  post: InsightPost | null;
+  onClose: () => void;
+  onBackToProgress: () => void;
+  onOpenLink: (url: string) => void;
+  onExport: (post: InsightPost) => void;
+  onToggleSave: (post: InsightPost) => void;
+}) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(true);
+  const [introOpen, setIntroOpen] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const entrance = useRef(new Animated.Value(0)).current;
+  const flare = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!post) return;
+    setResourcesOpen(false);
+    setTagsOpen(true);
+    setIntroOpen(true);
+    setSummaryOpen(true);
+    entrance.setValue(0);
+    Animated.spring(entrance, {
+      toValue: 1,
+      friction: 9,
+      tension: 110,
+      useNativeDriver: true,
+    }).start();
+  }, [entrance, post?.id]);
+
+  useEffect(() => {
+    if (!post) return;
+    flare.setValue(0);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(flare, { toValue: 1, duration: 1300, useNativeDriver: true }),
+        Animated.timing(flare, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [flare, post?.id]);
+
+  if (!post) return null;
+
+  const modalAnimatedStyle: any = {
+    opacity: entrance,
+    transform: [
+      {
+        translateY: entrance.interpolate({
+          inputRange: [0, 1],
+          outputRange: [28, 0],
+        }),
+      },
+      {
+        scale: entrance.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.97, 1],
+        }),
+      },
+    ],
+  };
+  const flareAnimatedStyle: any = {
+    opacity: flare.interpolate({
+      inputRange: [0, 0.35, 0.7, 1],
+      outputRange: [0, 0.55, 0.22, 0],
+    }),
+    transform: [
+      {
+        translateX: flare.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-120, 120],
+        }),
+      },
+      { rotate: '-18deg' },
+    ],
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Animated.View style={[styles.insightModalCard, modalAnimatedStyle]}>
+          <View style={styles.modalHeader}>
+            <Pressable style={styles.insightHeaderButton} onPress={onBackToProgress}>
+              <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={themeColors.secondary} />
+              <Text style={styles.insightHeaderBackText}>Back</Text>
+            </Pressable>
+            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+              <Text style={styles.modalCloseText}>X</Text>
+            </Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={styles.insightDetailTitleRow}>
+              <Text style={styles.insightDetailTitle}>{post.title}</Text>
+              {isNewInsight(post) && <Text style={styles.newBadge}>New</Text>}
+            </View>
+
+            <View style={styles.insightMetaRow}>
+              <View style={styles.insightMetaPill}>
+                <AppIcon iosName="calendar" androidFallback="D" size={14} color={themeColors.secondary} />
+                <Text style={styles.insightMetaText}>{formatInsightDate(post.publishedAt)}</Text>
+              </View>
+              <View style={styles.insightMetaPill}>
+                <AppIcon iosName="clock" androidFallback="T" size={14} color={themeColors.secondary} />
+                <Text style={styles.insightMetaText}>{formatReadingTime(post.readingMinutes)}</Text>
+              </View>
+            </View>
+
+            <InsightSectionToggle
+              title="Tags"
+              open={tagsOpen}
+              onPress={() => setTagsOpen((open) => !open)}
+            />
+            {tagsOpen && (
+              <View style={styles.tagsWrap}>
+                {post.tags.map((tag) => (
+                  <Text key={tag} style={styles.tagPill}>{tag}</Text>
+                ))}
+              </View>
+            )}
+
+            <InsightSectionToggle
+              title="Introduction"
+              open={introOpen}
+              onPress={() => setIntroOpen((open) => !open)}
+            />
+            {introOpen && <Text style={styles.insightBody}>{post.introduction}</Text>}
+
+            <InsightSectionToggle
+              title="Summary"
+              open={summaryOpen}
+              onPress={() => setSummaryOpen((open) => !open)}
+            />
+            {summaryOpen && <Text style={styles.insightBody}>{post.summary}</Text>}
+
+            <Pressable style={styles.articleLinkButton} onPress={() => onOpenLink(post.articleUrl)}>
+              <Animated.View pointerEvents="none" style={[styles.articleLinkFlare, flareAnimatedStyle]} />
+              <AppIcon iosName="sparkles" androidFallback="*" size={15} color={themeColors.secondary} />
+              <AppIcon iosName="link" androidFallback="L" size={16} color={themeColors.secondary} />
+              <Text style={styles.articleLinkText}>Open full article</Text>
+            </Pressable>
+
+            <Pressable style={styles.resourcesToggle} onPress={() => setResourcesOpen((open) => !open)}>
+              <Text style={styles.resourcesToggleText}>Resources</Text>
+              <AppIcon
+                iosName={resourcesOpen ? 'chevron.up' : 'chevron.down'}
+                androidFallback={resourcesOpen ? "^" : "v"}
+                size={16}
+                color={themeColors.secondary}
+              />
+            </Pressable>
+
+            {resourcesOpen && (
+              <Pressable style={styles.resourcesPanel} onPress={() => onOpenLink(post.articleUrl)}>
+                <Text style={styles.insightBody}>{post.source}</Text>
+                <Text style={styles.insightBody}>{post.institution}</Text>
+                <Text style={styles.resourceLinkText}>{post.articleUrl}</Text>
+              </Pressable>
+            )}
+
+            <View style={styles.insightActions}>
+              <Pressable style={[styles.actionButton, styles.exportButton, styles.insightActionButton]} onPress={() => onExport(post)}>
+                <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={isDark ? themeColors.neutral : themeColors.textLight} />
+                <Text style={styles.exportButtonText}>Export as PDF</Text>
+              </Pressable>
+              <Pressable style={[styles.actionButton, styles.insightActionButton]} onPress={() => onToggleSave(post)}>
+                <AppIcon iosName={post.saved ? 'bookmark.fill' : 'bookmark'} androidFallback="B" size={16} color={themeColors.secondary} />
+                <Text style={styles.actionButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
+function InsightSectionToggle({
+  title,
+  open,
+  onPress,
+}: {
+  title: string;
+  open: boolean;
+  onPress: () => void;
+}) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  return (
+    <Pressable style={styles.insightSectionToggle} onPress={onPress}>
+      <Text style={styles.insightSectionLabel}>{title}</Text>
+      <AppIcon
+        iosName={open ? 'chevron.up' : 'chevron.down'}
+        androidFallback={open ? "^" : "v"}
+        size={16}
+        color={themeColors.secondary}
+      />
+    </Pressable>
+  );
+}
+
+function SavedInsightsModal({
+  visible,
+  posts,
+  onClose,
+  onOpenPost,
+}: {
+  visible: boolean;
+  posts: InsightPost[];
+  onClose: () => void;
+  onOpenPost: (post: InsightPost) => void;
+}) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.savedInsightsCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Saved Posts</Text>
+            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+              <Text style={styles.modalCloseText}>X</Text>
+            </Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {posts.length > 0 ? posts.map((post) => (
+              <InsightRow key={post.id} post={post} onPress={() => onOpenPost(post)} />
+            )) : (
+              <Text style={styles.emptyText}>No saved posts yet.</Text>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2021,6 +2550,212 @@ const getStyles = (isDark: boolean) => {
     fontSize: 12,
     color: themeColors.secondary,
     marginTop: 4,
+  },
+  insightsDivider: {
+    height: 1,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.14)' : 'rgba(0,0,0,0.12)'),
+    marginTop: 16,
+    marginBottom: 18,
+  },
+  insightsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  insightsTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 22,
+    color: themeColors.textDark,
+  },
+  bookmarkButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: themeColors.glassCardBg,
+    borderWidth: 1,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+  },
+  insightRowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  insightRowTitle: {
+    flex: 1,
+  },
+  newBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: (isDark ? 'rgba(155, 231, 180, 0.18)' : 'rgba(30, 111, 67, 0.12)'),
+    color: themeColors.secondary,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+  },
+  insightModalCard: {
+    width: '92%',
+    maxHeight: '86%',
+    borderRadius: 22,
+    backgroundColor: themeColors.neutral,
+    padding: 18,
+  },
+  savedInsightsCard: {
+    width: '92%',
+    maxHeight: '72%',
+    borderRadius: 22,
+    backgroundColor: themeColors.neutral,
+    padding: 18,
+  },
+  insightDetailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 4,
+  },
+  insightDetailTitle: {
+    flex: 1,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 22,
+    color: themeColors.textDark,
+    paddingRight: 8,
+  },
+  insightHeaderButton: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 12,
+  },
+  insightHeaderBackText: {
+    marginLeft: 4,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.secondary,
+  },
+  insightMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  insightMetaPill: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.10)' : 'rgba(45,79,62,0.08)'),
+  },
+  insightMetaText: {
+    marginLeft: 6,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textMuted,
+  },
+  insightSectionLabel: {
+    flex: 1,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.textDark,
+    paddingRight: 10,
+  },
+  insightSectionToggle: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 6,
+  },
+  insightBody: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: themeColors.textMuted,
+  },
+  articleLinkButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    marginTop: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: (isDark ? 'rgba(155, 231, 180, 0.28)' : 'rgba(3, 87, 58, 0.16)'),
+    backgroundColor: (isDark ? 'rgba(155, 231, 180, 0.08)' : 'rgba(45,79,62,0.06)'),
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  articleLinkFlare: {
+    position: 'absolute',
+    top: -18,
+    bottom: -18,
+    width: 42,
+    backgroundColor: (isDark ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.72)'),
+  },
+  articleLinkText: {
+    marginLeft: 8,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.secondary,
+  },
+  tagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 14,
+    marginHorizontal: -3,
+  },
+  tagPill: {
+    margin: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.10)' : 'rgba(0,0,0,0.05)'),
+    color: themeColors.textMuted,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+  },
+  resourcesToggle: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 6,
+  },
+  resourcesToggleText: {
+    flex: 1,
+    paddingRight: 10,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.textDark,
+  },
+  resourcesPanel: {
+    marginTop: 0,
+  },
+  resourceLinkText: {
+    marginTop: 6,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: themeColors.secondary,
+  },
+  insightActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: -4,
+    marginTop: 18,
+    paddingBottom: 10,
+  },
+  insightActionButton: {
+    flex: 1,
+    marginHorizontal: 4,
   },
   questionCard: {
     padding: 14,

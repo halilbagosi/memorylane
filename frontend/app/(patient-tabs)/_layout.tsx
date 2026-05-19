@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import { Tabs, useNavigation } from 'expo-router';
-import { Tabs, useNavigation, useRouter } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
@@ -80,7 +79,6 @@ function AndroidTabLayout() {
 
 export default function PatientTabsLayout() {
   const navigation = useNavigation();
-  const router = useRouter();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -134,11 +132,11 @@ export default function PatientTabsLayout() {
   useEffect(() => {
     const subscription = addNotificationResponseListener((screen) => {
       if (screen === 'quiz') {
-        router.push('/(patient-tabs)/quiz');
+        (navigation as any).navigate('quiz');
       }
     });
     return () => subscription.remove();
-  }, [router]);
+  }, [navigation]);
 
   useEffect(() => {
     const checkPairing = async () => {

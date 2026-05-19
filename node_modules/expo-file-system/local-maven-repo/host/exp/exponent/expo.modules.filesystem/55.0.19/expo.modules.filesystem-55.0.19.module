@@ -1,0 +1,187 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "host.exp.exponent",
+    "module": "expo.modules.filesystem",
+    "version": "55.0.19",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.0.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "commons-codec",
+          "module": "commons-codec",
+          "version": {
+            "requires": "1.10"
+          }
+        },
+        {
+          "group": "commons-io",
+          "module": "commons-io",
+          "version": {
+            "requires": "1.4"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.9.2"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp-urlconnection",
+          "version": {
+            "requires": "4.9.2"
+          }
+        },
+        {
+          "group": "com.squareup.okio",
+          "module": "okio",
+          "version": {
+            "requires": "2.9.0"
+          }
+        },
+        {
+          "group": "androidx.legacy",
+          "module": "legacy-support-v4",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "androidx.documentfile",
+          "module": "documentfile",
+          "version": {
+            "requires": "1.1.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "expo.modules.filesystem-55.0.19.aar",
+          "url": "expo.modules.filesystem-55.0.19.aar",
+          "size": 391673,
+          "sha512": "28750a4fa4a87decb4e57571fe81c5763fffcc3fad75ad7c251a4aaeab8c6f131ab6f040809eb98dd0d32e509d0c0e538b66995c7b7d835faf0910e5afc2e533",
+          "sha256": "3beedf482b9e3022bc1343c7aff7b996692d3a3e06a3eb6ad961c6343c6f1ad9",
+          "sha1": "bca1bd24a5f0934754fb3e2f88cd0886aca36cba",
+          "md5": "670c537e66594a5b25bc77de97271aa9"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk7",
+          "version": {
+            "requires": "2.1.20"
+          }
+        },
+        {
+          "group": "commons-codec",
+          "module": "commons-codec",
+          "version": {
+            "requires": "1.10"
+          }
+        },
+        {
+          "group": "commons-io",
+          "module": "commons-io",
+          "version": {
+            "requires": "1.4"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.9.2"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp-urlconnection",
+          "version": {
+            "requires": "4.9.2"
+          }
+        },
+        {
+          "group": "com.squareup.okio",
+          "module": "okio",
+          "version": {
+            "requires": "2.9.0"
+          }
+        },
+        {
+          "group": "androidx.legacy",
+          "module": "legacy-support-v4",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "androidx.documentfile",
+          "module": "documentfile",
+          "version": {
+            "requires": "1.1.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "expo.modules.filesystem-55.0.19.aar",
+          "url": "expo.modules.filesystem-55.0.19.aar",
+          "size": 391673,
+          "sha512": "28750a4fa4a87decb4e57571fe81c5763fffcc3fad75ad7c251a4aaeab8c6f131ab6f040809eb98dd0d32e509d0c0e538b66995c7b7d835faf0910e5afc2e533",
+          "sha256": "3beedf482b9e3022bc1343c7aff7b996692d3a3e06a3eb6ad961c6343c6f1ad9",
+          "sha1": "bca1bd24a5f0934754fb3e2f88cd0886aca36cba",
+          "md5": "670c537e66594a5b25bc77de97271aa9"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "expo.modules.filesystem-55.0.19-sources.jar",
+          "url": "expo.modules.filesystem-55.0.19-sources.jar",
+          "size": 27918,
+          "sha512": "5721359e967e48b0c89b23fc7ae707bcfacd8789ddd202a24929a48d778c16313e59793338fd6e145d3ddd7297a9aaf7d99141e5824e5efed45e81c3fb35bd32",
+          "sha256": "ee0eba4b11b83eae0710d2682d0b9c1d76914bbbfd0aa40617968b44cf63efa3",
+          "sha1": "f0bea8f468d1a4d58178e07766990010bffe5ef7",
+          "md5": "ab4404c0435228ddbbc81464f65dd99c"
+        }
+      ]
+    }
+  ]
+}

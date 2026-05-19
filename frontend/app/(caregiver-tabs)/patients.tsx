@@ -812,6 +812,8 @@ export default function PatientsTab() {
 }
 
 function PatientLocationPreview({ patient, compact = false }: { patient: PatientItem; compact?: boolean }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const location = getPatientLocation(patient);
   if (!location) {
     return (
@@ -856,6 +858,8 @@ function PatientLocationPreview({ patient, compact = false }: { patient: Patient
 }
 
 function PatientLocationPanel({ patient }: { patient: PatientItem }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
   const location = getPatientLocation(patient);
   if (!location) {
     return (
@@ -2884,4 +2888,3 @@ const getStyles = (isDark: boolean) => {
   },
 });
 };
-

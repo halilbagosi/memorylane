@@ -32,6 +32,7 @@ export interface CaregiverInfo {
   avatarUrl?: string | null;
   status?: CaregiverStatus;
   isSubscribed?: boolean;
+  insightNotificationsEnabled?: boolean;
 }
 
 async function writeProfileFile(fileName: string, webKey: string, json: string): Promise<void> {

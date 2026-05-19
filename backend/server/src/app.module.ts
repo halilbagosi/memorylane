@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { PatientModule } from './patient/patient.module';
 import { MediaModule } from './media/media.module';
 import { PushModule } from './push/push.module';
+import { InsightsModule } from './insights/insights.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PushModule } from './push/push.module';
     AuthModule,
     PatientModule,
     MediaModule,
+    InsightsModule,
   ],
 })
 export class AppModule {}
