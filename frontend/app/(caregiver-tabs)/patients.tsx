@@ -812,14 +812,14 @@ export default function PatientsTab() {
 }
 
 function PatientLocationPreview({ patient, compact = false }: { patient: PatientItem; compact?: boolean }) {
-  const { isDark } = useTheme();
+  const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const location = getPatientLocation(patient);
   if (!location) {
     return (
       <View style={[styles.locationPreview, compact && styles.locationPreviewCompact]}>
         <View style={[styles.locationIconCircle, styles.locationIconCircleMuted]}>
-          <AppIcon iosName="location.slash" androidFallback="-" size={compact ? 18 : 20} color={colors.textMuted} />
+          <AppIcon iosName="location.slash" androidFallback="-" size={compact ? 18 : 20} color={themeColors.textMuted} />
         </View>
         <View style={styles.locationPreviewText}>
           <Text style={styles.locationPreviewLastSeen} numberOfLines={1}>
@@ -852,13 +852,13 @@ function PatientLocationPreview({ patient, compact = false }: { patient: Patient
           Coordinates: {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
         </Text>
       </View>
-      <AppIcon iosName="arrow.up.right" androidFallback="↗" size={15} color={colors.textMuted} />
+      <AppIcon iosName="arrow.up.right" androidFallback="↗" size={15} color={themeColors.textMuted} />
     </Pressable>
   );
 }
 
 function PatientLocationPanel({ patient }: { patient: PatientItem }) {
-  const { isDark } = useTheme();
+  const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const location = getPatientLocation(patient);
   if (!location) {
@@ -875,7 +875,7 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
           </View>
         </View>
         <View style={[styles.locationMapFrame, styles.locationMapFrameEmpty]}>
-          <AppIcon iosName="location.slash" androidFallback="-" size={28} color={colors.textMuted} />
+          <AppIcon iosName="location.slash" androidFallback="-" size={28} color={themeColors.textMuted} />
           <Text style={styles.locationEmptyTitle}>Coordinates unavailable</Text>
           <Text style={styles.locationEmptyText}>
             Last seen at: --
@@ -921,7 +921,7 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
             <Text style={styles.locationMapAddress}>{location.label}, {location.area}</Text>
           </View>
           <View style={styles.locationOpenButton}>
-            <AppIcon iosName="map" androidFallback="□" size={15} color={colors.secondary} />
+            <AppIcon iosName="map" androidFallback="□" size={15} color={themeColors.secondary} />
             <Text style={styles.locationOpenButtonText}>Open</Text>
           </View>
         </View>
@@ -1827,9 +1827,9 @@ const getStyles = (isDark: boolean) => {
   locationPanel: {
     borderRadius: 20,
     padding: 14,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.52)' : '#FFFFFF',
+    backgroundColor: themeColors.glassCardBg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: themeColors.glassBorder,
     marginBottom: 24,
   },
   locationPanelHeader: {
@@ -1842,14 +1842,14 @@ const getStyles = (isDark: boolean) => {
   locationPanelEyebrow: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   locationPanelTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 2,
   },
   locationPanelStatus: {
@@ -1864,19 +1864,19 @@ const getStyles = (isDark: boolean) => {
   locationPanelStatusText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 11,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   locationMapFrame: {
     height: 190,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: 'rgba(45,79,62,0.10)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(45,79,62,0.10)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   locationMapFrameEmpty: {
     paddingHorizontal: 24,
-    backgroundColor: 'rgba(0,0,0,0.035)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.035)',
   },
   locationPanelTile: {
     ...StyleSheet.absoluteFillObject,
@@ -1889,13 +1889,13 @@ const getStyles = (isDark: boolean) => {
   locationEmptyTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 12,
   },
   locationEmptyText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 19,
     marginTop: 6,
@@ -1904,17 +1904,17 @@ const getStyles = (isDark: boolean) => {
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: 'rgba(3,87,58,0.18)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(3,87,58,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.62)',
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.62)',
   },
   locationPulseInner: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
@@ -1947,12 +1947,12 @@ const getStyles = (isDark: boolean) => {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
   },
   locationOpenButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   locationMetaRow: {
     flexDirection: 'row',
@@ -1969,20 +1969,20 @@ const getStyles = (isDark: boolean) => {
   locationMetaLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   locationMetaValue: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginTop: 3,
   },
   locationMetaDivider: {
     width: StyleSheet.hairlineWidth,
     height: 32,
-    backgroundColor: 'rgba(0,0,0,0.12)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)',
   },
 
   qrSection: {
@@ -2224,7 +2224,7 @@ const getStyles = (isDark: boolean) => {
     paddingVertical: 11,
     paddingHorizontal: 12,
     borderRadius: 16,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.48)' : 'rgba(255,255,255,0.72)',
+    backgroundColor: themeColors.glassCardBg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(45,79,62,0.13)',
     overflow: 'hidden',
@@ -2238,7 +2238,7 @@ const getStyles = (isDark: boolean) => {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -2273,7 +2273,7 @@ const getStyles = (isDark: boolean) => {
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -2291,7 +2291,7 @@ const getStyles = (isDark: boolean) => {
   locationPreviewTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -2311,22 +2311,22 @@ const getStyles = (isDark: boolean) => {
   liveBadgeText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 10,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   locationPreviewArea: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   locationPreviewLastSeen: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   locationPreviewCoords: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 11,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 3,
   },
   careTeamDivider: {
