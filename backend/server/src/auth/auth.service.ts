@@ -200,6 +200,7 @@ export class AuthService {
         avatarUrl: caregiver.avatarUrl,
         status: caregiver.status,
         isSubscribed: caregiver.isSubscribed,
+        insightNotificationsEnabled: (caregiver as any).insightNotificationsEnabled ?? true,
       },
     };
   }
@@ -278,6 +279,7 @@ export class AuthService {
         email: user.email,
         avatarUrl: user.avatarUrl,
         isSubscribed: user.isSubscribed,
+        insightNotificationsEnabled: (user as any).insightNotificationsEnabled ?? true,
       },
     };
   }
@@ -307,6 +309,7 @@ export class AuthService {
         avatarUrl: caregiver.avatarUrl,
         status: caregiver.status,
         isSubscribed: caregiver.isSubscribed,
+        insightNotificationsEnabled: (caregiver as any).insightNotificationsEnabled ?? true,
       },
     };
   }
@@ -334,6 +337,7 @@ export class AuthService {
       avatarUrl: caregiver.avatarUrl,
       status: caregiver.status,
       isSubscribed: caregiver.isSubscribed,
+      insightNotificationsEnabled: (caregiver as any).insightNotificationsEnabled ?? true,
     };
   }
 
@@ -343,6 +347,7 @@ export class AuthService {
     if (dto.surname !== undefined) data.surname = dto.surname;
     if ('avatarUrl' in dto) data.avatarUrl = dto.avatarUrl ?? null;
     if (dto.isSubscribed !== undefined) data.isSubscribed = dto.isSubscribed;
+    if (dto.insightNotificationsEnabled !== undefined) data.insightNotificationsEnabled = dto.insightNotificationsEnabled;
 
     const caregiver = await this.prisma.caregiver.update({
       where: { id: caregiverId },
@@ -356,6 +361,7 @@ export class AuthService {
       email: caregiver.email,
       avatarUrl: caregiver.avatarUrl,
       isSubscribed: caregiver.isSubscribed,
+      insightNotificationsEnabled: (caregiver as any).insightNotificationsEnabled ?? true,
     };
   }
 

@@ -26,6 +26,7 @@ model Caregiver {
   passwordHash      String          @map("password_hash")
   avatarUrl         String?         @map("avatar_url") @db.Text
   isSubscribed      Boolean         @default(false) @map("is_subscribed")
+  insightNotificationsEnabled Boolean @default(true) @map("insight_notifications_enabled")
   pushToken         String?         @map("push_token") @db.Text
   status            CaregiverStatus @default(ACTIVE)
   scheduledDeleteAt DateTime?       @map("scheduled_delete_at")
@@ -43,8 +44,41 @@ model Caregiver {
   receivedRoleRequests  RoleRequest[]          @relation("ReceivedRoleRequests")
   notifications         Notification[]
   caregiverGoals        CaregiverGoal[]
+  savedInsightPosts      SavedInsightPost[]
 
   @@map("caregivers")
+}
+
+model InsightPost {
+  id             String   @id @default(uuid())
+  slug           String   @unique
+  title          String
+  introduction   String   @db.Text
+  summary        String   @db.Text
+  articleUrl     String   @map("article_url") @db.Text
+  publishedAt    DateTime @map("published_at")
+  readingMinutes Int      @map("reading_minutes")
+  source         String   @db.Text
+  institution    String   @db.Text
+  tags           String[] @default([])
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  savedBy        SavedInsightPost[]
+
+  @@map("insight_posts")
+}
+
+model SavedInsightPost {
+  caregiverId String   @map("caregiver_id")
+  postId      String   @map("post_id")
+  savedAt     DateTime @default(now()) @map("saved_at")
+
+  caregiver   Caregiver   @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  post        InsightPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([caregiverId, postId])
+  @@map("saved_insight_posts")
 }
 
 model Notification {
@@ -72,6 +106,7 @@ enum NotificationType {
   SECONDARY_ADDED
   DEVICE_PAIRED
   PATIENT_DELETED
+  INSIGHT_POST_PUBLISHED
   DELEGATION_ACCEPTED
   DELEGATION_DECLINED
   DELEGATION_CANCELLED

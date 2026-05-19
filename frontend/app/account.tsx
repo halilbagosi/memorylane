@@ -643,6 +643,28 @@ export default function AccountScreen() {
     }
   };
 
+  const toggleInsightNotifications = async (value: boolean) => {
+    if (!token) return;
+    const previous = profile?.insightNotificationsEnabled ?? true;
+    setProfile(prev => prev ? { ...prev, insightNotificationsEnabled: value } : prev);
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ insightNotificationsEnabled: value }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProfile(prev => prev ? { ...prev, ...data } : prev);
+        if (profile) await saveCaregiverInfo({ ...profile, insightNotificationsEnabled: value });
+      } else {
+        setProfile(prev => prev ? { ...prev, insightNotificationsEnabled: previous } : prev);
+      }
+    } catch {
+      setProfile(prev => prev ? { ...prev, insightNotificationsEnabled: previous } : prev);
+    }
+  };
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   const initials = profile
@@ -820,6 +842,23 @@ export default function AccountScreen() {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+            <View style={styles.separator} />
+            <View style={styles.row}>
+              <View style={[styles.rowIcon, { backgroundColor: 'rgba(62,210,180,0.12)' }]}>
+                <AppIcon iosName="bell.badge" androidFallback="!" size={18} color="#3ED2B4" />
+              </View>
+              <View style={styles.rowContent}>
+                <Text style={styles.rowLabel}>New Insight Notifications</Text>
+                <Text style={styles.rowValue}>Notify me when new posts are published</Text>
+              </View>
+              <Switch
+                value={profile?.insightNotificationsEnabled ?? true}
+                onValueChange={toggleInsightNotifications}
+                trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
+                thumbColor={(profile?.insightNotificationsEnabled ?? true) ? themeColors.secondary : isIOS ? '#fff' : '#f4f4f4'}
+                ios_backgroundColor="rgba(0,0,0,0.08)"
+              />
             </View>
           </View>
 

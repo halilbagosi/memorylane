@@ -34,6 +34,7 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'eye.slash': 'eye-off-outline',
   'calendar': 'calendar-month',
   'keyboard': 'keyboard-outline',
+  'clock': 'clock-outline',
   'camera.fill': 'camera',
   'checkmark.circle.fill': 'check-circle',
   'checkmark': 'check',
@@ -64,7 +65,6 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'stop.fill': 'stop',
   'note.text': 'note-text-outline',
   'photo.fill': 'image',
-  'sparkles': 'auto-fix',
   'exclamationmark.circle': 'alert-circle-outline',
   'brain.head.profile': 'brain',
   'sparkles': 'auto-fix',
@@ -86,6 +86,10 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'checkmark.circle': 'check-circle-outline',
   'scope': 'target',
   'flag.fill': 'flag',
+  'bookmark': 'bookmark-outline',
+  'bookmark.fill': 'bookmark',
+  'newspaper.fill': 'newspaper-variant',
+  'link': 'link-variant',
 };
 
 interface AppIconProps {
