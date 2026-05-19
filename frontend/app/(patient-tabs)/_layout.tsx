@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
-import { Tabs, useNavigation } from 'expo-router';
 import { Tabs, useNavigation, useRouter } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { CommonActions } from '@react-navigation/native';
