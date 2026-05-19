@@ -88,14 +88,18 @@ export default function PatientTabsLayout() {
 
     const sendCurrentLocation = async () => {
       const patient = await getPatientInfo();
-      if (!patient?.locationShareToken || cancelled) return;
+      if (!patient?.locationShareToken || cancelled) {
+        console.log('[Location] skipping sendCurrentLocation - token:', !!patient?.locationShareToken, 'cancelled:', cancelled);
+        return;
+      }
 
       try {
         const position = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
+        console.log('[Location] got position', position.coords.latitude, position.coords.longitude);
 
-        await fetch(`${API_BASE_URL}/patients/${patient.id}/location`, {
+        const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/location`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -105,20 +109,37 @@ export default function PatientTabsLayout() {
             locationShareToken: patient.locationShareToken,
           }),
         });
-      } catch {
-        // Location is best-effort; the patient app should continue working without it.
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '<no body>');
+          console.error('[Location] server responded with', res.status, text);
+        } else {
+          // Optional: log successful update
+          try {
+            const json = await res.json();
+            console.log('[Location] server update ok', json);
+          } catch {
+            console.log('[Location] server update ok (no json)');
+          }
+        }
+      } catch (e) {
+        console.error('[Location] sendCurrentLocation error', e);
       }
     };
 
     const startLocationSharing = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== Location.PermissionStatus.GRANTED || cancelled) return;
+        console.log('[Location] requestForegroundPermissionsAsync status', status);
+        if (status !== Location.PermissionStatus.GRANTED || cancelled) {
+          console.log('[Location] permission not granted or cancelled; status:', status, 'cancelled:', cancelled);
+          return;
+        }
 
         await sendCurrentLocation();
         locationIntervalRef.current = setInterval(sendCurrentLocation, LOCATION_INTERVAL_MS);
-      } catch {
-        // Permission prompts and GPS availability vary by device.
+      } catch (e) {
+        console.error('[Location] startLocationSharing error', e);
       }
     };
 
