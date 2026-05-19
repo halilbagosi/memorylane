@@ -76,6 +76,7 @@ export default function JoinSpaceScreen() {
     patientSurname: string;
     avatarUrl?: string | null;
     caregiverName: string;
+    locationShareToken: string;
   } | null>(null);
   const [setupState, setSetupState] = useState<'confirm' | 'biometric-success' | 'skipped' | null>(null);
   const scannedRef = useRef(false);
@@ -114,6 +115,7 @@ export default function JoinSpaceScreen() {
         surname: data.surname,
         avatarUrl: data.avatarUrl ?? null,
         biometricRecoveryEnabled: false,
+        locationShareToken: data.locationShareToken,
       });
       syncPatientDeviceToken(data.id).catch(() => undefined);
 
@@ -123,6 +125,7 @@ export default function JoinSpaceScreen() {
         patientSurname: data.surname,
         avatarUrl: data.avatarUrl ?? null,
         caregiverName: `${data.caregiver.name} ${data.caregiver.surname}`,
+        locationShareToken: data.locationShareToken,
       });
       setSetupState('confirm');
     } catch {
@@ -185,6 +188,7 @@ export default function JoinSpaceScreen() {
         surname: successInfo.patientSurname,
         avatarUrl: successInfo.avatarUrl ?? null,
         biometricRecoveryEnabled: true,
+        locationShareToken: successInfo.locationShareToken,
       });
       markPatientBiometricVerified(successInfo.id);
       setSetupState('biometric-success');

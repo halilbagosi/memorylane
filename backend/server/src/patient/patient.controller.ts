@@ -5,6 +5,7 @@ import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { JoinPatientDto } from './dto/join-patient.dto';
 import { SetQuizRemindersDto } from './dto/set-quiz-reminders.dto';
+import { UpdatePatientLocationDto } from './dto/update-patient-location.dto';
 import { DeviceTokenDto } from './dto/device-token.dto';
 import { UpsertGoalDto } from './dto/upsert-goal.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -113,6 +114,11 @@ export class PatientController {
   @Patch(':id/biometric-recovery')
   async setBiometricRecovery(@Param('id') patientId: string, @Body() body: { enabled: boolean }) {
     return this.patientService.setBiometricRecovery(patientId, body.enabled === true);
+  }
+
+  @Patch(':id/location')
+  async updateLocation(@Param('id') patientId: string, @Body() body: UpdatePatientLocationDto) {
+    return this.patientService.updatePatientLocation(patientId, body);
   }
 
   @UseGuards(JwtAuthGuard)
