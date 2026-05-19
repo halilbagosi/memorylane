@@ -154,7 +154,7 @@ export default function WelcomeScreen() {
       >
         {/* Logo */}
         <Animated.View style={[styles.logoSection, { opacity: logoOpacity, transform: [{ translateY: logoSlide }] }]}>
-          <Image source={require('../assets/splash-icon.png')} style={styles.logoImage} resizeMode="contain" />
+          <Image source={require('../assets/logoS.png')} style={styles.logoImage} resizeMode="contain" />
           <View style={styles.logoTextRow}>
             <Text style={styles.logoTextBold}>Memory</Text>
             <Text style={styles.logoTextLight}>Lane</Text>
