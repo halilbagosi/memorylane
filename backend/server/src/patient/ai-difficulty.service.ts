@@ -9,6 +9,7 @@ export interface DifficultyInputs {
   responseTimeNormalized: number;
   timeOfDay: number;
   currentDifficulty: number;
+  attemptLoad?: number;
 }
 
 export interface DifficultyPrediction {
@@ -87,7 +88,10 @@ export class AiDifficultyService implements OnModuleInit {
     try {
       const net = this.createNetwork(storedModel);
       const output = net.run(this.normalizeInputs(inputs) as any) as { targetComplexity?: number };
-      const targetComplexity = this.clamp(output?.targetComplexity ?? fallback.targetComplexity);
+      const neuralComplexity = this.clamp(output?.targetComplexity ?? fallback.targetComplexity);
+      const targetComplexity = this.shouldCapToFallback(inputs)
+        ? Math.min(neuralComplexity, fallback.targetComplexity)
+        : neuralComplexity;
       return {
         difficulty: this.mapComplexityToDifficulty(targetComplexity),
         targetComplexity,
@@ -125,6 +129,8 @@ export class AiDifficultyService implements OnModuleInit {
     else targetComplexity = 0.18;
 
     if (inputs.responseTimeNormalized > 1.35) targetComplexity -= 0.22;
+    if ((inputs.attemptLoad ?? 0) > 0.35) targetComplexity -= 0.22;
+    if ((inputs.attemptLoad ?? 0) > 0.75) targetComplexity -= 0.12;
     if (inputs.responseTimeNormalized < 0.65 && inputs.accuracy >= 0.7) targetComplexity += 0.12;
     if (inputs.timeOfDay > 0.75 && inputs.responseTimeNormalized > 1.1) targetComplexity -= 0.12;
 
@@ -152,6 +158,11 @@ export class AiDifficultyService implements OnModuleInit {
     const safeMs = Math.max(500, milliseconds ?? averageMilliseconds);
     const safeAverage = Math.max(1000, averageMilliseconds);
     return this.clamp(safeMs / safeAverage, 0, 2);
+  }
+
+  normalizeAttemptLoad(totalTaps: number | null | undefined): number {
+    const safeTaps = Math.max(1, Math.min(10, Number(totalTaps) || 1));
+    return this.clamp((safeTaps - 1) / 4);
   }
 
   timeOfDayScore(date = new Date()): number {
@@ -213,7 +224,12 @@ export class AiDifficultyService implements OnModuleInit {
       responseTimeNormalized: this.clamp(inputs.responseTimeNormalized, 0, 2) / 2,
       timeOfDay: this.clamp(inputs.timeOfDay),
       currentDifficulty: this.clamp(inputs.currentDifficulty),
+      attemptLoad: this.clamp(inputs.attemptLoad ?? 0),
     };
+  }
+
+  private shouldCapToFallback(inputs: DifficultyInputs): boolean {
+    return inputs.accuracy < 0.7 || inputs.responseTimeNormalized > 1.35 || (inputs.attemptLoad ?? 0) > 0.35;
   }
 
   private targetFromOutcome(inputs: DifficultyInputs, firstTapCorrect: boolean): number {
@@ -221,6 +237,8 @@ export class AiDifficultyService implements OnModuleInit {
     if (firstTapCorrect && inputs.responseTimeNormalized <= 1.05) target += 0.16;
     if (firstTapCorrect && inputs.responseTimeNormalized > 1.25) target -= 0.18;
     if (!firstTapCorrect) target -= 0.24;
+    if ((inputs.attemptLoad ?? 0) > 0.35) target -= 0.18;
+    if ((inputs.attemptLoad ?? 0) > 0.75) target -= 0.12;
     if (inputs.timeOfDay > 0.75 && inputs.responseTimeNormalized > 1.1) target -= 0.1;
     return this.clamp(target);
   }

@@ -512,7 +512,7 @@ export class MediaService {
     const latestTimeMs = attempts[0]?.timeToCorrectMs ?? averageTimeMs;
     const fallbackInputs = {
       accuracy: patient.successRate,
-      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, averageTimeMs),
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, Math.min(averageTimeMs, 8000)),
       timeOfDay: this.aiDifficulty.timeOfDayScore(),
       currentDifficulty: this.aiDifficulty.difficultyToComplexity(patient.quizDifficulty),
     };

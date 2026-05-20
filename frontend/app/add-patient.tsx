@@ -63,7 +63,6 @@ export default function AddPatientScreen() {
   const [errors, setErrors] = useState<{ name?: string; surname?: string; dateOfBirth?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
-  const [dementiaLevel, setDementiaLevel] = useState<'MILD' | 'MODERATE' | 'SEVERE' | null>(null);
 
   // Backdrop animation for iOS date picker
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -265,7 +264,6 @@ export default function AddPatientScreen() {
           surname: surname.trim(),
           dateOfBirth: toISODate(dateOfBirth),
           ...(avatarUrl ? { avatarUrl } : {}),
-          ...(dementiaLevel ? { dementiaLevel } : {}),
         }),
       });
 
@@ -382,44 +380,6 @@ export default function AddPatientScreen() {
               )}
             </TouchableOpacity>
             {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
-          </View>
-
-          {/* Alzheimer's / Dementia Severity */}
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, !isIOS && styles.androidFieldLabel]}>
-              Alzheimer's / Dementia Severity
-            </Text>
-            <Text style={styles.severityHint}>Optional — helps tailor the experience</Text>
-            <View style={styles.severityRow}>
-              {(['MILD', 'MODERATE', 'SEVERE'] as const).map((level) => {
-                const labels: Record<string, string> = {
-                  MILD: 'Mild',
-                  MODERATE: 'Moderate',
-                  SEVERE: 'Severe',
-                };
-                const selected = dementiaLevel === level;
-                return (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.severityChip,
-                      selected && styles.severityChipSelected,
-                    ]}
-                    onPress={() => setDementiaLevel(selected ? null : level)}
-                    activeOpacity={0.75}
-                  >
-                    <Text
-                      style={[
-                        styles.severityChipText,
-                        selected && styles.severityChipTextSelected,
-                      ]}
-                    >
-                      {labels[level]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {/* Android: M3 date picker modal */}
@@ -630,40 +590,6 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
     color: themeColors.secondary,
-  },
-
-  severityHint: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: themeColors.textMuted,
-    marginBottom: 10,
-    marginTop: -2,
-  },
-  severityRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  severityChip: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: isIOS ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.5)') : themeColors.neutralLight,
-    borderWidth: isIOS ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.10)'),
-  },
-  severityChipSelected: {
-    backgroundColor: themeColors.secondary,
-    borderColor: themeColors.secondary,
-  },
-  severityChipText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.textMuted,
-  },
-  severityChipTextSelected: {
-    color: themeColors.neutralLight,
   },
 
   errorText: {

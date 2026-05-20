@@ -532,6 +532,7 @@ export class PatientService {
       select: {
         firstTapCorrect: true,
         timeToCorrectMs: true,
+        totalTaps: true,
         difficulty: true,
       },
     });
@@ -544,9 +545,10 @@ export class PatientService {
     const latest = validAttempts[validAttempts.length - 1];
     const inputs = {
       accuracy: successRate,
-      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latest.timeToCorrectMs, averageTimeMs),
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latest.timeToCorrectMs, Math.min(averageTimeMs, 8000)),
       timeOfDay: this.aiDifficulty.timeOfDayScore(),
       currentDifficulty: this.aiDifficulty.difficultyToComplexity(latest.difficulty ?? patient.quizDifficulty),
+      attemptLoad: this.aiDifficulty.normalizeAttemptLoad(latest.totalTaps),
     };
     const targetComplexity = await this.aiDifficulty.saveTrainingSample(
       patientId,
@@ -993,7 +995,7 @@ export class PatientService {
     const latestTimeMs = attempts[0]?.timeToCorrectMs ?? averageTimeMs;
     const inputs = {
       accuracy: patient.successRate,
-      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, averageTimeMs),
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, Math.min(averageTimeMs, 8000)),
       timeOfDay: this.aiDifficulty.timeOfDayScore(),
       currentDifficulty: this.aiDifficulty.difficultyToComplexity(patient.quizDifficulty),
     };

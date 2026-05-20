@@ -91,6 +91,8 @@ function formatLocationTime(updatedAt: string) {
 }
 
 function getPatientLocation(patient: PatientItem): PatientMapLocation | null {
+  if (patient.lastLatitude == null || patient.lastLongitude == null) return null;
+
   const latitude = Number(patient.lastLatitude);
   const longitude = Number(patient.lastLongitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
@@ -833,7 +835,11 @@ function PatientLocationPreview({ patient, compact = false }: { patient: Patient
     );
   }
 
-  const openMap = () => Linking.openURL(getOpenMapUrl(location));
+  const openMap = () => {
+    Linking.openURL(getOpenMapUrl(location)).catch((error) => {
+      console.error('[Location] Unable to open map URL', error);
+    });
+  };
 
   return (
     <Pressable
@@ -885,7 +891,11 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
     );
   }
 
-  const openMap = () => Linking.openURL(getOpenMapUrl(location));
+  const openMap = () => {
+    Linking.openURL(getOpenMapUrl(location)).catch((error) => {
+      console.error('[Location] Unable to open map URL', error);
+    });
+  };
 
   return (
     <View style={styles.locationPanel}>
