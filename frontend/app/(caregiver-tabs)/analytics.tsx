@@ -1,7 +1,7 @@
 import { colors, lightColors, darkColors } from '../../src/theme/colors';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity, Modal, Linking } from 'react-native';
+import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity, Modal, Linking, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { AdaptiveCard } from '../../src/components/AdaptiveCard';
+import { M3BottomSheet } from '../../src/components/M3BottomSheet';
 import { API_BASE_URL } from '../../src/config/api';
 import { clearAuth, getCaregiverInfo, getToken } from '../../src/utils/auth';
 
@@ -106,7 +107,7 @@ if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 const TODAY = new Date();
-const CAREGIVER_REGISTERED_AT = new Date(2024, 0, 12);
+const DEFAULT_FILTER_START = new Date(2024, 0, 12);
 
 const SEEDED_INSIGHT_POSTS: InsightPost[] = [
   {
@@ -230,7 +231,63 @@ function fromISODate(value: string) {
   return new Date(year, month - 1, day);
 }
 
-function getFilterScopeLabel(filter: FilterKey, dateValue: string, customFrom: string, customTo: string) {
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function parseFilterStartDate(value?: string | null) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return startOfDay(DEFAULT_FILTER_START);
+  const start = startOfDay(parsed);
+  return start > TODAY ? startOfDay(TODAY) : start;
+}
+
+function getMonday(date: Date) {
+  const next = startOfDay(date);
+  const day = next.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  next.setDate(next.getDate() - diff);
+  return next;
+}
+
+function getISOWeekParts(date: Date) {
+  const target = startOfDay(date);
+  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
+  const year = target.getFullYear();
+  const weekOne = new Date(target.getFullYear(), 0, 4);
+  const week = 1 + Math.round(((target.getTime() - weekOne.getTime()) / 86400000 - 3 + ((weekOne.getDay() + 6) % 7)) / 7);
+  return { year, week };
+}
+
+function weekValue(date: Date) {
+  const { year, week } = getISOWeekParts(date);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function parseWeekValue(value: string) {
+  const match = value.match(/^(\d{4})-W(\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const fourth = new Date(year, 0, 4);
+  const firstMonday = getMonday(fourth);
+  const start = new Date(firstMonday);
+  start.setDate(firstMonday.getDate() + (week - 1) * 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+function getFilterScopeLabel(
+  filter: FilterKey,
+  dateValue: string,
+  customFrom: string,
+  customTo: string,
+  dateOptions: Record<Exclude<FilterKey, 'custom'>, DateOption[]>
+) {
   if (filter === 'custom') {
     return `${formatShortDate(fromISODate(customFrom))} - ${formatShortDate(fromISODate(customTo))}`;
   }
@@ -239,8 +296,35 @@ function getFilterScopeLabel(filter: FilterKey, dateValue: string, customFrom: s
     return formatLongDate(fromISODate(dateValue));
   }
 
-  const option = DATE_OPTIONS[filter].find((item) => item.value === dateValue) ?? DATE_OPTIONS[filter][0];
+  const option = dateOptions[filter].find((item) => item.value === dateValue) ?? dateOptions[filter][0];
   return option?.label ?? '';
+}
+
+function buildDayOptions(end: Date): DateOption[] {
+  return [
+    { label: formatLongDate(end), value: toISODate(end) },
+  ];
+}
+
+function buildWeekOptions(start: Date, end: Date): DateOption[] {
+  const options: DateOption[] = [];
+  const first = getMonday(start);
+  const cursor = getMonday(end);
+
+  while (cursor >= first) {
+    const weekStart = new Date(cursor);
+    const weekEnd = new Date(cursor);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const labelStart = weekStart < start ? start : weekStart;
+    const labelEnd = weekEnd > end ? end : weekEnd;
+    options.push({
+      label: `${formatShortDate(labelStart)} - ${formatShortDate(labelEnd)}`,
+      value: weekValue(weekStart),
+    });
+    cursor.setDate(cursor.getDate() - 7);
+  }
+
+  return options;
 }
 
 function buildMonthOptions(start: Date, end: Date): DateOption[] {
@@ -273,20 +357,17 @@ function buildYearOptions(start: Date, end: Date): DateOption[] {
   return options;
 }
 
-const DATE_OPTIONS: Record<Exclude<FilterKey, 'custom'>, DateOption[]> = {
-  day: [
-    { label: formatLongDate(TODAY), value: toISODate(TODAY) },
-  ],
-  week: [
-    { label: 'May 4th - May 10th, 2026', value: '2026-W19' },
-    { label: 'April 27th - May 3rd, 2026', value: '2026-W18' },
-    { label: 'April 20th - April 26th, 2026', value: '2026-W17' },
-  ],
-  month: buildMonthOptions(CAREGIVER_REGISTERED_AT, TODAY),
-  year: buildYearOptions(CAREGIVER_REGISTERED_AT, TODAY),
-};
+function buildDateOptions(start: Date, end: Date): Record<Exclude<FilterKey, 'custom'>, DateOption[]> {
+  return {
+    day: buildDayOptions(end),
+    week: buildWeekOptions(start, end),
+    month: buildMonthOptions(start, end),
+    year: buildYearOptions(start, end),
+  };
+}
 
-const DEFAULT_CUSTOM_FROM = '2026-05-01';
+const DEFAULT_DATE_OPTIONS = buildDateOptions(DEFAULT_FILTER_START, TODAY);
+const DEFAULT_CUSTOM_FROM = toISODate(DEFAULT_FILTER_START);
 const DEFAULT_CUSTOM_TO = toISODate(TODAY);
 
 function summarize(quizzes: QuizReport[]) {
@@ -313,47 +394,59 @@ function formatTakenAt(value: string) {
   return formatExportTimestamp(date);
 }
 
-function dateRangeForFilter(filter: AppliedFilter | null): { start: Date; end: Date } | null {
+function clampRangeToStart(range: { start: Date; end: Date }, minStart: Date) {
+  return {
+    start: range.start < minStart ? new Date(minStart) : range.start,
+    end: range.end,
+  };
+}
+
+function dateRangeForFilter(filter: AppliedFilter | null, minStart: Date): { start: Date; end: Date } | null {
   if (!filter) return null;
 
   if (filter.filter === 'day') {
     const start = fromISODate(filter.dateValue);
     const end = new Date(start);
     end.setHours(23, 59, 59, 999);
-    return { start, end };
+    return clampRangeToStart({ start, end }, minStart);
   }
 
   if (filter.filter === 'month') {
     const [year, month] = filter.dateValue.split('-').map(Number);
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59, 999);
-    return { start, end };
+    return clampRangeToStart({ start, end }, minStart);
   }
 
   if (filter.filter === 'year') {
     const year = Number(filter.dateValue);
-    return {
+    return clampRangeToStart({
       start: new Date(year, 0, 1),
       end: new Date(year, 11, 31, 23, 59, 59, 999),
-    };
+    }, minStart);
   }
 
   if (filter.filter === 'custom') {
     const start = fromISODate(filter.customFrom);
     const end = fromISODate(filter.customTo);
     end.setHours(23, 59, 59, 999);
-    return { start, end };
+    return clampRangeToStart({ start, end }, minStart);
+  }
+
+  const parsedWeek = parseWeekValue(filter.dateValue);
+  if (parsedWeek) {
+    return clampRangeToStart(parsedWeek, minStart);
   }
 
   const end = new Date();
   const start = new Date(end);
   start.setDate(start.getDate() - 6);
   start.setHours(0, 0, 0, 0);
-  return { start, end };
+  return clampRangeToStart({ start, end }, minStart);
 }
 
-function applyTimeFilterToQuiz(quiz: QuizReport, filter: AppliedFilter | null): QuizReport {
-  const range = dateRangeForFilter(filter);
+function applyTimeFilterToQuiz(quiz: QuizReport, filter: AppliedFilter | null, minStart: Date): QuizReport {
+  const range = dateRangeForFilter(filter, minStart);
   if (!range) return quiz;
 
   const questionOutcomes = quiz.questionOutcomes.filter((outcome) => {
@@ -592,15 +685,28 @@ function buildInsightPdfHtml(post: InsightPost) {
   `;
 }
 
+function keepDateValueInOptions(filter: FilterKey, dateValue: string, dateOptions: Record<Exclude<FilterKey, 'custom'>, DateOption[]>) {
+  if (filter === 'custom') return dateValue;
+  const options = dateOptions[filter];
+  return options.some((option) => option.value === dateValue) ? dateValue : options[0]?.value ?? dateValue;
+}
+
+function clampISODate(value: string, min: string, max: string) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
 export default function AnalyticsTab() {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const router = useRouter();
   const [draftFilter, setDraftFilter] = useState<FilterKey>('day');
-  const [draftDateValue, setDraftDateValue] = useState(DATE_OPTIONS.day[0].value);
+  const [draftDateValue, setDraftDateValue] = useState(DEFAULT_DATE_OPTIONS.day[0].value);
   const [draftCustomFrom, setDraftCustomFrom] = useState(DEFAULT_CUSTOM_FROM);
   const [draftCustomTo, setDraftCustomTo] = useState(DEFAULT_CUSTOM_TO);
   const [appliedFilter, setAppliedFilter] = useState<AppliedFilter | null>(null);
+  const [patientFilterStart, setPatientFilterStart] = useState(() => startOfDay(DEFAULT_FILTER_START));
   const [filterOpen, setFilterOpen] = useState(false);
   const [datePickerTarget, setDatePickerTarget] = useState<'day' | 'from' | 'to' | null>(null);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
@@ -617,6 +723,10 @@ export default function AnalyticsTab() {
   const [insightPosts, setInsightPosts] = useState<InsightPost[]>(sortInsightsByPublishedDate(SEEDED_INSIGHT_POSTS));
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [savedInsightsVisible, setSavedInsightsVisible] = useState(false);
+  const filterDateOptions = useMemo(
+    () => buildDateOptions(patientFilterStart, TODAY),
+    [patientFilterStart]
+  );
 
   const animate = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -630,15 +740,15 @@ export default function AnalyticsTab() {
   const isOverallSelected = selectedTypeId === 'overall';
   const detailQuizzes = isOverallSelected ? allQuizzes : selectedType?.quizzes ?? [];
   const visibleDetailQuizzes = useMemo(
-    () => detailQuizzes.map((quiz) => applyTimeFilterToQuiz(quiz, appliedFilter)),
-    [detailQuizzes, appliedFilter]
+    () => detailQuizzes.map((quiz) => applyTimeFilterToQuiz(quiz, appliedFilter, patientFilterStart)),
+    [detailQuizzes, appliedFilter, patientFilterStart]
   );
   const detailSummary = summarize(visibleDetailQuizzes);
   const detailTitle = isOverallSelected ? 'All quiz types' : selectedType?.description ?? '';
   const detailEyebrow = isOverallSelected ? 'Overall' : `${selectedType?.label} overall`;
-  const draftDateOptions = draftFilter === 'custom' ? [] : DATE_OPTIONS[draftFilter];
+  const draftDateOptions = draftFilter === 'custom' ? [] : filterDateOptions[draftFilter];
   const draftDate = draftDateOptions.find((option) => option.value === draftDateValue) ?? draftDateOptions[0];
-  const draftDateLabel = getFilterScopeLabel(draftFilter, draftDateValue, draftCustomFrom, draftCustomTo);
+  const draftDateLabel = getFilterScopeLabel(draftFilter, draftDateValue, draftCustomFrom, draftCustomTo, filterDateOptions);
   const selectedQuiz = visibleDetailQuizzes.find((quiz) => quiz.id === selectedQuizId) ?? null;
   const selectedQuizSummary = selectedQuiz ? summarize([selectedQuiz]) : null;
   const selectedPatient = useMemo(
@@ -744,6 +854,7 @@ export default function AnalyticsTab() {
     const fetchProgress = async () => {
       if (!selectedPatientId) {
         setQuizTypes([]);
+        setPatientFilterStart(startOfDay(DEFAULT_FILTER_START));
         return;
       }
 
@@ -778,6 +889,7 @@ export default function AnalyticsTab() {
 
         const data = await res.json() as ProgressResponse;
         if (!cancelled) {
+          setPatientFilterStart(parseFilterStartDate(data.registeredAt));
           setQuizTypes(data.quizTypes ?? []);
           setSelectedTypeId(null);
           setSelectedQuizId(null);
@@ -798,6 +910,32 @@ export default function AnalyticsTab() {
     };
   }, [router, selectedPatientId]);
 
+  useEffect(() => {
+    const minDate = toISODate(patientFilterStart);
+    const maxDate = toISODate(TODAY);
+
+    setDraftDateValue((current) => keepDateValueInOptions(draftFilter, current, filterDateOptions));
+    setDraftCustomFrom((current) => clampISODate(current, minDate, maxDate));
+    setDraftCustomTo((current) => clampISODate(current, minDate, maxDate));
+    setAppliedFilter((current) => {
+      if (!current) return current;
+
+      const nextFrom = clampISODate(current.customFrom, minDate, maxDate);
+      const nextTo = clampISODate(current.customTo, minDate, maxDate);
+      const nextDateValue = keepDateValueInOptions(current.filter, current.dateValue, filterDateOptions);
+      if (nextFrom === current.customFrom && nextTo === current.customTo && nextDateValue === current.dateValue) {
+        return current;
+      }
+
+      return {
+        ...current,
+        customFrom: nextFrom,
+        customTo: nextTo,
+        dateValue: nextDateValue,
+      };
+    });
+  }, [draftFilter, filterDateOptions, patientFilterStart]);
+
   const selectPatient = (patientId: string) => {
     animate();
     setSelectedPatientId(patientId);
@@ -810,11 +948,11 @@ export default function AnalyticsTab() {
   const handleFilterChange = (filter: FilterKey) => {
     setDraftFilter(filter);
     if (filter !== 'custom') {
-      setDraftDateValue(DATE_OPTIONS[filter][0].value);
+      setDraftDateValue(filterDateOptions[filter][0]?.value ?? toISODate(TODAY));
     }
   };
   const activeFilterLabel = appliedFilter
-    ? `${FILTERS.find((filter) => filter.key === appliedFilter.filter)?.label ?? 'Day'}: ${getFilterScopeLabel(appliedFilter.filter, appliedFilter.dateValue, appliedFilter.customFrom, appliedFilter.customTo)}`
+    ? `${FILTERS.find((filter) => filter.key === appliedFilter.filter)?.label ?? 'Day'}: ${getFilterScopeLabel(appliedFilter.filter, appliedFilter.dateValue, appliedFilter.customFrom, appliedFilter.customTo, filterDateOptions)}`
     : null;
   const openFilter = () => {
     if (appliedFilter) {
@@ -828,8 +966,8 @@ export default function AnalyticsTab() {
   const clearFilter = () => {
     setAppliedFilter(null);
     setDraftFilter('day');
-    setDraftDateValue(DATE_OPTIONS.day[0].value);
-    setDraftCustomFrom(DEFAULT_CUSTOM_FROM);
+    setDraftDateValue(filterDateOptions.day[0]?.value ?? toISODate(TODAY));
+    setDraftCustomFrom(toISODate(patientFilterStart));
     setDraftCustomTo(DEFAULT_CUSTOM_TO);
     setFilterOpen(false);
     setDatePickerTarget(null);
@@ -1144,11 +1282,15 @@ export default function AnalyticsTab() {
         onDateValueChange={setDraftDateValue}
         onOpenCalendar={setDatePickerTarget}
         onApply={() => {
+          const minDate = toISODate(patientFilterStart);
+          const maxDate = toISODate(TODAY);
+          const nextCustomFrom = clampISODate(draftCustomFrom, minDate, maxDate);
+          const nextCustomTo = clampISODate(draftCustomTo, nextCustomFrom, maxDate);
           setAppliedFilter({
             filter: draftFilter,
-            dateValue: draftDateValue,
-            customFrom: draftCustomFrom,
-            customTo: draftCustomTo,
+            dateValue: keepDateValueInOptions(draftFilter, draftDateValue, filterDateOptions),
+            customFrom: nextCustomFrom,
+            customTo: nextCustomTo,
           });
           setFilterOpen(false);
         }}
@@ -1164,16 +1306,17 @@ export default function AnalyticsTab() {
         onConfirm={({ date }: { date: Date | undefined }) => {
           setDatePickerTarget(null);
           if (!date) return;
-          const iso = toISODate(date);
+          const iso = clampISODate(toISODate(date), toISODate(patientFilterStart), toISODate(TODAY));
           if (datePickerTarget === 'from') {
             setDraftCustomFrom(iso);
+            if (draftCustomTo < iso) setDraftCustomTo(iso);
           } else if (datePickerTarget === 'to') {
             setDraftCustomTo(iso);
           } else {
             setDraftDateValue(iso);
           }
         }}
-        validRange={{ startDate: CAREGIVER_REGISTERED_AT, endDate: TODAY }}
+        validRange={{ startDate: patientFilterStart, endDate: TODAY }}
         label="Select date"
         saveLabel="OK"
       />
@@ -1308,7 +1451,7 @@ function ActionRow({
   return (
     <View style={styles.actionRow}>
       <Pressable
-        style={[styles.actionButton, styles.filterActionButton, activeFilterLabel && styles.filterActionButtonActive]}
+        style={[styles.actionButton, styles.progressActionButton, styles.filterActionButton, activeFilterLabel && styles.filterActionButtonActive]}
         onPress={onOpenFilter}
       >
         <AppIcon iosName="calendar" androidFallback="C" size={16} color={themeColors.primary} />
@@ -1328,12 +1471,12 @@ function ActionRow({
         )}
       </Pressable>
       <Pressable
-        style={[styles.actionButton, styles.exportButton, exporting && styles.actionDisabled]}
+        style={[styles.actionButton, styles.progressActionButton, styles.exportButton, exporting && styles.actionDisabled]}
         onPress={onExport}
         disabled={exporting}
       >
         <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={isDark ? themeColors.neutral : themeColors.textLight} />
-        <Text style={styles.exportButtonText}>{exporting ? 'Creating PDF...' : 'Export as PDF'}</Text>
+        <Text style={styles.exportButtonText} numberOfLines={1}>{exporting ? 'Creating PDF...' : 'Export as PDF'}</Text>
       </Pressable>
     </View>
   );
@@ -1448,19 +1591,15 @@ function InsightDetailModal({
   };
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Animated.View style={[styles.insightModalCard, modalAnimatedStyle]}>
-          <View style={styles.modalHeader}>
-            <Pressable style={styles.insightHeaderButton} onPress={onBackToProgress}>
-              <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={themeColors.secondary} />
-              <Text style={styles.insightHeaderBackText}>Back</Text>
-            </Pressable>
-            <Pressable style={styles.modalCloseButton} onPress={onClose}>
-              <Text style={styles.modalCloseText}>X</Text>
-            </Pressable>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
+    <M3BottomSheet visible={!!post} onClose={onClose}>
+      <Animated.View style={[styles.insightSheetContent, modalAnimatedStyle]}>
+        <View style={styles.modalHeader}>
+          <Pressable style={styles.insightHeaderButton} onPress={onBackToProgress}>
+            <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={themeColors.secondary} />
+            <Text style={styles.insightHeaderBackText}>Back</Text>
+          </Pressable>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.insightDetailTitleRow}>
               <Text style={styles.insightDetailTitle}>{post.title}</Text>
               {isNewInsight(post) && <Text style={styles.newBadge}>New</Text>}
@@ -1482,27 +1621,31 @@ function InsightDetailModal({
               open={tagsOpen}
               onPress={() => setTagsOpen((open) => !open)}
             />
-            {tagsOpen && (
+            <AnimatedInsightSection open={tagsOpen}>
               <View style={styles.tagsWrap}>
                 {post.tags.map((tag) => (
                   <Text key={tag} style={styles.tagPill}>{tag}</Text>
                 ))}
               </View>
-            )}
+            </AnimatedInsightSection>
 
             <InsightSectionToggle
               title="Introduction"
               open={introOpen}
               onPress={() => setIntroOpen((open) => !open)}
             />
-            {introOpen && <Text style={styles.insightBody}>{post.introduction}</Text>}
+            <AnimatedInsightSection open={introOpen}>
+              <Text style={styles.insightBody}>{post.introduction}</Text>
+            </AnimatedInsightSection>
 
             <InsightSectionToggle
               title="Summary"
               open={summaryOpen}
               onPress={() => setSummaryOpen((open) => !open)}
             />
-            {summaryOpen && <Text style={styles.insightBody}>{post.summary}</Text>}
+            <AnimatedInsightSection open={summaryOpen}>
+              <Text style={styles.insightBody}>{post.summary}</Text>
+            </AnimatedInsightSection>
 
             <Pressable style={styles.articleLinkButton} onPress={() => onOpenLink(post.articleUrl)}>
               <Animated.View pointerEvents="none" style={[styles.articleLinkFlare, flareAnimatedStyle]} />
@@ -1521,13 +1664,13 @@ function InsightDetailModal({
               />
             </Pressable>
 
-            {resourcesOpen && (
+            <AnimatedInsightSection open={resourcesOpen}>
               <Pressable style={styles.resourcesPanel} onPress={() => onOpenLink(post.articleUrl)}>
                 <Text style={styles.insightBody}>{post.source}</Text>
                 <Text style={styles.insightBody}>{post.institution}</Text>
                 <Text style={styles.resourceLinkText}>{post.articleUrl}</Text>
               </Pressable>
-            )}
+            </AnimatedInsightSection>
 
             <View style={styles.insightActions}>
               <Pressable style={[styles.actionButton, styles.exportButton, styles.insightActionButton]} onPress={() => onExport(post)}>
@@ -1539,10 +1682,9 @@ function InsightDetailModal({
                 <Text style={styles.actionButtonText}>Save</Text>
               </Pressable>
             </View>
-          </ScrollView>
-        </Animated.View>
-      </View>
-    </Modal>
+        </ScrollView>
+      </Animated.View>
+    </M3BottomSheet>
   );
 }
 
@@ -1567,6 +1709,48 @@ function InsightSectionToggle({
         color={themeColors.secondary}
       />
     </Pressable>
+  );
+}
+
+function AnimatedInsightSection({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+}) {
+  const progress = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const [mounted, setMounted] = useState(open);
+
+  useEffect(() => {
+    if (open) setMounted(true);
+    Animated.timing(progress, {
+      toValue: open ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished && !open) setMounted(false);
+    });
+  }, [open, progress]);
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View
+      style={{
+        opacity: progress,
+        transform: [
+          {
+            translateY: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [-6, 0],
+            }),
+          },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
@@ -1867,6 +2051,7 @@ function ReportCharts({
   }));
   const maxStageCount = Math.max(...stageCounts.map((item) => item.count), 1);
   const selectedLabel = FILTERS.find((filter) => filter.key === selectedFilter)?.label ?? 'Week';
+  const animationKey = `${selectedFilter}-${quizzes.map((quiz) => `${quiz.id}:${quiz.averagePercent}:${quiz.attempts}:${quiz.completed}`).join('|')}`;
 
   return (
     <View style={styles.chartsSection}>
@@ -1875,17 +2060,22 @@ function ReportCharts({
           <Text style={styles.chartTitle}>Quiz score comparison</Text>
           <Text style={styles.chartRange}>{selectedLabel}</Text>
         </View>
-        {quizzes.map((quiz) => (
-          <View key={quiz.id} style={styles.barRow}>
+        {quizzes.map((quiz, index) => (
+          <AnimatedChartRow key={quiz.id} animationKey={animationKey} index={index}>
             <View style={styles.barLabelWrap}>
               <Text style={styles.barLabel} numberOfLines={1}>{quiz.name}</Text>
               <Text style={styles.barSubLabel}>{quiz.pointsEarned}/{quiz.pointsTotal} pts</Text>
             </View>
             <View style={styles.barTrack}>
-              <View style={[styles.scoreBar, { width: `${quiz.averagePercent}%` }]} />
+              <AnimatedChartBar
+                percent={quiz.averagePercent}
+                style={styles.scoreBar}
+                delay={index * 55}
+                animationKey={animationKey}
+              />
             </View>
             <Text style={styles.barValue}>{quiz.averagePercent}%</Text>
-          </View>
+          </AnimatedChartRow>
         ))}
       </AdaptiveCard>
 
@@ -1898,11 +2088,11 @@ function ReportCharts({
           {stageCounts.map((item) => (
             <View key={item.stage} style={styles.stageColumn}>
               <View style={styles.stageTrack}>
-                <View
-                  style={[
-                    styles.stageBar,
-                    { height: `${Math.max((item.count / maxStageCount) * 100, item.count > 0 ? 12 : 0)}%` },
-                  ]}
+                <AnimatedStageBar
+                  percent={Math.max((item.count / maxStageCount) * 100, item.count > 0 ? 12 : 0)}
+                  style={styles.stageBar}
+                  delay={item.stage * 70}
+                  animationKey={animationKey}
                 />
               </View>
               <Text style={styles.stageCount}>{item.count}</Text>
@@ -1917,20 +2107,151 @@ function ReportCharts({
           <Text style={styles.chartTitle}>Attempts by quiz</Text>
           <Text style={styles.chartRange}>{quizzes.reduce((sum, quiz) => sum + quiz.attempts, 0)} total</Text>
         </View>
-        {quizzes.map((quiz) => (
-          <View key={`${quiz.id}-attempts`} style={styles.barRow}>
+        {quizzes.map((quiz, index) => (
+          <AnimatedChartRow key={`${quiz.id}-attempts`} animationKey={animationKey} index={index + quizzes.length}>
             <View style={styles.barLabelWrap}>
               <Text style={styles.barLabel} numberOfLines={1}>{quiz.name}</Text>
               <Text style={styles.barSubLabel}>{quiz.completed} completed</Text>
             </View>
             <View style={styles.barTrack}>
-              <View style={[styles.attemptBar, { width: `${Math.max((quiz.attempts / maxAttempts) * 100, 6)}%` }]} />
+              <AnimatedChartBar
+                percent={Math.max((quiz.attempts / maxAttempts) * 100, quiz.attempts > 0 ? 6 : 0)}
+                style={styles.attemptBar}
+                delay={index * 55}
+                animationKey={animationKey}
+              />
             </View>
             <Text style={styles.barValue}>{quiz.attempts}</Text>
-          </View>
+          </AnimatedChartRow>
         ))}
       </AdaptiveCard>
     </View>
+  );
+}
+
+function AnimatedChartRow({
+  animationKey,
+  index,
+  children,
+}: {
+  animationKey: string;
+  index: number;
+  children: React.ReactNode;
+}) {
+  const { isDark } = useTheme();
+  const styles = getStyles(isDark);
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 320,
+      delay: Math.min(index * 35, 260),
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [animationKey, index, progress]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.barRow,
+        {
+          opacity: progress,
+          transform: [
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [8, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+function AnimatedChartBar({
+  percent,
+  style,
+  delay,
+  animationKey,
+}: {
+  percent: number;
+  style: any;
+  delay: number;
+  animationKey: string;
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  const clampedPercent = Math.max(0, Math.min(percent, 100));
+
+  useEffect(() => {
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: clampedPercent,
+      duration: 680,
+      delay,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [animationKey, clampedPercent, delay, progress]);
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          width: progress.interpolate({
+            inputRange: [0, 100],
+            outputRange: ['0%', '100%'],
+          }),
+        },
+      ]}
+    />
+  );
+}
+
+function AnimatedStageBar({
+  percent,
+  style,
+  delay,
+  animationKey,
+}: {
+  percent: number;
+  style: any;
+  delay: number;
+  animationKey: string;
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  const clampedPercent = Math.max(0, Math.min(percent, 100));
+
+  useEffect(() => {
+    progress.setValue(0);
+    Animated.spring(progress, {
+      toValue: clampedPercent,
+      delay,
+      friction: 8,
+      tension: 80,
+      useNativeDriver: false,
+    }).start();
+  }, [animationKey, clampedPercent, delay, progress]);
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          height: progress.interpolate({
+            inputRange: [0, 100],
+            outputRange: ['0%', '100%'],
+          }),
+        },
+      ]}
+    />
   );
 }
 
@@ -1985,7 +2306,6 @@ const getStyles = (isDark: boolean) => {
   },
   actionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     marginHorizontal: -4,
     marginBottom: 10,
   },
@@ -2001,6 +2321,10 @@ const getStyles = (isDark: boolean) => {
     paddingHorizontal: 14,
     marginHorizontal: 4,
     marginBottom: 8,
+  },
+  progressActionButton: {
+    flex: 1,
+    minWidth: 0,
   },
   filterActionButton: {
     maxWidth: '100%',
@@ -2025,6 +2349,7 @@ const getStyles = (isDark: boolean) => {
     opacity: 0.6,
   },
   exportButtonText: {
+    flexShrink: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
     color: (isDark ? themeColors.neutral : themeColors.textLight),
@@ -2596,12 +2921,11 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.bold,
     fontSize: 11,
   },
-  insightModalCard: {
-    width: '92%',
-    maxHeight: '86%',
-    borderRadius: 22,
-    backgroundColor: themeColors.neutral,
-    padding: 18,
+  insightSheetContent: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   savedInsightsCard: {
     width: '92%',

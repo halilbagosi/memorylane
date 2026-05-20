@@ -83,8 +83,13 @@ export class InsightsService {
   }
 
   private async ensureSeeded() {
-    await Promise.all(SEEDED_INSIGHT_POSTS.map((post) => (
-      (this.prisma as any).insightPost.upsert({
+    await Promise.all(SEEDED_INSIGHT_POSTS.map(async (post) => {
+      const existing = await (this.prisma as any).insightPost.findUnique({
+        where: { slug: post.slug },
+        select: { id: true },
+      });
+
+      await (this.prisma as any).insightPost.upsert({
         where: { slug: post.slug },
         create: {
           ...post,
@@ -101,7 +106,47 @@ export class InsightsService {
           institution: post.institution,
           tags: post.tags,
         },
-      })
-    )));
+      });
+
+      if (!existing) {
+        await this.notifyCaregiversAboutPost(post);
+      }
+    }));
+  }
+
+  private async notifyCaregiversAboutPost(post: (typeof SEEDED_INSIGHT_POSTS)[number]) {
+    const caregivers = await this.prisma.caregiver.findMany({
+      where: {
+        status: 'ACTIVE',
+        insightNotificationsEnabled: true,
+      },
+      select: { id: true },
+    });
+    if (caregivers.length === 0) return;
+
+    const title = 'New Insight Published';
+    const body = post.title;
+    const existingNotifications = await this.prisma.notification.findMany({
+      where: {
+        type: 'INSIGHT_POST_PUBLISHED' as any,
+        title,
+        body,
+        caregiverId: { in: caregivers.map((caregiver) => caregiver.id) },
+      },
+      select: { caregiverId: true },
+    });
+    const alreadyNotified = new Set(existingNotifications.map((notification) => notification.caregiverId));
+    const notifications = caregivers
+      .filter((caregiver) => !alreadyNotified.has(caregiver.id))
+      .map((caregiver) => ({
+        caregiverId: caregiver.id,
+        type: 'INSIGHT_POST_PUBLISHED' as any,
+        title,
+        body,
+      }));
+
+    if (notifications.length > 0) {
+      await this.prisma.notification.createMany({ data: notifications });
+    }
   }
 }

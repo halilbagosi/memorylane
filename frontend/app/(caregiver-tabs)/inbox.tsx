@@ -40,7 +40,7 @@ interface RoleRequest {
 
 interface BackendNotification {
   id: string;
-  type: 'SECONDARY_ADDED' | 'DEVICE_PAIRED' | 'PATIENT_DELETED' | 'DELEGATION_ACCEPTED' | 'DELEGATION_DECLINED' | 'DELEGATION_CANCELLED' | 'DELEGATION_COMPLETED' | 'ROLE_REQUEST_RECEIVED' | 'ROLE_REQUEST_APPROVED' | 'ROLE_REQUEST_DECLINED';
+  type: 'SECONDARY_ADDED' | 'DEVICE_PAIRED' | 'PATIENT_DELETED' | 'INSIGHT_POST_PUBLISHED' | 'DELEGATION_ACCEPTED' | 'DELEGATION_DECLINED' | 'DELEGATION_CANCELLED' | 'DELEGATION_COMPLETED' | 'ROLE_REQUEST_RECEIVED' | 'ROLE_REQUEST_APPROVED' | 'ROLE_REQUEST_DECLINED';
   title: string;
   body: string;
   declineReason?: string | null;
@@ -159,6 +159,7 @@ function dotColor(type: BackendNotification['type'] | 'delegation-pending'): str
     case 'SECONDARY_ADDED': return '#2980b9';
     case 'DEVICE_PAIRED': return '#8e44ad';
     case 'PATIENT_DELETED': return '#c0392b';
+    case 'INSIGHT_POST_PUBLISHED': return '#2D4F3E';
     case 'delegation-pending': return '#b8860b';
     case 'ROLE_REQUEST_RECEIVED': return '#2D4F3E';
     case 'ROLE_REQUEST_APPROVED': return '#2d6a4f';
@@ -1069,4 +1070,3 @@ const getStyles = (isDark: boolean) => {
 });
 };
 // styles are computed at render time via `useTheme()` inside the component
-
