@@ -26,7 +26,7 @@ import { AppIcon } from '../../src/components/AppIcon';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
-import { CareLevel, getQuizSettings, QuizDifficulty, QuizMode, updateQuizModes } from '../../src/services/media';
+import { CareLevel, getQuizSettings, listPatientMedia, QuizDifficulty, QuizMode, updateQuizModes } from '../../src/services/media';
 import { getPlanLimits } from '../../src/utils/subscription';
 
 const isIOS = Platform.OS === 'ios';
@@ -46,6 +46,7 @@ interface PatientItem {
 type Difficulty = QuizDifficulty;
 
 const REQUIRED_MODE: QuizMode = 'NAME';
+const MIN_QUIZ_PHOTOS = 4;
 
 const MODE_OPTIONS: { key: QuizMode; label: string; icon: string; subtitle: string }[] = [
   { key: 'NAME', label: 'Name', icon: 'person.fill', subtitle: 'Patient guesses each person\'s name' },
@@ -94,6 +95,7 @@ export default function CreateTab() {
   const [predictedDifficulty, setPredictedDifficulty] = useState<QuizDifficulty>('MEDIUM');
   const [careLevel, setCareLevel] = useState<CareLevel>('DEMENTIA');
   const [aiAdaptiveEnabled, setAiAdaptiveEnabled] = useState(false);
+  const [quizReadyPhotoCount, setQuizReadyPhotoCount] = useState(0);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -126,10 +128,27 @@ export default function CreateTab() {
     : 'Add a patient profile or join an existing one before creating quiz sets and media libraries.';
   const planCanUseAiAdaptive = getPlanLimits(isSubscribed).aiDifficultyEnabled;
   const canUseAiAdaptive = planCanUseAiAdaptive || aiAdaptiveEnabled;
+  const hasEnoughQuizPhotos = quizReadyPhotoCount >= MIN_QUIZ_PHOTOS;
+  const quizPhotoProgress = Math.min(1, quizReadyPhotoCount / MIN_QUIZ_PHOTOS);
 
   const animate = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   };
+
+  const loadQuizPhotoCountForPatient = useCallback(async (patientId: string) => {
+    if (!patientId) {
+      setQuizReadyPhotoCount(0);
+      return;
+    }
+    try {
+      const media = await listPatientMedia(patientId);
+      setQuizReadyPhotoCount(
+        media.filter((item) => item.collection === 'QUIZ' && item.kind === 'PHOTO' && item.status === 'READY').length,
+      );
+    } catch {
+      setQuizReadyPhotoCount(0);
+    }
+  }, []);
 
   const loadPatients = useCallback(async () => {
     const token = await getToken();
@@ -137,6 +156,7 @@ export default function CreateTab() {
       setPatients([]);
       setSelectedPatientId('');
       setSelectedModes([]);
+      setQuizReadyPhotoCount(0);
       setIsLoading(false);
       setRefreshing(false);
       return;
@@ -164,6 +184,7 @@ export default function CreateTab() {
       setSelectedPatientId(fallbackId);
 
       if (fallbackId) {
+        await loadQuizPhotoCountForPatient(fallbackId);
         try {
           const settings = await getQuizSettings(fallbackId);
           setDifficulty(settings.quizDifficulty);
@@ -178,6 +199,7 @@ export default function CreateTab() {
         }
       } else {
         setSelectedModes([]);
+        setQuizReadyPhotoCount(0);
       }
     } catch {
       showDialog('Error', 'Unable to load patients right now.', [{ label: 'OK', onPress: dismissDialog }]);
@@ -185,13 +207,15 @@ export default function CreateTab() {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [selectedPatientId]);
+  }, [loadQuizPhotoCountForPatient, selectedPatientId]);
 
   const loadQuizModesForPatient = useCallback(async (patientId: string) => {
     if (!patientId) {
       setSelectedModes([]);
+      setQuizReadyPhotoCount(0);
       return;
     }
+    await loadQuizPhotoCountForPatient(patientId);
     try {
       const settings = await getQuizSettings(patientId);
       setDifficulty(settings.quizDifficulty);
@@ -205,7 +229,7 @@ export default function CreateTab() {
       setCareLevel('PREVENTATIVE');
       setSelectedModes(['NAME', 'AGE', 'RELATIONSHIP']);
     }
-  }, [canUseAiAdaptive]);
+  }, [canUseAiAdaptive, loadQuizPhotoCountForPatient]);
 
   useFocusEffect(
     useCallback(() => {
@@ -285,6 +309,17 @@ export default function CreateTab() {
       ]);
       return;
     }
+    if (!hasEnoughQuizPhotos) {
+      showDialog(
+        'Add More Quiz Photos',
+        `Upload at least ${MIN_QUIZ_PHOTOS} quiz photos before creating a quiz. Current: ${quizReadyPhotoCount}/${MIN_QUIZ_PHOTOS}. You can add more than ${MIN_QUIZ_PHOTOS} anytime.`,
+        [
+          { label: 'Not now', onPress: dismissDialog },
+          { label: 'Open Media Library', onPress: () => { dismissDialog(); handleSectionChange('library'); } },
+        ],
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -324,6 +359,9 @@ export default function CreateTab() {
     }
     animate();
     setActiveSection(section);
+    if (section === 'builder' && selectedPatient) {
+      loadQuizPhotoCountForPatient(selectedPatient.id);
+    }
   };
 
   return (
@@ -477,6 +515,33 @@ export default function CreateTab() {
             )}
           </AdaptiveCard>
 
+          {selectedPatient && !hasEnoughQuizPhotos && (
+            <AdaptiveCard style={{ ...styles.sectionCard, ...styles.photoEmptyCard }}>
+              <View style={styles.photoEmptyIcon}>
+                <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={30} color={themeColors.secondary} />
+              </View>
+              <Text style={styles.photoEmptyTitle}>Add quiz photos first</Text>
+              <Text style={styles.photoEmptyBody}>
+                {selectedPatient.name} needs at least {MIN_QUIZ_PHOTOS} familiar face photos before you can create a quiz. Current: {quizReadyPhotoCount}/{MIN_QUIZ_PHOTOS}. Four is just the minimum, so you can add more anytime.
+              </Text>
+              <View style={styles.photoProgressTrack}>
+                <View style={[styles.photoProgressFill, { width: `${quizPhotoProgress * 100}%` }]} />
+              </View>
+              <View style={styles.photoEmptyFooter}>
+                <Text style={styles.photoEmptyCount}>{quizReadyPhotoCount}/{MIN_QUIZ_PHOTOS} ready</Text>
+                <TouchableOpacity
+                  style={styles.photoRequirementButton}
+                  onPress={() => handleSectionChange('library')}
+                  activeOpacity={0.78}
+                >
+                  <Text style={styles.photoRequirementButtonText}>Open Media Library</Text>
+                </TouchableOpacity>
+              </View>
+            </AdaptiveCard>
+          )}
+
+          {(!selectedPatient || hasEnoughQuizPhotos) && (
+            <>
           {/* Care Level */}
           <AdaptiveCard style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
@@ -673,9 +738,11 @@ export default function CreateTab() {
             loading={saving}
             loadingText="Saving…"
             onPress={saveConfiguration}
-            disabled={!selectedPatientId || selectedModes.length === 0}
+            disabled={!selectedPatientId || selectedModes.length === 0 || !hasEnoughQuizPhotos}
             style={styles.saveButton}
           />
+            </>
+          )}
         </ScrollView>
       ) : (
         <KeyboardAvoidingView
@@ -874,6 +941,71 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.regular,
     color: themeColors.textMuted,
     fontSize: 12,
+  },
+  photoEmptyCard: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  photoEmptyIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
+    marginBottom: 4,
+  },
+  photoEmptyTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 18,
+    color: themeColors.textDark,
+    textAlign: 'center',
+  },
+  photoEmptyBody: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: themeColors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  photoProgressTrack: {
+    alignSelf: 'stretch',
+    height: 7,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.12)'),
+    marginTop: 14,
+  },
+  photoProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: themeColors.secondary,
+  },
+  photoEmptyFooter: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 12,
+  },
+  photoEmptyCount: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.secondary,
+  },
+  photoRequirementButton: {
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: themeColors.secondary,
+  },
+  photoRequirementButtonText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.neutralLight,
   },
 
   dropdownContainer: {

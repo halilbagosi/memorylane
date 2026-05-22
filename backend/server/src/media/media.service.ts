@@ -403,7 +403,12 @@ export class MediaService {
       throw new BadRequestException('Media is not ready');
     }
 
-    const ciphertext = await this.storage.getObject(media.storageKey);
+    const ciphertext = await this.storage.getObject(media.storageKey).catch(() => {
+      throw new NotFoundException({
+        code: 'MEDIA_PAYLOAD_MISSING',
+        message: 'Stored media file is missing. The media record exists, but the uploaded file is no longer available.',
+      });
+    });
     const dek = this.keyWrap.unwrapDek({
       wrappedDek: media.wrappedDek,
       dekIv: media.dekIv,

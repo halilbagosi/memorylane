@@ -57,6 +57,7 @@ const GRID_GUTTER = 8;
 const GRID_PADDING = 16;
 const QUIZ_COLUMNS = 3;
 const MEMORY_COLUMNS = 3;
+const MIN_QUIZ_PHOTOS = 4;
 const MEMORY_GRID_PADDING = GRID_PADDING;
 const MEMORY_GRID_GAP = GRID_GUTTER;
 const TILE_SIZE_QUIZ =
@@ -253,14 +254,37 @@ export function MemoryLibrarySheetContent({
     });
   };
 
+  const describeImageLoadFailure = async (url?: string): Promise<string> => {
+    if (!url) return 'Could not load image';
+    try {
+      const res = await fetch(url);
+      if (res.ok) return 'Could not display image';
+      const data = await res.json().catch(() => null);
+      const nested = typeof data?.message === 'object' && data.message !== null ? data.message : null;
+      return nested?.message ?? data?.message ?? data?.error ?? `Image unavailable (${res.status})`;
+    } catch {
+      return 'Could not load image';
+    }
+  };
+
   const handleImageLoadError = useCallback(
     (publicId: string) => {
       setImageRetryIds((prev) => {
         if (prev.has(publicId)) {
+          const failedUrl = items.find((m) => m.publicId === publicId)?.signedUrl;
+          describeImageLoadFailure(failedUrl).then((message) => {
+            setItems((itemsPrev) =>
+              itemsPrev.map((m) =>
+                m.publicId === publicId
+                  ? { ...m, signedUrl: undefined, loadingUrl: false, urlError: message }
+                  : m,
+              ),
+            );
+          });
           setItems((itemsPrev) =>
             itemsPrev.map((m) =>
               m.publicId === publicId
-                ? { ...m, signedUrl: undefined, loadingUrl: false, urlError: 'Could not load image' }
+                ? { ...m, signedUrl: undefined, loadingUrl: true, urlError: undefined }
                 : m,
             ),
           );
@@ -272,7 +296,7 @@ export function MemoryLibrarySheetContent({
         return next;
       });
     },
-    [ensureSignedUrl],
+    [ensureSignedUrl, items],
   );
 
   useEffect(() => {
@@ -297,6 +321,12 @@ export function MemoryLibrarySheetContent({
     }
     return base;
   }, [items, kindFilter, libraryTab]);
+  const quizReadyPhotoCount = useMemo(
+    () => items.filter((item) => item.collection === 'QUIZ' && item.kind === 'PHOTO' && item.status === 'READY').length,
+    [items],
+  );
+  const hasEnoughQuizPhotos = quizReadyPhotoCount >= MIN_QUIZ_PHOTOS;
+  const quizPhotoProgress = Math.min(1, quizReadyPhotoCount / MIN_QUIZ_PHOTOS);
 
   type ListRow =
     | { type: 'HEADER'; label: string; key: string }
@@ -839,6 +869,20 @@ export function MemoryLibrarySheetContent({
             </Text>
           </View>
         )}
+
+        {libraryTab === 'QUIZ' && !hasEnoughQuizPhotos && (
+          <View style={styles.requirementBanner}>
+            <View style={styles.requirementHeader}>
+              <AppIcon iosName="info.circle.fill" androidFallback="i" size={16} color={themeColors.secondary} />
+              <Text style={styles.requirementText}>
+                Add at least {MIN_QUIZ_PHOTOS} quiz photos to start a quiz. Current: {quizReadyPhotoCount}/{MIN_QUIZ_PHOTOS}. You can add more than {MIN_QUIZ_PHOTOS} anytime.
+              </Text>
+            </View>
+            <View style={styles.requirementProgressTrack}>
+              <View style={[styles.requirementProgressFill, { width: `${quizPhotoProgress * 100}%` }]} />
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Grid Content */}
@@ -861,7 +905,7 @@ export function MemoryLibrarySheetContent({
           <Text style={styles.emptyTitle}>No files yet</Text>
           <Text style={styles.emptyBody}>
             {libraryTab === 'QUIZ'
-              ? 'Tap + to add a clear face photo or audio file, then enter the person details.'
+              ? `Tap + to add clear face photos. The quiz needs at least ${MIN_QUIZ_PHOTOS} photos before it can start, and you can add more anytime.`
               : 'Tap + to add a memory photo, video, or note.'}
           </Text>
         </View>
@@ -1059,7 +1103,7 @@ function MemoryTile({ item, tileSize = TILE_SIZE, seamless = false, editMode, is
   const tileStyle = { width: tileSize, height: tileSize };
   const baseTileStyle = [styles.tile, tileStyle, seamless && styles.tileSeamless];
   if (item.status !== 'READY') return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={themeColors.secondary} /><Text style={styles.tilePendingText}>Uploading…</Text></View>);
-  if (item.urlError) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" /><Text style={styles.tilePendingText}>Error</Text></View>);
+  if (item.urlError) return (<View style={[baseTileStyle, styles.tilePlaceholder, styles.tileErrorPlaceholder]}><AppIcon iosName="exclamationmark.triangle" androidFallback="!" size={18} color="#C0392B" /><Text style={styles.tilePendingText} numberOfLines={3}>{item.urlError}</Text></View>);
   if (!item.signedUrl) return (<View style={[baseTileStyle, styles.tilePlaceholder]}><ActivityIndicator size="small" color={themeColors.secondary} /></View>);
 
   const isSelectableInEdit = editMode && (isPrimary || canDelete);
@@ -1241,6 +1285,11 @@ const getStyles = (isDark: boolean) => {
 
   uploadBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: themeColors.secondary, paddingVertical: 9, borderRadius: 12, marginTop: 12 },
   uploadBannerText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: themeColors.neutralLight },
+  requirementBanner: { gap: 8, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(45,79,62,0.08)'), borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.14)'), paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, marginTop: 12 },
+  requirementHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  requirementText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 12, lineHeight: 17, color: themeColors.textDark },
+  requirementProgressTrack: { height: 6, borderRadius: 999, overflow: 'hidden', backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.12)') },
+  requirementProgressFill: { height: '100%', borderRadius: 999, backgroundColor: themeColors.secondary },
 
   grid: { paddingHorizontal: GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
   memoryGrid: { paddingHorizontal: MEMORY_GRID_PADDING, paddingTop: 4, paddingBottom: 100 },
@@ -1252,7 +1301,8 @@ const getStyles = (isDark: boolean) => {
   tileSelected: { opacity: 0.78, transform: [{ scale: 0.94 }] },
   tileDisabled: { opacity: 0.38 },
   tilePlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 4 },
-  tilePendingText: { fontFamily: typography.fontFamily.regular, fontSize: 10, color: themeColors.textMuted },
+  tileErrorPlaceholder: { padding: 8 },
+  tilePendingText: { fontFamily: typography.fontFamily.regular, fontSize: 10, lineHeight: 13, color: themeColors.textMuted, textAlign: 'center' },
   tileImage: { width: '100%', height: '100%', objectFit: 'cover' },
   kindBadge: { position: 'absolute', bottom: 5, right: 5, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.45)'), borderRadius: 6, paddingHorizontal: 5, paddingVertical: 3 },
   selectOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'flex-end', padding: 6 },
