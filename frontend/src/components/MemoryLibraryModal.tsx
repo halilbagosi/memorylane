@@ -432,7 +432,7 @@ export function MemoryLibrarySheetContent({
         const r = await DocumentPicker.getDocumentAsync({
           type: libraryTab === 'QUIZ' ? 'audio/*' : '*/*',
           copyToCacheDirectory: true,
-          multiple: true,
+          multiple: false,
         });
         if (r.canceled) return;
         assets = r.assets.map((a) => ({ uri: a.uri, mimeType: a.mimeType }));
@@ -459,8 +459,8 @@ export function MemoryLibrarySheetContent({
           }
           result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: libraryTab === 'QUIZ' ? ['images'] : ImagePicker.MediaTypeOptions.All,
-            allowsMultipleSelection: true,
-            selectionLimit: 20,
+            allowsMultipleSelection: false,
+            selectionLimit: 1,
             quality: 0.8,
           });
         }

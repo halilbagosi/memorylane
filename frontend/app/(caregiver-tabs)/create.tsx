@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   LayoutAnimation,
   UIManager,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -118,6 +119,11 @@ export default function CreateTab() {
     () => patients.find((patient) => patient.id === selectedPatientId) ?? null,
     [patients, selectedPatientId],
   );
+  const showNoPatientsEmpty = !isLoading && patients.length === 0;
+  const noPatientsEmptyTitle = activeSection === 'library' ? 'Add patient first' : 'No patients yet';
+  const noPatientsEmptyBody = activeSection === 'library'
+    ? 'Create or join a patient profile before opening the media library.'
+    : 'Add a patient profile or join an existing one before creating quiz sets and media libraries.';
   const planCanUseAiAdaptive = getPlanLimits(isSubscribed).aiDifficultyEnabled;
   const canUseAiAdaptive = planCanUseAiAdaptive || aiAdaptiveEnabled;
 
@@ -306,6 +312,11 @@ export default function CreateTab() {
 
   const handleSectionChange = (section: 'builder' | 'library') => {
     if (section === 'library' && !selectedPatient) {
+      if (patients.length === 0) {
+        animate();
+        setActiveSection(section);
+        return;
+      }
       showDialog('Select Patient', 'Please select a patient first to open the media library.', [
         { label: 'OK', onPress: dismissDialog },
       ]);
@@ -348,7 +359,42 @@ export default function CreateTab() {
         </View>
       </View>
 
-      {activeSection === 'builder' ? (
+      {isLoading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="small" color={themeColors.secondary} />
+          <Text style={styles.loadingText}>Loading patients...</Text>
+        </View>
+      ) : showNoPatientsEmpty ? (
+        <ScrollView
+          contentContainerStyle={styles.emptyContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} />}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <AppIcon iosName="person.crop.circle.badge.plus" androidFallback="+" size={34} color={themeColors.secondary} />
+            </View>
+            <Text style={styles.emptyTitle}>{noPatientsEmptyTitle}</Text>
+            <Text style={styles.emptyDesc}>
+              {noPatientsEmptyBody}
+            </Text>
+            <View style={styles.emptyActions}>
+              <AdaptiveButton
+                title="Add Patient"
+                onPress={() => router.push('/add-patient')}
+                style={styles.emptyPrimaryButton}
+              />
+              <TouchableOpacity
+                style={styles.emptySecondaryButton}
+                onPress={() => router.push('/join-patient')}
+                activeOpacity={0.78}
+              >
+                <Text style={styles.emptySecondaryText}>Join Existing Patient</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      ) : activeSection === 'builder' ? (
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} />}
@@ -720,6 +766,73 @@ const getStyles = (isDark: boolean) => {
     paddingHorizontal: 24,
     paddingBottom: 100,
     gap: 12,
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingBottom: 96,
+  },
+  loadingText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textMuted,
+  },
+  emptyContent: {
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingBottom: 96,
+    justifyContent: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  emptyTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: themeColors.textDark,
+    textAlign: 'center',
+  },
+  emptyDesc: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: themeColors.textMuted,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  emptyActions: {
+    width: '100%',
+    gap: 10,
+    marginTop: 8,
+  },
+  emptyPrimaryButton: {
+    width: '100%',
+  },
+  emptySecondaryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.16)' : 'rgba(45,79,62,0.18)'),
+    backgroundColor: themeColors.neutral,
+  },
+  emptySecondaryText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.secondary,
   },
 
   sectionCard: {

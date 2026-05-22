@@ -66,6 +66,18 @@ services:
         value: /app/uploads/media
         scope: RUN_TIME
         type: GENERAL
+      - key: AWS_REGION
+        value: us-east-1
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AWS_ACCESS_KEY_ID
+        value: REPLACE_ME
+        scope: RUN_TIME
+        type: SECRET
+      - key: AWS_SECRET_ACCESS_KEY
+        value: REPLACE_ME
+        scope: RUN_TIME
+        type: SECRET
 
 databases:
   - name: db
