@@ -55,8 +55,9 @@ function getRawAnswer(media: QuizMediaItem, mode: QuizMode): string | null {
     case 'RELATIONSHIP':
       return media.relationshipType || null;
     case 'AGE': {
-      if (!media.birthYear || !media.eventYear) return null;
-      const age = media.eventYear - media.birthYear;
+      if (!media.birthYear) return null;
+      const referenceYear = media.eventYear ?? new Date().getFullYear();
+      const age = referenceYear - media.birthYear;
       return age > 0 ? String(age) : null;
     }
   }
@@ -133,7 +134,7 @@ function questionText(mode: QuizMode): string {
   switch (mode) {
     case 'NAME': return 'Who is this person?';
     case 'RELATIONSHIP': return 'How do you know this person?';
-    case 'AGE': return 'How old was this person\nin this memory?';
+    case 'AGE': return 'How old is this person?';
   }
 }
 

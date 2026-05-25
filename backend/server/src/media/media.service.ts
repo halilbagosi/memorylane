@@ -347,9 +347,12 @@ export class MediaService {
         eventYear: true,
         isApproximateYear: true,
         memoryCategory: true,
+        storageKey: true,
+        payloadTag: true,
       },
     });
-    return rows.map((r) => ({
+    const availableRows = await this.filterRowsWithExistingPayload(rows);
+    return availableRows.map((r) => ({
       publicId: r.publicId,
       kind: r.kind as MediaKindValue,
       status: r.status as MediaListItem['status'],
@@ -478,6 +481,7 @@ export class MediaService {
       where: { patientId, collection: 'QUIZ', status: 'READY', kind: 'PHOTO' },
       select: {
         publicId: true,
+        status: true,
         firstName: true,
         lastName: true,
         relationshipType: true,
@@ -485,11 +489,14 @@ export class MediaService {
         eventYear: true,
         hint: true,
         nickname: true,
+        storageKey: true,
+        payloadTag: true,
       },
     });
 
+    const availableRows = await this.filterRowsWithExistingPayload(rows);
     const ttl = getSignedUrlTtlSeconds();
-    const media: QuizMediaItem[] = rows.map((r) => {
+    const media: QuizMediaItem[] = availableRows.map((r) => {
       const { token, expiresAt } = this.signedUrls.issue(r.publicId, 'get', ttl);
       return {
         publicId: r.publicId,
@@ -547,6 +554,7 @@ export class MediaService {
       orderBy: [{ eventYear: 'asc' }, { createdAt: 'asc' }],
       select: {
         publicId: true,
+        status: true,
         kind: true,
         contentType: true,
         note: true,
@@ -554,11 +562,14 @@ export class MediaService {
         isApproximateYear: true,
         memoryCategory: true,
         createdAt: true,
+        storageKey: true,
+        payloadTag: true,
       },
     });
 
+    const availableRows = await this.filterRowsWithExistingPayload(rows);
     const ttl = getSignedUrlTtlSeconds();
-    return rows.map((r) => {
+    return availableRows.map((r) => {
       const { token, expiresAt } = this.signedUrls.issue(r.publicId, 'get', ttl);
       return {
         publicId: r.publicId,
@@ -734,6 +745,22 @@ export class MediaService {
 
   private async requireCaregiverMedia(caregiverId: string, publicId: string) {
     return this.requireAccessToMedia(caregiverId, publicId);
+  }
+
+  private async filterRowsWithExistingPayload<T extends {
+    status: string;
+    storageKey: string;
+    payloadTag: string | null;
+  }>(rows: T[]): Promise<T[]> {
+    const checks = await Promise.all(
+      rows.map(async (row) => {
+        if (row.status !== 'READY') return true;
+        if (!row.payloadTag) return false;
+        const head = await this.storage.headObject(row.storageKey).catch(() => ({ exists: false }));
+        return head.exists;
+      }),
+    );
+    return rows.filter((_, index) => checks[index]);
   }
 
   private generateStorageKey(): string {

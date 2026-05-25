@@ -3,6 +3,7 @@ import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -11,9 +12,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { Audio } from 'expo-av';
+import { File } from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
@@ -22,7 +28,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '../../src/components/AppIcon';
 import { ZoomableImage } from '../../src/components/ZoomableImage';
 import { deletePatientInfo, getPatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientTimeline, type TimelineItem } from '../../src/services/media';
+import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
+import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
@@ -79,7 +86,7 @@ export default function ReliveTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<KindFilter>('ALL');
-  const [preview, setPreview] = useState<TimelineItem | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
   const [imageFailedIds, setImageFailedIds] = useState<Set<string>>(new Set());
 
@@ -118,7 +125,10 @@ export default function ReliveTab() {
   const groupedData = useMemo(() => groupByDecade(filteredItems), [filteredItems]);
 
   const filters: KindFilter[] = ['ALL', 'PHOTO', 'VIDEO', 'AUDIO', 'DOCUMENT'];
-  const openPreview = useCallback((item: TimelineItem) => setPreview(item), []);
+  const openPreview = useCallback((item: TimelineItem) => {
+    const idx = filteredItems.findIndex((i) => i.publicId === item.publicId);
+    setPreviewIndex(idx >= 0 ? idx : 0);
+  }, [filteredItems]);
   const handleDebugLogout = useCallback(async () => {
     await deletePatientInfo();
     navigation.dispatch(
@@ -163,6 +173,9 @@ export default function ReliveTab() {
           )}
         </View>
       </View>
+
+      {/* Leave a Memory */}
+      <LeaveMemorySection patient={patient} onMemorySaved={loadTimeline} />
 
       {/* Kind filter chips */}
       <ScrollView
@@ -270,10 +283,11 @@ export default function ReliveTab() {
 
       {/* Preview modal */}
       <MemoryPreviewModal
-        item={preview}
-        imageFailed={preview ? imageFailedIds.has(preview.publicId) : false}
-        onImageError={preview ? () => handleImageLoadError(preview.publicId) : undefined}
-        onClose={() => setPreview(null)}
+        items={filteredItems}
+        initialIndex={previewIndex}
+        imageFailedIds={imageFailedIds}
+        onImageError={handleImageLoadError}
+        onClose={() => setPreviewIndex(null)}
       />
     </View>
   );
@@ -337,28 +351,42 @@ const MemoryTile = memo(function MemoryTile({
 // ── MemoryPreviewModal ────────────────────────────────────────────────────────
 
 function MemoryPreviewModal({
-  item,
-  imageFailed,
+  items,
+  initialIndex,
+  imageFailedIds,
   onImageError,
   onClose,
 }: {
-  item: TimelineItem | null;
-  imageFailed: boolean;
-  onImageError?: () => void;
+  items: TimelineItem[];
+  initialIndex: number | null;
+  imageFailedIds: Set<string>;
+  onImageError: (publicId: string) => void;
   onClose: () => void;
 }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [imageLoading, setImageLoading] = useState(false);
   const { isDark, colors: themeColors } = useTheme();
   const styles = useMemo(() => getStyles(isDark), [isDark]);
 
   useEffect(() => {
-    if (item) setImageLoading(true);
-  }, [item?.publicId]);
+    if (initialIndex !== null) {
+      setCurrentIndex(initialIndex);
+      setImageLoading(true);
+    }
+  }, [initialIndex]);
 
+  useEffect(() => {
+    setImageLoading(true);
+  }, [currentIndex]);
+
+  if (initialIndex === null) return null;
+
+  const item = items[currentIndex];
   if (!item) return null;
 
   const isPhoto = item.kind === 'PHOTO';
   const isVideo = item.kind === 'VIDEO';
+  const imageFailed = imageFailedIds.has(item.publicId);
   const yearLabel = item.eventYear !== null
     ? (item.isApproximateYear ? `~${item.eventYear}` : String(item.eventYear))
     : null;
@@ -366,52 +394,277 @@ function MemoryPreviewModal({
   return (
     <Modal visible animationType="fade" onRequestClose={onClose}>
       <View style={styles.previewScreen}>
-          {(isPhoto || isVideo) && !imageFailed && (
-            <>
-              <ZoomableImage
-                uri={item.downloadUrl}
-                onLoad={() => setImageLoading(false)}
-                onError={() => { setImageLoading(false); onImageError?.(); }}
-              />
-              {imageLoading && (
-                <View style={styles.previewLoadingOverlay}>
-                  <ActivityIndicator size="large" color={themeColors.neutralLight} />
-                </View>
-              )}
-            </>
-          )}
-          {((!isPhoto && !isVideo) || imageFailed) && (
-            <View style={styles.previewFullscreenFallback}>
-              <AppIcon
-                iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
-                androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
-                size={56}
-                color={themeColors.primary}
-              />
-              <Text style={styles.previewKindLabel}>
-                {imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}
-              </Text>
-            </View>
-          )}
-        <TouchableOpacity style={styles.previewBackBtn} onPress={onClose} accessibilityLabel="Back to memories">
-          <AppIcon iosName="chevron.left" androidFallback="Back" size={28} color={themeColors.textDark} />
+        {(isPhoto || isVideo) && !imageFailed ? (
+          <>
+            <ZoomableImage
+              uri={item.downloadUrl}
+              onLoad={() => setImageLoading(false)}
+              onError={() => { setImageLoading(false); onImageError(item.publicId); }}
+            />
+            {imageLoading && (
+              <View style={styles.previewLoadingOverlay}>
+                <ActivityIndicator size="large" color={themeColors.neutralLight} />
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.previewFullscreenFallback}>
+            <AppIcon
+              iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
+              androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
+              size={56}
+              color={themeColors.primary}
+            />
+            <Text style={styles.previewKindLabel}>
+              {imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}
+            </Text>
+          </View>
+        )}
+
+        {/* Close button */}
+        <TouchableOpacity style={styles.previewBackBtn} onPress={onClose} accessibilityLabel="Close">
+          <AppIcon iosName="xmark" androidFallback="✕" size={16} color={themeColors.textDark} />
         </TouchableOpacity>
 
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.72)']}
-            style={styles.previewSheerDetails}
+        {/* Counter */}
+        {items.length > 1 && (
+          <View style={styles.previewCounter}>
+            <Text style={styles.previewCounterText}>{currentIndex + 1} / {items.length}</Text>
+          </View>
+        )}
+
+        {/* Prev button */}
+        {currentIndex > 0 && (
+          <TouchableOpacity
+            style={[styles.previewNavBtn, styles.previewNavLeft]}
+            onPress={() => setCurrentIndex((i) => i - 1)}
+            activeOpacity={0.7}
           >
-            {yearLabel && <Text style={styles.previewYear}>{yearLabel}</Text>}
-            {!!item.memoryCategory && (
-              <Text style={styles.previewCategory}>{item.memoryCategory}</Text>
-            )}
-            {!!item.note && <Text style={styles.previewNote}>{item.note}</Text>}
-          </LinearGradient>
-          <TouchableOpacity style={styles.previewCloseBtn} onPress={onClose}>
-            <AppIcon iosName="xmark" androidFallback="✕" size={14} color={themeColors.textDark} />
+            <AppIcon iosName="chevron.left" androidFallback="<" size={22} color={themeColors.textDark} />
           </TouchableOpacity>
-        </View>
+        )}
+
+        {/* Next button */}
+        {currentIndex < items.length - 1 && (
+          <TouchableOpacity
+            style={[styles.previewNavBtn, styles.previewNavRight]}
+            onPress={() => setCurrentIndex((i) => i + 1)}
+            activeOpacity={0.7}
+          >
+            <AppIcon iosName="chevron.right" androidFallback=">" size={22} color={themeColors.textDark} />
+          </TouchableOpacity>
+        )}
+
+        {/* Bottom metadata */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.72)']}
+          style={styles.previewSheerDetails}
+        >
+          {yearLabel && <Text style={styles.previewYear}>{yearLabel}</Text>}
+          {!!item.memoryCategory && (
+            <Text style={styles.previewCategory}>{item.memoryCategory}</Text>
+          )}
+          {!!item.note && <Text style={styles.previewNote}>{item.note}</Text>}
+        </LinearGradient>
+      </View>
     </Modal>
+  );
+}
+
+// ── LeaveMemorySection ────────────────────────────────────────────────────────
+
+function LeaveMemorySection({
+  patient,
+  onMemorySaved,
+}: {
+  patient: PatientInfo | null;
+  onMemorySaved?: () => void;
+}) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const [newNote, setNewNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+    setNewNote('');
+    setSelectedMedia(null);
+  }, []);
+
+  const handlePickMedia = async (kind: 'PHOTO' | 'VIDEO') => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: kind === 'PHOTO' ? ImagePicker.MediaTypeOptions.Images : ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      setSelectedMedia({ uri: asset.uri, kind, type: asset.mimeType || (kind === 'PHOTO' ? 'image/jpeg' : 'video/mp4') });
+    }
+  };
+
+  const handleStartRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') return;
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setRecording(recording);
+      setIsRecording(true);
+    } catch {
+      Alert.alert('Error', 'Failed to start recording');
+    }
+  };
+
+  const handleStopRecording = async () => {
+    if (!recording) return;
+    setIsRecording(false);
+    await recording.stopAndUnloadAsync();
+    const uri = recording.getURI();
+    if (uri) setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/m4a' });
+    setRecording(null);
+  };
+
+  const handleSaveMemory = async () => {
+    if ((!newNote.trim() && !selectedMedia) || !patient) return;
+    setIsSubmitting(true);
+    try {
+      if (selectedMedia) {
+        const file = new File(selectedMedia.uri);
+        const fileInfo = { exists: file.exists, size: file.size };
+        if (!fileInfo.exists) throw new Error('File not found');
+        await uploadMediaByPatient({
+          patientId: patient.id,
+          kind: selectedMedia.kind,
+          contentType: selectedMedia.type,
+          fileUri: selectedMedia.uri,
+          byteSize: fileInfo.size,
+          metadata: { collection: 'MEMORY', note: newNote.trim() || `Recorded ${selectedMedia.kind.toLowerCase()}` },
+        });
+      } else {
+        await addPatientNote(patient.id, newNote);
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      onMemorySaved?.();
+      handleClose();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const canSubmit = (newNote.trim().length > 0 || !!selectedMedia) && !isSubmitting;
+
+  return (
+    <>
+      {/* Compact trigger row */}
+      <TouchableOpacity style={styles.lmTrigger} onPress={() => setIsOpen(true)} activeOpacity={0.72}>
+        <View style={styles.lmTriggerIcon}>
+          <AppIcon iosName="heart.fill" androidFallback="♥" size={13} color={themeColors.primary} />
+        </View>
+        <Text style={styles.lmTriggerText}>Leave a memory for your family</Text>
+        <AppIcon iosName="pencil" androidFallback="✏" size={15} color={themeColors.textMuted} />
+      </TouchableOpacity>
+
+      {/* Compose modal — centered card */}
+      <Modal visible={isOpen} animationType="fade" transparent onRequestClose={handleClose}>
+        <View style={styles.lmOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={handleClose} activeOpacity={1} />
+          <View style={styles.lmCard}>
+            {/* Header */}
+            <View style={styles.lmCardHeader}>
+              <Text style={styles.lmCardTitle}>{"What's on your mind?"}</Text>
+              <TouchableOpacity style={styles.lmCardClose} onPress={handleClose}>
+                <AppIcon iosName="xmark" androidFallback="✕" size={13} color={themeColors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Note input */}
+            <TextInput
+              style={styles.lmTextInput}
+              placeholder="Write a note or share a memory..."
+              placeholderTextColor={themeColors.textMuted}
+              multiline
+              value={newNote}
+              onChangeText={setNewNote}
+              autoFocus
+            />
+
+            {/* Media preview */}
+            {selectedMedia && (
+              <View style={styles.lmMediaPreview}>
+                {selectedMedia.kind === 'PHOTO' ? (
+                  <Image source={{ uri: selectedMedia.uri }} style={styles.lmPreviewImage} />
+                ) : (
+                  <View style={styles.lmMediaPlaceholder}>
+                    <AppIcon
+                      iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
+                      androidFallback="M"
+                      size={20}
+                      color={themeColors.primary}
+                    />
+                    <Text style={styles.lmMediaPlaceholderText}>
+                      {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity style={styles.lmRemoveMedia} onPress={() => setSelectedMedia(null)}>
+                  <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={22} color="#E74C3C" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Labeled media buttons */}
+            <View style={styles.lmMediaBtns}>
+              <TouchableOpacity style={styles.lmMediaBtn} onPress={() => handlePickMedia('PHOTO')} activeOpacity={0.75}>
+                <AppIcon iosName="camera.fill" androidFallback="P" size={18} color={themeColors.primary} />
+                <Text style={styles.lmMediaBtnText}>Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.lmMediaBtn} onPress={() => handlePickMedia('VIDEO')} activeOpacity={0.75}>
+                <AppIcon iosName="video.fill" androidFallback="V" size={18} color={themeColors.primary} />
+                <Text style={styles.lmMediaBtnText}>Video</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.lmMediaBtn, isRecording && styles.lmRecordingBtn]}
+                onPressIn={handleStartRecording}
+                onPressOut={handleStopRecording}
+                activeOpacity={0.75}
+              >
+                <AppIcon
+                  iosName={isRecording ? 'stop.fill' : 'mic.fill'}
+                  androidFallback="A"
+                  size={18}
+                  color={isRecording ? '#fff' : themeColors.primary}
+                />
+                <Text style={[styles.lmMediaBtnText, isRecording && styles.lmRecordingBtnText]}>
+                  {isRecording ? 'Recording...' : 'Voice'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Share button */}
+            <TouchableOpacity
+              style={[styles.lmSaveBtn, !canSubmit && styles.lmSaveBtnDisabled]}
+              onPress={handleSaveMemory}
+              disabled={!canSubmit}
+              activeOpacity={0.8}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.lmSaveBtnText}>Share with Family</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -705,17 +958,192 @@ const getStyles = (isDark: boolean) => {
     lineHeight: 22,
     marginTop: 2,
   },
-  previewCloseBtn: {
-    display: 'none',
+  previewCounter: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.9)'),
+    top: 56,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+    pointerEvents: 'none',
+  },
+  previewCounterText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  previewNavBtn: {
+    position: 'absolute',
+    top: '44%',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.85)'),
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
+  },
+  previewNavLeft: { left: 14 },
+  previewNavRight: { right: 14 },
+
+  // ── LeaveMemorySection styles ─────────────────────────────────────────────
+  lmTrigger: {
+    marginHorizontal: 24,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: themeColors.neutralLight,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.13)'),
+  },
+  lmTriggerIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.1)'),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lmTriggerText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: themeColors.textMuted,
+  },
+  lmOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    paddingHorizontal: 20,
+  },
+  lmCard: {
+    width: '100%',
+    backgroundColor: themeColors.neutralLight,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.15)'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  lmCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  lmCardTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 17,
+    color: themeColors.primary,
+  },
+  lmCardClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lmTextInput: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 16,
+    color: themeColors.textDark,
+    minHeight: 88,
+    textAlignVertical: 'top',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
+    padding: 12,
+    marginBottom: 14,
+    backgroundColor: themeColors.neutral,
+  },
+  lmMediaPreview: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  lmPreviewImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+  },
+  lmMediaPlaceholder: {
+    width: '100%',
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: themeColors.neutral,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lmMediaPlaceholderText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: themeColors.primary,
+  },
+  lmRemoveMedia: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    backgroundColor: (isDark ? themeColors.neutral : '#fff'),
+    borderRadius: 12,
+  },
+  lmMediaBtns: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  lmMediaBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: themeColors.neutral,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.2)'),
+  },
+  lmMediaBtnText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.primary,
+  },
+  lmRecordingBtn: {
+    backgroundColor: '#E74C3C',
+    borderColor: '#E74C3C',
+  },
+  lmRecordingBtnText: {
+    color: '#fff',
+  },
+  lmSaveBtn: {
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  lmSaveBtnDisabled: {
+    opacity: 0.45,
+  },
+  lmSaveBtnText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.neutralLight,
   },
 });
 };

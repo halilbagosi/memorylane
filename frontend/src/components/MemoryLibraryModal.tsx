@@ -48,6 +48,8 @@ import {
 
 const isIOS = Platform.OS === 'ios';
 
+const capFirst = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -164,6 +166,11 @@ export function MemoryLibrarySheetContent({
   const [editIsApproximate, setEditIsApproximate] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [imageRetryIds, setImageRetryIds] = useState<Set<string>>(new Set());
+  const itemsRef = useRef<MediaTileVM[]>([]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const [mlDialog, setMlDialog] = useState<{
     visible: boolean;
@@ -181,29 +188,62 @@ export function MemoryLibrarySheetContent({
   };
   const dismissMlDialog = () => setMlDialog((prev) => ({ ...prev, visible: false }));
 
+  const hydrateMediaUrls = useCallback(async (data: MediaListItem[]): Promise<MediaTileVM[]> => {
+    const urlMap = new Map(itemsRef.current.map((m) => [m.publicId, m]));
+    const now = Date.now();
+    const hydrated = await Promise.all(
+      data.map(async (item): Promise<MediaTileVM | null> => {
+        const existing = urlMap.get(item.publicId);
+        const hasFreshUrl =
+          existing?.signedUrl &&
+          existing.signedUrlExpiresAt &&
+          existing.signedUrlExpiresAt > now + 5_000;
+
+        if (hasFreshUrl) {
+          return { ...item, signedUrl: existing.signedUrl, signedUrlExpiresAt: existing.signedUrlExpiresAt };
+        }
+        if (item.status !== 'READY') return item;
+
+        try {
+          const access = await getAccessUrl(item.publicId);
+          const expiresAt = new Date(access.expiresAt).getTime();
+          if (item.kind === 'PHOTO') {
+            const response = await fetch(access.url).catch(() => null);
+            if (!response?.ok) return null;
+          }
+          return {
+            ...item,
+            signedUrl: access.url,
+            signedUrlExpiresAt: expiresAt,
+            loadingUrl: false,
+            urlError: undefined,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    return hydrated.filter((item): item is MediaTileVM => item !== null);
+  }, []);
+
   const loadMedia = useCallback(async () => {
     if (!patientId) return;
     setError(null);
     try {
       const data = await listPatientMedia(patientId);
-      setItems((prev) => {
-        const urlMap = new Map(prev.map((m) => [m.publicId, m]));
-        const now = Date.now();
-        return data.map((d) => {
-          const ex = urlMap.get(d.publicId);
-          const hasFreshUrl = ex?.signedUrl && ex.signedUrlExpiresAt && ex.signedUrlExpiresAt > now + 5_000;
-          return hasFreshUrl
-            ? { ...d, signedUrl: ex.signedUrl, signedUrlExpiresAt: ex.signedUrlExpiresAt }
-            : d;
-        });
-      });
+      const hydrated = await hydrateMediaUrls(data);
+      setItems(hydrated);
+      return hydrated;
     } catch (e: any) {
       setError(e?.message ?? 'Could not load media.');
+      return null;
     }
-  }, [patientId]);
+  }, [hydrateMediaUrls, patientId]);
 
   useEffect(() => {
     setLoading(true);
+    setItems([]);
     setEditMode(false);
     setSelected(new Set());
     setLibraryTab('QUIZ');
@@ -268,35 +308,59 @@ export function MemoryLibrarySheetContent({
   };
 
   const handleImageLoadError = useCallback(
-    (publicId: string) => {
-      setImageRetryIds((prev) => {
-        if (prev.has(publicId)) {
-          const failedUrl = items.find((m) => m.publicId === publicId)?.signedUrl;
-          describeImageLoadFailure(failedUrl).then((message) => {
-            setItems((itemsPrev) =>
-              itemsPrev.map((m) =>
-                m.publicId === publicId
-                  ? { ...m, signedUrl: undefined, loadingUrl: false, urlError: message }
-                  : m,
-              ),
-            );
-          });
-          setItems((itemsPrev) =>
-            itemsPrev.map((m) =>
-              m.publicId === publicId
-                ? { ...m, signedUrl: undefined, loadingUrl: true, urlError: undefined }
-                : m,
-            ),
-          );
-          return prev;
-        }
-        const next = new Set(prev);
-        next.add(publicId);
+    async (publicId: string) => {
+      const removeUnavailableItem = () => {
+        setItems((prev) => prev.filter((m) => m.publicId !== publicId));
+        setPreviewItem((prev) => (prev?.publicId === publicId ? null : prev));
+        setSelected((prev) => {
+          if (!prev.has(publicId)) return prev;
+          const next = new Set(prev);
+          next.delete(publicId);
+          return next;
+        });
+        setImageRetryIds((prev) => {
+          const next = new Set(prev);
+          next.delete(publicId);
+          return next;
+        });
+      };
+
+      const hasRetried = imageRetryIds.has(publicId);
+      setImageRetryIds((prev) => new Set(prev).add(publicId));
+
+      const latest = await loadMedia();
+      if (latest && !latest.some((item) => item.publicId === publicId)) {
+        removeUnavailableItem();
+        return;
+      }
+
+      if (!hasRetried) {
         ensureSignedUrl(publicId, true);
-        return next;
-      });
+        return;
+      }
+
+      setItems((itemsPrev) =>
+        itemsPrev.map((m) =>
+          m.publicId === publicId
+            ? { ...m, signedUrl: undefined, loadingUrl: true, urlError: undefined }
+            : m,
+        ),
+      );
+      const failedUrl = items.find((m) => m.publicId === publicId)?.signedUrl;
+      const rawMessage = await describeImageLoadFailure(failedUrl);
+      if (/internal server error|no longer available|missing|unavailable/i.test(rawMessage)) {
+        removeUnavailableItem();
+        return;
+      }
+      setItems((itemsPrev) =>
+        itemsPrev.map((m) =>
+          m.publicId === publicId
+            ? { ...m, signedUrl: undefined, loadingUrl: false, urlError: rawMessage }
+            : m,
+        ),
+      );
     },
-    [ensureSignedUrl, items],
+    [ensureSignedUrl, imageRetryIds, items, loadMedia],
   );
 
   useEffect(() => {
@@ -309,8 +373,13 @@ export function MemoryLibrarySheetContent({
     });
   }, [items]);
 
+  const displayItems = useMemo(
+    () => items.filter((item) => item.status !== 'READY' || item.kind !== 'PHOTO' || !!item.signedUrl),
+    [items],
+  );
+
   const filteredItems = useMemo(() => {
-    const base = items.filter((m) => m.collection === libraryTab && (kindFilter === 'ALL' || m.kind === kindFilter));
+    const base = displayItems.filter((m) => m.collection === libraryTab && (kindFilter === 'ALL' || m.kind === kindFilter));
     if (libraryTab === 'MEMORY') {
       return [...base].sort((a, b) => {
         const yearA = a.eventYear ?? new Date(a.createdAt).getFullYear();
@@ -320,10 +389,10 @@ export function MemoryLibrarySheetContent({
       });
     }
     return base;
-  }, [items, kindFilter, libraryTab]);
+  }, [displayItems, kindFilter, libraryTab]);
   const quizReadyPhotoCount = useMemo(
-    () => items.filter((item) => item.collection === 'QUIZ' && item.kind === 'PHOTO' && item.status === 'READY').length,
-    [items],
+    () => displayItems.filter((item) => item.collection === 'QUIZ' && item.kind === 'PHOTO' && item.status === 'READY').length,
+    [displayItems],
   );
   const hasEnoughQuizPhotos = quizReadyPhotoCount >= MIN_QUIZ_PHOTOS;
   const quizPhotoProgress = Math.min(1, quizReadyPhotoCount / MIN_QUIZ_PHOTOS);
@@ -1029,11 +1098,11 @@ export function MemoryLibrarySheetContent({
             <View style={styles.quizModal}>
               <Text style={styles.quizModalTitle}>Add Quiz Info</Text>
               <Text style={styles.quizModalBody}>Add who is in the photo or speaking in the audio before saving this quiz media.</Text>
-              <TextInput style={styles.detailInput} value={quizFirstName} onChangeText={setQuizFirstName} placeholder="Person name" placeholderTextColor={themeColors.textMuted} />
-              <TextInput style={styles.detailInput} value={quizRelationship} onChangeText={setQuizRelationship} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={styles.detailInput} value={quizFirstName} onChangeText={t => setQuizFirstName(capFirst(t))} placeholder="Person name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" />
+              <TextInput style={styles.detailInput} value={quizRelationship} onChangeText={t => setQuizRelationship(capFirst(t))} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} autoCapitalize="sentences" />
               <TextInput style={styles.detailInput} value={quizBirthYear} onChangeText={setQuizBirthYear} placeholder="Birth year" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
-              <TextInput style={[styles.detailInput, styles.noteInput]} value={quizHint} onChangeText={setQuizHint} placeholder="Patient Hint (optional)" placeholderTextColor={themeColors.textMuted} multiline />
-              <TextInput style={styles.detailInput} value={quizNickname} onChangeText={setQuizNickname} placeholder="Personal nickname (optional)" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={quizHint} onChangeText={t => setQuizHint(capFirst(t))} placeholder="Patient Hint (optional)" placeholderTextColor={themeColors.textMuted} multiline autoCapitalize="sentences" />
+              <TextInput style={styles.detailInput} value={quizNickname} onChangeText={t => setQuizNickname(capFirst(t))} placeholder="Personal nickname (optional)" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" />
               
               {pendingQuizAssets.some((asset) => inferMime(asset).startsWith('image/')) && (
                 <View style={[styles.verificationBox, quizPhotoVerified && styles.verificationBoxSuccess]}>
@@ -1058,17 +1127,19 @@ export function MemoryLibrarySheetContent({
           <View style={styles.quizModal}>
             <Text style={styles.quizModalTitle}>Memory Details</Text>
             <Text style={styles.quizModalBody}>Add a note and optionally the year this memory took place.</Text>
-            <TextInput style={[styles.detailInput, styles.noteInput]} value={memoryNote} onChangeText={setMemoryNote} placeholder="Describe this memory" placeholderTextColor={themeColors.textMuted} multiline />
+            <TextInput style={[styles.detailInput, styles.noteInput]} value={memoryNote} onChangeText={t => setMemoryNote(capFirst(t))} placeholder="Describe this memory" placeholderTextColor={themeColors.textMuted} multiline autoCapitalize="sentences" />
             <TextInput style={styles.detailInput} value={memoryYear} onChangeText={setMemoryYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
-            <TouchableOpacity style={styles.approxRow} onPress={() => setMemoryIsApproximate((v) => !v)} activeOpacity={0.7}>
-              <View style={[styles.approxCheckbox, memoryIsApproximate && styles.approxCheckboxActive]}>
-                {memoryIsApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
+            <View style={styles.memoryDetailsFooterRow}>
+              <TouchableOpacity style={[styles.approxRow, styles.memoryApproxRow]} onPress={() => setMemoryIsApproximate((v) => !v)} activeOpacity={0.7}>
+                <View style={[styles.approxCheckbox, memoryIsApproximate && styles.approxCheckboxActive]}>
+                  {memoryIsApproximate && <Text style={styles.approxCheckmark}>✓</Text>}
+                </View>
+                <Text style={styles.approxLabel}>Approximate year</Text>
+              </TouchableOpacity>
+              <View style={styles.memoryDetailsActions}>
+                <TouchableOpacity style={[styles.quizCancelBtn, styles.memoryCancelBtn]} onPress={() => { setMemoryDetailsVisible(false); setPendingMemoryAssets([]); setMemoryNote(''); setMemoryYear(''); setMemoryIsApproximate(false); }}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.quizSaveBtn, styles.memorySaveBtn]} onPress={saveMemoryDetailsAndUpload}><Text style={styles.quizSaveText}>Save Changes</Text></TouchableOpacity>
               </View>
-              <Text style={styles.approxLabel}>Approximate year</Text>
-            </TouchableOpacity>
-            <View style={styles.quizModalActions}>
-              <TouchableOpacity style={styles.quizCancelBtn} onPress={() => { setMemoryDetailsVisible(false); setPendingMemoryAssets([]); setMemoryNote(''); setMemoryYear(''); setMemoryIsApproximate(false); }}><Text style={styles.quizCancelText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.quizSaveBtn} onPress={saveMemoryDetailsAndUpload}><Text style={styles.quizSaveText}>Save Changes</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1076,7 +1147,7 @@ export function MemoryLibrarySheetContent({
 
       <MediaDetailsModal item={previewItem?.kind !== 'PHOTO' && previewItem?.kind !== 'VIDEO' ? previewItem : null} onClose={() => setPreviewItem(null)} onEdit={openMetadataEdit} />
       <MemoryFullscreenPreviewModal item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null} onClose={() => setPreviewItem(null)} onEdit={openMetadataEdit} />
-      <EditMetadataModal item={editingMedia} firstName={editFirstName} relationship={editRelationship} birthYear={editBirthYear} hint={editHint} nickname={editNickname} note={editNote} year={editYear} isApproximate={editIsApproximate} saving={savingEdit} onChangeFirstName={setEditFirstName} onChangeRelationship={setEditRelationship} onChangeBirthYear={setEditBirthYear} onChangeHint={setEditHint} onChangeNickname={setEditNickname} onChangeNote={setEditNote} onChangeYear={setEditYear} onToggleApproximate={() => setEditIsApproximate((v) => !v)} onClose={() => setEditingMedia(null)} onSave={saveMetadataEdit} />
+      <EditMetadataModal item={editingMedia} firstName={editFirstName} relationship={editRelationship} birthYear={editBirthYear} hint={editHint} nickname={editNickname} note={editNote} year={editYear} isApproximate={editIsApproximate} saving={savingEdit} onChangeFirstName={(t: string) => setEditFirstName(capFirst(t))} onChangeRelationship={(t: string) => setEditRelationship(capFirst(t))} onChangeBirthYear={setEditBirthYear} onChangeHint={(t: string) => setEditHint(capFirst(t))} onChangeNickname={(t: string) => setEditNickname(capFirst(t))} onChangeNote={(t: string) => setEditNote(capFirst(t))} onChangeYear={setEditYear} onToggleApproximate={() => setEditIsApproximate((v) => !v)} onClose={() => setEditingMedia(null)} onSave={saveMetadataEdit} />
       <M3Dialog visible={mlDialog.visible} title={mlDialog.title} body={mlDialog.body} actions={mlDialog.actions} onDismiss={dismissMlDialog} />
     </View>
   );
@@ -1230,15 +1301,15 @@ function EditMetadataModal({ item, firstName, relationship, birthYear, hint, nic
           <Text style={styles.quizModalTitle}>Edit Details</Text>
           {item?.collection === 'QUIZ' ? (
             <>
-              <TextInput style={styles.detailInput} value={firstName} onChangeText={onChangeFirstName} placeholder="Name" placeholderTextColor={themeColors.textMuted} />
-              <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={styles.detailInput} value={firstName} onChangeText={onChangeFirstName} placeholder="Name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" />
+              <TextInput style={styles.detailInput} value={relationship} onChangeText={onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} autoCapitalize="sentences" />
               <TextInput style={styles.detailInput} value={birthYear} onChangeText={onChangeBirthYear} placeholder="Birth year" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
-              <TextInput style={[styles.detailInput, styles.noteInput]} value={hint} onChangeText={onChangeHint} placeholder="Patient Hint (optional)" placeholderTextColor={themeColors.textMuted} multiline />
-              <TextInput style={styles.detailInput} value={nickname} onChangeText={onChangeNickname} placeholder="Personal nickname (optional)" placeholderTextColor={themeColors.textMuted} />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={hint} onChangeText={onChangeHint} placeholder="Patient Hint (optional)" placeholderTextColor={themeColors.textMuted} multiline autoCapitalize="sentences" />
+              <TextInput style={styles.detailInput} value={nickname} onChangeText={onChangeNickname} placeholder="Personal nickname (optional)" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" />
             </>
           ) : (
             <>
-              <TextInput style={[styles.detailInput, styles.noteInput]} value={note} onChangeText={onChangeNote} placeholder="Descriptive note" placeholderTextColor={themeColors.textMuted} multiline />
+              <TextInput style={[styles.detailInput, styles.noteInput]} value={note} onChangeText={onChangeNote} placeholder="Descriptive note" placeholderTextColor={themeColors.textMuted} multiline autoCapitalize="sentences" />
               <TextInput style={styles.detailInput} value={year} onChangeText={onChangeYear} placeholder="Year (e.g. 1985) — optional" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} />
               <TouchableOpacity style={styles.approxRow} onPress={onToggleApproximate} activeOpacity={0.7}>
                 <View style={[styles.approxCheckbox, isApproximate && styles.approxCheckboxActive]}>{isApproximate && <Text style={styles.approxCheckmark}>✓</Text>}</View>
@@ -1357,6 +1428,11 @@ const getStyles = (isDark: boolean) => {
   quizCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.textMuted },
   quizSaveBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: themeColors.secondary },
   quizSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.neutralLight },
+  memoryDetailsFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  memoryApproxRow: { flex: 1, minWidth: 0 },
+  memoryDetailsActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  memoryCancelBtn: { paddingHorizontal: 8 },
+  memorySaveBtn: { paddingHorizontal: 12 },
 
   yearHeader: { paddingHorizontal: GRID_PADDING, paddingTop: 20, paddingBottom: 8 },
   yearHeaderText: { fontFamily: typography.fontFamily.bold, fontSize: 15, color: themeColors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
