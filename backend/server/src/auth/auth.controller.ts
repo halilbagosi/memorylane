@@ -62,6 +62,12 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('premium/cancel')
+  cancelPremium(@Request() req: any) {
+    return this.authService.cancelPremium(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('change-password')
   changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(req.user.userId, dto);

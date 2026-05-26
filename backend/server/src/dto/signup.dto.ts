@@ -1,5 +1,4 @@
 import {
-  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -49,7 +48,4 @@ export class SignupDto {
   @IsString()
   deviceLabel?: string;
 
-  @IsOptional()
-  @IsBoolean()
-  isSubscribed?: boolean;
 }

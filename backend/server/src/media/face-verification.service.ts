@@ -9,6 +9,7 @@ import {
   ResourceAlreadyExistsException,
   SearchFacesByImageCommand,
 } from '@aws-sdk/client-rekognition';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import sharp from 'sharp';
 
 export type QuizPhotoVerificationCode =
@@ -60,7 +61,12 @@ const FACE_MATCH_THRESHOLD = Number(process.env.QUIZ_FACE_MATCH_THRESHOLD) || 90
 export class FaceVerificationService {
   private readonly logger = new Logger(FaceVerificationService.name);
   private readonly rekognition = new RekognitionClient({
-    region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+    region: process.env.REKOGNITION_AWS_REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.REKOGNITION_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.REKOGNITION_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || '',
+    },
+    requestHandler: new NodeHttpHandler({ connectionTimeout: 10000, socketTimeout: 10000 }),
   });
 
   async validateQuizPhoto(imageBuffer: Buffer): Promise<QuizPhotoVerificationResult> {

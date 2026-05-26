@@ -258,7 +258,7 @@ export class AuthService {
   }
 
   async signup(signupDto: SignupDto) {
-    const { name, surname, email, password, avatarUrl, deviceLabel, isSubscribed } = signupDto;
+    const { name, surname, email, password, avatarUrl, deviceLabel } = signupDto;
 
     const existing = await this.prisma.caregiver.findUnique({ where: { email } });
     if (existing) throw new ConflictException('Email already exists');
@@ -266,7 +266,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await this.prisma.caregiver.create({
-      data: { name, surname, email, passwordHash: hashedPassword, avatarUrl: avatarUrl ?? null, isSubscribed: isSubscribed ?? false },
+      data: { name, surname, email, passwordHash: hashedPassword, avatarUrl: avatarUrl ?? null },
     });
 
     await this.prisma.passwordHistory.create({
@@ -352,7 +352,7 @@ export class AuthService {
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.surname !== undefined) data.surname = dto.surname;
     if ('avatarUrl' in dto) data.avatarUrl = dto.avatarUrl ?? null;
-    if (dto.isSubscribed !== undefined) data.isSubscribed = dto.isSubscribed;
+    if (dto.isSubscribed === false) data.isSubscribed = false;
     if (dto.insightNotificationsEnabled !== undefined) data.insightNotificationsEnabled = dto.insightNotificationsEnabled;
 
     const caregiver = await this.prisma.caregiver.update({
@@ -368,6 +368,27 @@ export class AuthService {
       avatarUrl: caregiver.avatarUrl,
       isSubscribed: caregiver.isSubscribed,
       insightNotificationsEnabled: (caregiver as any).insightNotificationsEnabled ?? true,
+    };
+  }
+
+  async cancelPremium(caregiverId: string) {
+    const caregiver = await this.prisma.caregiver.update({
+      where: { id: caregiverId },
+      data: { isSubscribed: false },
+    });
+
+    return {
+      message: 'Premium cancelled',
+      caregiver: {
+        id: caregiver.id,
+        name: caregiver.name,
+        surname: caregiver.surname,
+        email: caregiver.email,
+        avatarUrl: caregiver.avatarUrl,
+        status: caregiver.status,
+        isSubscribed: caregiver.isSubscribed,
+        insightNotificationsEnabled: (caregiver as any).insightNotificationsEnabled ?? true,
+      },
     };
   }
 

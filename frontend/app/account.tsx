@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch,
   ActivityIndicator, Platform, Modal, TextInput, Image, Alert, Linking,
-  KeyboardAvoidingView,
+  Keyboard, KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useNavigation, CommonActions } from '@react-navigation/native';
@@ -68,6 +68,15 @@ export default function AccountScreen() {
   const [profile, setProfile] = useState<CaregiverInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentCardNumber, setPaymentCardNumber] = useState('');
+  const [paymentExpiry, setPaymentExpiry] = useState('');
+  const [paymentCvc, setPaymentCvc] = useState('');
+  const [paymentName, setPaymentName] = useState('');
+  const [paymentCountry, setPaymentCountry] = useState('');
+  const [paymentPostalCode, setPaymentPostalCode] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   // Edit name modal
   const [editNameVisible, setEditNameVisible] = useState(false);
@@ -618,29 +627,126 @@ export default function AccountScreen() {
     }
   };
 
-  // ─── Subscription toggle ───────────────────────────────────────────────────
+  // ─── Subscription payment ──────────────────────────────────────────────────
 
-  const toggleSubscription = async (value: boolean) => {
+  const openPaymentModal = () => {
+    setPaymentCardNumber('');
+    setPaymentExpiry('');
+    setPaymentCvc('');
+    setPaymentName('');
+    setPaymentCountry('');
+    setPaymentPostalCode('');
+    setPaymentError('');
+    setPaymentModalVisible(true);
+  };
+
+  const formatCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 16);
+    return digits.replace(/(.{4})/g, '$1 ').trim();
+  };
+
+  const formatExpiry = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  };
+
+  const fillTestCard = (cardNumber: string) => {
+    setPaymentCardNumber(formatCardNumber(cardNumber));
+    setPaymentExpiry('12/30');
+    setPaymentCvc('123');
+    setPaymentCountry('');
+    setPaymentError('');
+  };
+
+  const submitPayment = async () => {
     if (!token) return;
-    // Optimistic update
-    setProfile(prev => prev ? { ...prev, isSubscribed: value } : prev);
+    setIsUpgrading(true);
+    setPaymentError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
-        method: 'PATCH',
+      const paymentRes = await fetch(`${API_BASE_URL}/payments/premium/simulate`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ isSubscribed: value }),
+        body: JSON.stringify({
+          cardNumber: paymentCardNumber,
+          expiry: paymentExpiry,
+          cvc: paymentCvc,
+          cardholderName: paymentName,
+          billingCountry: paymentCountry,
+          postalCode: paymentPostalCode,
+        }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(prev => prev ? { ...prev, ...data } : prev);
-        await saveCaregiverInfo({ ...profile!, isSubscribed: value });
-      } else {
-        // Revert on failure
-        setProfile(prev => prev ? { ...prev, isSubscribed: !value } : prev);
+
+      const paymentData = await paymentRes.json();
+      if (!paymentRes.ok) {
+        throw new Error(Array.isArray(paymentData.message) ? paymentData.message.join('\n') : (paymentData.message ?? 'Payment declined'));
       }
-    } catch {
-      setProfile(prev => prev ? { ...prev, isSubscribed: !value } : prev);
+
+      if (paymentData.alreadySubscribed) {
+        await loadProfile(token);
+        setPaymentModalVisible(false);
+        return;
+      }
+
+      setProfile(paymentData.caregiver);
+      await saveCaregiverInfo(paymentData.caregiver);
+      setPaymentModalVisible(false);
+      showDialog('Premium Activated', 'Your Premium plan is now active.', [
+        { label: 'OK', onPress: dismissDialog },
+      ]);
+    } catch (error: any) {
+      setPaymentError(error?.message ?? 'Could not complete the payment.');
+    } finally {
+      setIsUpgrading(false);
     }
+  };
+
+  const cancelPremium = () => {
+    if (!token) return;
+    showDialog(
+      'Cancel Premium',
+      'Your account will return to the Free plan and premium-only features will be locked.',
+      [
+        { label: 'Keep Premium', onPress: dismissDialog },
+        {
+          label: 'Cancel Premium',
+          destructive: true,
+          onPress: async () => {
+            dismissDialog();
+            setIsUpgrading(true);
+            try {
+              let res = await fetch(`${API_BASE_URL}/auth/premium/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({}),
+              });
+
+              if (res.status === 404) {
+                res = await fetch(`${API_BASE_URL}/auth/profile`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ isSubscribed: false }),
+                });
+              }
+
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                throw new Error(Array.isArray(data.message) ? data.message.join('\n') : (data.message ?? `Could not cancel Premium (${res.status})`));
+              }
+              const updatedCaregiver = data.caregiver ?? data;
+              setProfile(updatedCaregiver);
+              await saveCaregiverInfo(updatedCaregiver);
+            } catch (error: any) {
+              showDialog('Error', error?.message ?? 'Could not cancel Premium. Please try again.', [
+                { label: 'OK', onPress: dismissDialog },
+              ]);
+            } finally {
+              setIsUpgrading(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const toggleInsightNotifications = async (value: boolean) => {
@@ -710,52 +816,109 @@ export default function AccountScreen() {
             </TouchableOpacity>
             <Text style={styles.avatarName}>
               {profile?.name} {profile?.surname}
-              {profile?.isSubscribed && (
-                <Text style={styles.premiumBadge}> Premium</Text>
-              )}
             </Text>
             <Text style={styles.avatarEmail}>{profile?.email}</Text>
           </View>
 
           {/* ── Subscription Plan ── */}
-          <View style={[styles.subscriptionCard, profile?.isSubscribed && styles.subscriptionCardPremium]}>
-            <View style={styles.subscriptionCardHeader}>
-              <View style={[styles.rowIcon, { backgroundColor: profile?.isSubscribed ? 'rgba(255,193,7,0.18)' : 'rgba(0,0,0,0.05)' }]}>
-                <AppIcon iosName="star.fill" androidFallback="⭐" size={18} color={profile?.isSubscribed ? '#FFC107' : themeColors.textMuted} />
+          {profile?.isSubscribed ? (
+            <View style={styles.subscriptionCardPremiumActive}>
+              {/* Gold header row */}
+              <View style={styles.premiumActiveHeader}>
+                <View style={styles.premiumActiveBadge}>
+                  <AppIcon iosName="star.fill" androidFallback="★" size={14} color={isDark ? '#1A1A1A' : '#7A5200'} />
+                  <Text style={styles.premiumActiveBadgeText}>PREMIUM</Text>
+                </View>
+                <View style={styles.premiumActiveStatusPill}>
+                  <View style={styles.premiumActiveDot} />
+                  <Text style={styles.premiumActiveStatusText}>Active</Text>
+                </View>
               </View>
-              <View style={styles.subscriptionCardInfo}>
-                <Text style={styles.subscriptionCardTitle}>{getPlanName(profile?.isSubscribed ?? false)} Plan</Text>
-                <Text style={styles.subscriptionCardSubtitle}>
-                  {profile?.isSubscribed
-                    ? 'Unlimited patients, caregivers, all media types, and AI adaptive difficulty'
-                    : `Up to ${FREE_PLAN_LIMITS.maxPatientsPerCaregiver} patients · Photos only`
-                  }
-                </Text>
-              </View>
-            </View>
-            
-            {!profile?.isSubscribed && (
-              <View style={styles.premiumUpsellContainer}>
-                <Text style={styles.premiumUpsellTitle}>⭐ Upgrade to Premium to unlock:</Text>
-                <Text style={styles.premiumUpsellDesc}>
-                  Unlimited patients, caregivers, video/audio uploads, and AI-powered features.
-                </Text>
-              </View>
-            )}
 
-            <View style={styles.subscriptionToggleRow}>
-              <Text style={styles.subscriptionToggleLabel}>
-                {profile?.isSubscribed ? 'Active' : 'Upgrade'}
-              </Text>
-              <Switch
-                value={profile?.isSubscribed ?? false}
-                onValueChange={toggleSubscription}
-                trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-                thumbColor={profile?.isSubscribed ? themeColors.secondary : isIOS ? '#fff' : '#f4f4f4'}
-                ios_backgroundColor="rgba(0,0,0,0.08)"
-              />
+              {/* Feature list */}
+              <Text style={styles.premiumActiveTitle}>You have full access</Text>
+              {[
+                'Unlimited patients & caregivers',
+                'Video, audio & photo uploads',
+                'AI adaptive difficulty & insights',
+              ].map((feat) => (
+                <View key={feat} style={styles.premiumFeatureRow}>
+                  <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={16} color={isDark ? '#79DBA1' : '#03573a'} />
+                  <Text style={styles.premiumFeatureText}>{feat}</Text>
+                </View>
+              ))}
+
+              {/* Cancel link */}
+              <TouchableOpacity
+                style={styles.cancelPremiumButton}
+                onPress={cancelPremium}
+                disabled={isUpgrading}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelPremiumText}>
+                  {isUpgrading ? 'Cancelling...' : 'Cancel subscription'}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          ) : (
+            <View style={styles.subscriptionCardFree}>
+              {/* Top row: plan name + price */}
+              <View style={styles.freeCardTopRow}>
+                <View style={styles.freePlanChip}>
+                  <AppIcon iosName="person.fill" androidFallback="👤" size={12} color={themeColors.textMuted} />
+                  <Text style={styles.freePlanChipText}>Free plan</Text>
+                </View>
+                <View style={styles.premiumPriceChip}>
+                  <Text style={styles.premiumPriceText}>EUR 9.99</Text>
+                  <Text style={styles.premiumPricePer}>/mo</Text>
+                </View>
+              </View>
+
+              {/* Headline */}
+              <Text style={styles.upgradeHeadline}>Unlock Premium</Text>
+              <Text style={styles.upgradeSubheadline}>
+                Everything you need for full memory care
+              </Text>
+
+              {/* Feature bullets */}
+              {[
+                { icon: 'person.2.fill', fb: '👥', label: 'Unlimited patients & caregivers' },
+                { icon: 'photo.on.rectangle.angled', fb: '🎬', label: 'Video & audio uploads' },
+                { icon: 'brain', fb: '🧠', label: 'AI adaptive quiz difficulty' },
+              ].map((f) => (
+                <View key={f.label} style={styles.upgradeFeatureRow}>
+                  <View style={styles.upgradeFeatureIcon}>
+                    <AppIcon iosName={f.icon as any} androidFallback={f.fb} size={14} color={isDark ? '#F2C66D' : '#8B6200'} />
+                  </View>
+                  <Text style={styles.upgradeFeatureLabel}>{f.label}</Text>
+                </View>
+              ))}
+
+              {/* CTA */}
+              <TouchableOpacity
+                style={[styles.upgradeButton, isUpgrading && styles.upgradeButtonDisabled]}
+                onPress={openPaymentModal}
+                disabled={isUpgrading}
+                activeOpacity={0.82}
+              >
+                {isUpgrading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <View style={styles.upgradeButtonLeft}>
+                      <AppIcon iosName="star.fill" androidFallback="⭐" size={16} color="#FFFFFF" />
+                      <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+                    </View>
+                    <View style={styles.upgradePricePill}>
+                      <Text style={styles.upgradePriceText}>€9.99/mo</Text>
+                    </View>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.upgradeLegal}>Cancel anytime · Secure payment</Text>
+            </View>
+          )}
 
           {/* ── Profile ── */}
           <Text style={styles.sectionLabel}>Personal Information</Text>
@@ -969,15 +1132,161 @@ export default function AccountScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Payment Modal */}
+      <Modal visible={paymentModalVisible} transparent animationType="fade" onRequestClose={() => setPaymentModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.paymentSheetCard}>
+            <View style={styles.paymentSheetHandle} />
+            <TouchableOpacity
+              style={styles.paymentCloseButton}
+              onPress={() => {
+                Keyboard.dismiss();
+                setPaymentModalVisible(false);
+              }}
+              disabled={isUpgrading}
+              accessibilityLabel="Close payment"
+            >
+              <AppIcon iosName="xmark" androidFallback="X" size={17} color={themeColors.textMuted} />
+            </TouchableOpacity>
+            <View style={styles.paymentSheetHeader}>
+              <View style={styles.paymentSheetIcon}>
+                <AppIcon iosName="creditcard.fill" androidFallback="CARD" size={19} color={isDark ? '#17231D' : '#FFFFFF'} />
+              </View>
+              <View style={styles.paymentSheetTitleWrap}>
+                <Text style={styles.paymentSheetTitle}>Secure Payment</Text>
+                <Text style={styles.paymentSheetSubtitle}>MemoryLane Premium membership</Text>
+              </View>
+              <View style={styles.paymentAmountPill}>
+                <Text style={styles.paymentAmountText}>EUR 9.99</Text>
+              </View>
+            </View>
+
+            <Text style={styles.paymentSectionLabel}>CARD DETAILS</Text>
+            <TextInput
+              style={styles.paymentInput}
+              value={paymentName}
+              onChangeText={setPaymentName}
+              placeholder="Cardholder name"
+              placeholderTextColor={themeColors.textMuted}
+              autoCapitalize="words"
+              autoCorrect={false}
+              spellCheck={false}
+              returnKeyType="done"
+              blurOnSubmit
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            <TextInput
+              style={[styles.paymentInput, { marginTop: 10 }]}
+              value={paymentCardNumber}
+              onChangeText={(value) => setPaymentCardNumber(formatCardNumber(value))}
+              placeholder="Card number"
+              placeholderTextColor={themeColors.textMuted}
+              keyboardType="number-pad"
+              maxLength={19}
+              returnKeyType="done"
+              blurOnSubmit
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            <View style={styles.paymentInputRow}>
+              <TextInput
+                style={[styles.paymentInput, styles.paymentHalfInput]}
+                value={paymentExpiry}
+                onChangeText={(value) => setPaymentExpiry(formatExpiry(value))}
+                placeholder="MM / YY"
+                placeholderTextColor={themeColors.textMuted}
+                keyboardType="number-pad"
+                maxLength={5}
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={Keyboard.dismiss}
+              />
+              <TextInput
+                style={[styles.paymentInput, styles.paymentHalfInput]}
+                value={paymentCvc}
+                onChangeText={(value) => setPaymentCvc(value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="CVC"
+                placeholderTextColor={themeColors.textMuted}
+                keyboardType="number-pad"
+                maxLength={4}
+                secureTextEntry
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </View>
+
+            <Text style={[styles.paymentSectionLabel, { marginTop: 14 }]}>BILLING</Text>
+            <View style={styles.paymentInputRow}>
+              <TextInput
+                style={[styles.paymentInput, styles.paymentHalfInput]}
+                value={paymentCountry}
+                onChangeText={setPaymentCountry}
+                placeholder="Country"
+                placeholderTextColor={themeColors.textMuted}
+                autoCapitalize="words"
+                autoCorrect={false}
+                spellCheck={false}
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={Keyboard.dismiss}
+              />
+              <TextInput
+                style={[styles.paymentInput, styles.paymentHalfInput]}
+                value={paymentPostalCode}
+                onChangeText={(value) => setPaymentPostalCode(value.slice(0, 16))}
+                placeholder="Postal code"
+                placeholderTextColor={themeColors.textMuted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                spellCheck={false}
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </View>
+            {paymentError ? (
+              <View style={styles.paymentErrorBox}>
+                <AppIcon iosName="exclamationmark.triangle.fill" androidFallback="!" size={15} color={isDark ? '#FFB4A8' : '#A83A32'} />
+                <Text style={styles.paymentErrorText}>{paymentError}</Text>
+              </View>
+            ) : null}
+            <View style={styles.paymentSheetActions}>
+              <TouchableOpacity
+                style={styles.paymentCancelButton}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPaymentModalVisible(false);
+                }}
+                disabled={isUpgrading}
+              >
+                <Text style={styles.paymentCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.paymentConfirmButton, isUpgrading && styles.upgradeButtonDisabled]} onPress={submitPayment} disabled={isUpgrading}>
+                {isUpgrading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <AppIcon iosName="checkmark.shield.fill" androidFallback="OK" size={17} color="#FFFFFF" />
+                    <Text style={styles.paymentConfirmText}>Pay EUR 9.99</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Edit Name Modal ── */}
       <Modal visible={editNameVisible} transparent animationType="fade" onRequestClose={() => setEditNameVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit Name</Text>
             <TextInput style={styles.modalInput} value={editName} onChangeText={setEditName}
-              placeholder="First name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false} />
+              placeholder="First name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false}
+              returnKeyType="done" blurOnSubmit onSubmitEditing={Keyboard.dismiss} />
             <TextInput style={[styles.modalInput, { marginTop: 10 }]} value={editSurname} onChangeText={setEditSurname}
-              placeholder="Last name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false} />
+              placeholder="Last name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" autoCorrect={false} spellCheck={false}
+              returnKeyType="done" blurOnSubmit onSubmitEditing={Keyboard.dismiss} />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditNameVisible(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -1009,6 +1318,9 @@ export default function AccountScreen() {
                     secureTextEntry={!showEmailPw}
                     autoCorrect={false}
                     spellCheck={false}
+                    returnKeyType="done"
+                    blurOnSubmit
+                    onSubmitEditing={Keyboard.dismiss}
                   />
                   <TouchableOpacity onPress={() => setShowEmailPw(v => !v)} style={styles.modalEyeBtn}>
                     <AppIcon iosName={showEmailPw ? 'eye.slash' : 'eye'} androidFallback={showEmailPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
@@ -1038,6 +1350,9 @@ export default function AccountScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   spellCheck={false}
+                  returnKeyType="done"
+                  blurOnSubmit
+                  onSubmitEditing={Keyboard.dismiss}
                 />
                 {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
                 <View style={styles.modalActions}>
@@ -1063,7 +1378,8 @@ export default function AccountScreen() {
 
             <View style={styles.modalInputRow}>
               <TextInput style={styles.modalInputInner} value={currentPassword} onChangeText={setCurrentPassword}
-                placeholder="Current password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showCurrentPw} autoCorrect={false} spellCheck={false} />
+                placeholder="Current password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showCurrentPw} autoCorrect={false} spellCheck={false}
+                returnKeyType="done" blurOnSubmit onSubmitEditing={Keyboard.dismiss} />
               <TouchableOpacity onPress={() => setShowCurrentPw(v => !v)} style={styles.modalEyeBtn}>
                 <AppIcon iosName={showCurrentPw ? 'eye.slash' : 'eye'} androidFallback={showCurrentPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
               </TouchableOpacity>
@@ -1071,7 +1387,8 @@ export default function AccountScreen() {
 
             <View style={[styles.modalInputRow, { marginTop: 10 }]}>
               <TextInput style={styles.modalInputInner} value={newPassword} onChangeText={setNewPassword}
-                placeholder="New password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showNewPw} autoCorrect={false} spellCheck={false} />
+                placeholder="New password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showNewPw} autoCorrect={false} spellCheck={false}
+                returnKeyType="done" blurOnSubmit onSubmitEditing={Keyboard.dismiss} />
               <TouchableOpacity onPress={() => setShowNewPw(v => !v)} style={styles.modalEyeBtn}>
                 <AppIcon iosName={showNewPw ? 'eye.slash' : 'eye'} androidFallback={showNewPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
               </TouchableOpacity>
@@ -1079,7 +1396,8 @@ export default function AccountScreen() {
 
             <View style={[styles.modalInputRow, { marginTop: 10 }]}>
               <TextInput style={styles.modalInputInner} value={confirmPassword} onChangeText={setConfirmPassword}
-                placeholder="Confirm new password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showConfirmPw} autoCorrect={false} spellCheck={false} />
+                placeholder="Confirm new password" placeholderTextColor={themeColors.textMuted} secureTextEntry={!showConfirmPw} autoCorrect={false} spellCheck={false}
+                returnKeyType="done" blurOnSubmit onSubmitEditing={Keyboard.dismiss} />
               <TouchableOpacity onPress={() => setShowConfirmPw(v => !v)} style={styles.modalEyeBtn}>
                 <AppIcon iosName={showConfirmPw ? 'eye.slash' : 'eye'} androidFallback={showConfirmPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
               </TouchableOpacity>
@@ -1306,17 +1624,399 @@ const getStyles = (isDark: boolean) => {
     alignItems: 'center',
   },
   errorText: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: (isDark ? '#FFB4A8' : '#C0392B'), marginTop: 8 },
+  testCardRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  testCardButton: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.16)' : 'rgba(0,0,0,0.12)'),
+    borderRadius: 12,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.07)' : '#FFFFFF'),
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  testCardDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginBottom: 6,
+  },
+  testCardDotSuccess: {
+    backgroundColor: (isDark ? '#79DBA1' : '#03573A'),
+  },
+  testCardDotDecline: {
+    backgroundColor: (isDark ? '#FFB4A8' : '#A83A32'),
+  },
+  testCardLabel: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: themeColors.textDark,
+  },
+  testCardNumber: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    color: themeColors.textMuted,
+    marginTop: 2,
+  },
+  testCardSection: {
+    marginBottom: 14,
+  },
+  testCardSectionLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: themeColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  paymentSectionLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: themeColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  paymentInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  paymentHalfInput: {
+    flex: 1,
+  },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 20 },
   modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)') },
   modalCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.textMuted },
   modalSaveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: themeColors.secondary },
   modalSaveText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: (isDark ? '#17231D' : '#FFFFFF') },
+  paymentSheetCard: {
+    backgroundColor: themeColors.neutral,
+    borderRadius: 24,
+    padding: 18,
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: themeColors.glassBorder,
+    ...CARD_SHADOW,
+  },
+  paymentSheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: (isDark ? 'rgba(235,247,239,0.22)' : 'rgba(0,0,0,0.18)'),
+    marginBottom: 16,
+  },
+  paymentCloseButton: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: (isDark ? 'rgba(235,247,239,0.08)' : 'rgba(0,0,0,0.05)'),
+    zIndex: 2,
+  },
+  paymentSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  paymentSheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: themeColors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentSheetTitleWrap: {
+    flex: 1,
+  },
+  paymentSheetTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 17,
+    color: themeColors.textDark,
+  },
+  paymentSheetSubtitle: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: themeColors.textMuted,
+    marginTop: 2,
+  },
+  paymentAmountPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: (isDark ? 'rgba(242,198,109,0.14)' : 'rgba(242,198,109,0.22)'),
+  },
+  paymentAmountText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: (isDark ? '#F2C66D' : '#7A5200'),
+  },
+  paymentPreviewCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    backgroundColor: (isDark ? '#17231D' : '#243C2E'),
+  },
+  paymentPreviewTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  paymentPreviewBrand: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  paymentPreviewNumber: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 18,
+    color: '#FFFFFF',
+    letterSpacing: 0,
+    marginBottom: 18,
+  },
+  paymentPreviewBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  paymentPreviewMeta: {
+    flexShrink: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.72)',
+    textTransform: 'uppercase',
+  },
+  paymentInput: {
+    borderWidth: 1,
+    borderColor: (isDark ? 'rgba(235,247,239,0.14)' : 'rgba(0,0,0,0.12)'),
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 48,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: themeColors.textDark,
+    backgroundColor: (isDark ? 'rgba(235,247,239,0.07)' : '#FFFFFF'),
+  },
+  paymentErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
+    backgroundColor: (isDark ? 'rgba(255,180,168,0.10)' : 'rgba(168,58,50,0.08)'),
+  },
+  paymentErrorText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: (isDark ? '#FFB4A8' : '#A83A32'),
+    lineHeight: 17,
+  },
+  paymentSheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  paymentCancelButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: (isDark ? 'rgba(235,247,239,0.08)' : 'rgba(0,0,0,0.05)'),
+  },
+  paymentCancelText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.textMuted,
+  },
+  paymentConfirmButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: themeColors.secondary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  paymentConfirmText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
 
   // Subscription
   premiumBadge: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 13,
     color: (isDark ? '#F2C66D' : '#D4A017'),
+  },
+  subscriptionCardPremiumActive: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    backgroundColor: (isDark ? 'rgba(242,198,109,0.10)' : '#FFF8E1'),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(242,198,109,0.32)' : 'rgba(212,160,23,0.38)'),
+  },
+  premiumActiveHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 10,
+  },
+  premiumActiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: (isDark ? '#F2C66D' : '#FFE29B'),
+  },
+  premiumActiveBadgeText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: (isDark ? '#1A1A1A' : '#7A5200'),
+  },
+  premiumActiveStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: (isDark ? 'rgba(121,219,161,0.14)' : 'rgba(3,87,58,0.10)'),
+  },
+  premiumActiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: (isDark ? '#79DBA1' : '#03573A'),
+  },
+  premiumActiveStatusText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: (isDark ? '#79DBA1' : '#03573A'),
+  },
+  premiumActiveTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 18,
+    color: themeColors.textDark,
+    marginBottom: 10,
+  },
+  premiumFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  premiumFeatureText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textDark,
+  },
+  subscriptionCardFree: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    backgroundColor: themeColors.glassCardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: themeColors.glassBorder,
+    ...CARD_SHADOW,
+  },
+  freeCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 14,
+  },
+  freePlanChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: (isDark ? 'rgba(235,247,239,0.08)' : 'rgba(0,0,0,0.04)'),
+  },
+  freePlanChipText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: themeColors.textMuted,
+  },
+  premiumPriceChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
+  },
+  premiumPriceText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: themeColors.textDark,
+  },
+  premiumPricePer: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: themeColors.textMuted,
+  },
+  upgradeHeadline: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: themeColors.textDark,
+    marginBottom: 4,
+  },
+  upgradeSubheadline: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: themeColors.textMuted,
+    marginBottom: 12,
+  },
+  upgradeFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginTop: 8,
+  },
+  upgradeFeatureIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: (isDark ? 'rgba(242,198,109,0.12)' : 'rgba(242,198,109,0.18)'),
+  },
+  upgradeFeatureLabel: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textDark,
+  },
+  upgradeLegal: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    color: themeColors.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
   },
   subscriptionCard: {
     borderRadius: 16,
@@ -1362,6 +2062,68 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
     color: themeColors.textMuted,
+  },
+  subscriptionStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subscriptionActiveBlock: {
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+  },
+  subscriptionStatusText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: themeColors.secondary,
+  },
+  cancelPremiumButton: {
+    marginTop: 16,
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  cancelPremiumText: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: (isDark ? 'rgba(255,180,168,0.55)' : 'rgba(140,50,40,0.45)'),
+    textDecorationLine: 'underline',
+  },
+  upgradeButton: {
+    minHeight: 52,
+    borderRadius: 14,
+    backgroundColor: themeColors.secondary,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 16,
+  },
+  upgradeButtonLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  upgradeButtonDisabled: {
+    opacity: 0.7,
+  },
+  upgradeButtonText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  upgradePricePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  upgradePriceText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   appearanceRow: {
     flexDirection: 'row',
