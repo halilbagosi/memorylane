@@ -22,7 +22,7 @@ services:
   - name: api
     github:
       repo: bdurmishi23/memorylane
-      branch: main
+      branch: alpha
       deploy_on_push: true
     dockerfile_path: backend/server/Dockerfile
     source_dir: backend/server
@@ -63,11 +63,19 @@ services:
         scope: RUN_TIME
         type: SECRET
       - key: MEDIA_STORAGE_DRIVER
-        value: local
+        value: s3
         scope: RUN_TIME
         type: GENERAL
-      - key: MEDIA_STORAGE_LOCAL_PATH
-        value: /app/uploads/media
+      - key: MEDIA_S3_BUCKET
+        value: REPLACE_IN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEDIA_S3_REGION
+        value: nyc3
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEDIA_S3_ENDPOINT
+        value: https://nyc3.digitaloceanspaces.com
         scope: RUN_TIME
         type: GENERAL
       - key: AWS_REGION

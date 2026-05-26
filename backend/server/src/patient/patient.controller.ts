@@ -54,6 +54,36 @@ export class PatientController {
     return this.patientService.updateDeviceToken(patientId, dto.token, dto.timezone);
   }
 
+  @Post(':id/messages')
+  async createPatientMessage(
+    @Param('id') patientId: string,
+    @Body() body: { content?: string; mediaPublicId?: string | null },
+    @Req() req: any,
+  ) {
+    return this.patientService.createPatientMessage(patientId, body, this.apiBaseUrl(req));
+  }
+
+  @Get(':id/messages')
+  async listPatientMessages(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.listPatientMessagesForPatient(patientId, this.apiBaseUrl(req));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/caregiver-messages')
+  async listPatientMessagesForCaregiver(@Param('id') patientId: string, @Req() req: any) {
+    return this.patientService.listPatientMessagesForCaregiver(patientId, req.user.userId, this.apiBaseUrl(req));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/messages/:messageId/read')
+  async markPatientMessageRead(
+    @Param('id') patientId: string,
+    @Param('messageId') messageId: string,
+    @Req() req: any,
+  ) {
+    return this.patientService.markPatientMessageRead(patientId, messageId, req.user.userId);
+  }
+
   @Get(':id/greeting-spark')
   async getGreetingSpark(@Param('id') patientId: string) {
     return this.patientService.getGreetingSpark(patientId);
@@ -199,6 +229,15 @@ export class PatientController {
   @Delete(':id')
   async remove(@Param('id') patientId: string, @Req() req: any) {
     return this.managementService.deletePatient(patientId, req.user.userId);
+  }
+
+  private apiBaseUrl(req: any): string {
+    const fromEnv = process.env.PUBLIC_API_BASE_URL;
+    if (fromEnv && fromEnv.length > 0) return fromEnv.replace(/\/+$/, '');
+    const proto =
+      (req.headers?.['x-forwarded-proto'] as string | undefined) ?? req.protocol ?? 'http';
+    const host = (req.headers?.['x-forwarded-host'] as string | undefined) ?? req.get?.('host');
+    return `${proto}://${host}`;
   }
 }
 

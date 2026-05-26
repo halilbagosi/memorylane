@@ -6,6 +6,8 @@ import { encrypt, decryptPatientNamesWithOptionalReencrypt } from './encryption.
 import { AiDifficultyService, QuizDifficulty } from './ai-difficulty.service';
 import { getPlanLimits } from '../auth/subscription.constants';
 import { PushService } from '../push/push.service';
+import { SignedUrlService } from '../media/crypto/signed-url.service';
+import { getSignedUrlTtlSeconds, MediaKindValue } from '../media/media.constants';
 
 export type CareLevelValue = 'PREVENTATIVE' | 'DEMENTIA';
 
@@ -16,6 +18,20 @@ export interface QuizSettings {
   careLevel: CareLevelValue;
   aiAdaptiveEnabled: boolean;
   successRate: number;
+}
+
+export interface PatientMessageItem {
+  id: string;
+  content: string;
+  readAt: string | null;
+  createdAt: string;
+  attachment: {
+    publicId: string;
+    kind: MediaKindValue;
+    contentType: string;
+    downloadUrl: string;
+    downloadExpiresAt: string;
+  } | null;
 }
 
 interface QuizResultAttemptInput {
@@ -40,6 +56,7 @@ export class PatientService {
     private prisma: PrismaService,
     private readonly aiDifficulty: AiDifficultyService,
     private readonly pushService: PushService,
+    private readonly signedUrls: SignedUrlService,
   ) {}
 
   async create(createPatientDto: CreatePatientDto, caregiverId: string) {
@@ -258,12 +275,13 @@ export class PatientService {
   async getPairedStatus(patientId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
-      select: { paired: true, biometricRecoveryEnabled: true },
+      select: { paired: true, biometricRecoveryEnabled: true, patientJoinCode: true },
     });
     if (!patient) throw new NotFoundException('Patient not found');
     return {
       paired: patient.paired,
       biometricRecoveryEnabled: patient.biometricRecoveryEnabled,
+      locationShareToken: patient.patientJoinCode,
     };
   }
 
@@ -286,6 +304,102 @@ export class PatientService {
     });
 
     return { message: 'Device token saved' };
+  }
+
+  async createPatientMessage(
+    patientId: string,
+    body: { content?: string; mediaPublicId?: string | null },
+    apiBaseUrl: string,
+  ): Promise<PatientMessageItem> {
+    const content = body.content?.trim();
+    if (!content) throw new BadRequestException('Message content is required');
+    if (content.length > 2000) throw new BadRequestException('Message is too long');
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { paired: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) throw new ForbiddenException('Invalid or unpaired patient');
+
+    let mediaId: string | null = null;
+    if (body.mediaPublicId) {
+      const media = await this.prisma.media.findUnique({
+        where: { publicId: body.mediaPublicId },
+        select: {
+          id: true,
+          patientId: true,
+          caregiverId: true,
+          collection: true,
+          status: true,
+        },
+      });
+      if (!media || media.patientId !== patientId || media.status !== 'READY') {
+        throw new BadRequestException('Attachment is not ready');
+      }
+      if (media.collection !== 'MEMORY' || media.caregiverId !== null) {
+        throw new BadRequestException('Attachment must be a patient-created memory');
+      }
+      mediaId = media.id;
+    }
+
+    const created = await this.prisma.patientMessage.create({
+      data: {
+        patientId,
+        content,
+        mediaId,
+      },
+      include: {
+        media: {
+          select: {
+            publicId: true,
+            kind: true,
+            contentType: true,
+            status: true,
+            payloadTag: true,
+            storageKey: true,
+          },
+        },
+      },
+    });
+
+    return this.toPatientMessageItem(created, apiBaseUrl);
+  }
+
+  async listPatientMessagesForPatient(patientId: string, apiBaseUrl: string): Promise<PatientMessageItem[]> {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { paired: true },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+    if (!patient.paired) throw new ForbiddenException('Invalid or unpaired patient');
+
+    return this.listPatientMessages(patientId, apiBaseUrl);
+  }
+
+  async listPatientMessagesForCaregiver(
+    patientId: string,
+    caregiverId: string,
+    apiBaseUrl: string,
+  ): Promise<PatientMessageItem[]> {
+    await this.assertCaregiverAccess(patientId, caregiverId);
+    return this.listPatientMessages(patientId, apiBaseUrl);
+  }
+
+  async markPatientMessageRead(patientId: string, messageId: string, caregiverId: string) {
+    await this.assertCaregiverAccess(patientId, caregiverId);
+    const message = await this.prisma.patientMessage.findFirst({
+      where: { id: messageId, patientId },
+      select: { id: true, readAt: true },
+    });
+    if (!message) throw new NotFoundException('Message not found');
+    if (message.readAt) return { id: message.id, readAt: message.readAt.toISOString() };
+    const updated = await this.prisma.patientMessage.update({
+      where: { id: message.id },
+      data: { readAt: new Date() },
+      select: { id: true, readAt: true },
+    });
+    return { id: updated.id, readAt: updated.readAt?.toISOString() ?? null };
   }
 
   async getGreetingSpark(patientId: string) {
@@ -1014,6 +1128,77 @@ export class PatientService {
   }
 
   // ── Goals ──────────────────────────────────────────────────────────
+
+  private async assertCaregiverAccess(patientId: string, caregiverId: string): Promise<void> {
+    const link = await this.prisma.patientCaregiver.findUnique({
+      where: { caregiverId_patientId: { caregiverId, patientId } },
+      select: { caregiverId: true },
+    });
+    if (!link) throw new ForbiddenException('Not a caregiver for this patient');
+  }
+
+  private async listPatientMessages(patientId: string, apiBaseUrl: string): Promise<PatientMessageItem[]> {
+    const rows = await this.prisma.patientMessage.findMany({
+      where: { patientId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        media: {
+          select: {
+            publicId: true,
+            kind: true,
+            contentType: true,
+            status: true,
+            payloadTag: true,
+          },
+        },
+      },
+    });
+    return rows.map((row) => this.toPatientMessageItem(row, apiBaseUrl));
+  }
+
+  private toPatientMessageItem(
+    row: {
+      id: string;
+      content: string;
+      readAt: Date | null;
+      createdAt: Date;
+      media: {
+        publicId: string;
+        kind: unknown;
+        contentType: string;
+        status: string;
+        payloadTag: string | null;
+      } | null;
+    },
+    apiBaseUrl: string,
+  ): PatientMessageItem {
+    const attachment = row.media && row.media.status === 'READY' && row.media.payloadTag
+      ? (() => {
+          const ttl = getSignedUrlTtlSeconds();
+          const { token, expiresAt } = this.signedUrls.issue(row.media!.publicId, 'get', ttl);
+          return {
+            publicId: row.media!.publicId,
+            kind: row.media!.kind as MediaKindValue,
+            contentType: row.media!.contentType,
+            downloadUrl: this.buildSignedMediaUrl(apiBaseUrl, token),
+            downloadExpiresAt: expiresAt.toISOString(),
+          };
+        })()
+      : null;
+
+    return {
+      id: row.id,
+      content: row.content,
+      readAt: row.readAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      attachment,
+    };
+  }
+
+  private buildSignedMediaUrl(apiBaseUrl: string, token: string): string {
+    const base = apiBaseUrl.replace(/\/+$/, '');
+    return `${base}/media/storage/download/${encodeURIComponent(token)}`;
+  }
 
   async upsertGoal(patientId: string, caregiverId: string, targetAccuracy: number) {
     const link = await this.prisma.patientCaregiver.findUnique({

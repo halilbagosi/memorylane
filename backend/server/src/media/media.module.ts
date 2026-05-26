@@ -7,6 +7,7 @@ import { FaceVerificationService } from './face-verification.service';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { LocalStorageService } from './storage/local-storage.service';
+import { S3StorageService } from './storage/s3-storage.service';
 import { STORAGE_SERVICE } from './storage/storage.interface';
 import { AiDifficultyService } from '../patient/ai-difficulty.service';
 
@@ -17,6 +18,11 @@ const RAW_UPLOAD_LIMIT = (() => {
   return Math.max(audio, image) + 1024;
 })();
 
+const storageProvider = {
+  provide: STORAGE_SERVICE,
+  useClass: process.env.MEDIA_STORAGE_DRIVER === 's3' ? S3StorageService : LocalStorageService,
+};
+
 @Module({
   controllers: [MediaController],
   providers: [
@@ -26,7 +32,7 @@ const RAW_UPLOAD_LIMIT = (() => {
     FaceVerificationService,
     SignedUrlService,
     AiDifficultyService,
-    { provide: STORAGE_SERVICE, useClass: LocalStorageService },
+    storageProvider,
   ],
 })
 export class MediaModule implements NestModule {

@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   AppState,
   AppStateStatus,
@@ -14,7 +13,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -26,19 +24,8 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { SFSymbol } from 'expo-symbols';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
-import * as ImagePicker from 'expo-image-picker';
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-} from 'expo-audio';
 import { API_BASE_URL } from '../../src/config/api';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
-import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
-import * as FileSystem from 'expo-file-system';
-import { File } from 'expo-file-system';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import {
@@ -173,17 +160,8 @@ export default function QuizTab() {
 
   const [patient, setPatient] = useState<PatientInfo | null>(null);
   const [stats, setStats] = useState<any>(null);
-  const [memories, setMemories] = useState<TimelineItem[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [newNote, setNewNote] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Media state
-  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const loadData = useCallback(async (isSilent = false) => {
     const info = await getPatientInfo();
@@ -192,13 +170,6 @@ export default function QuizTab() {
 
     if (!isSilent) setLoading(true);
     try {
-      const [timelineData, notesData] = await Promise.all([
-        getPatientTimeline(info.id),
-        getPatientNotes(info.id),
-      ]);
-      setMemories(timelineData);
-      setNotes(notesData);
-
       // Fetch patient stats for goal progress display
       const statsRes = await fetch(`${API_BASE_URL}/patients/${info.id}/stats`);
       if (statsRes.ok) {
@@ -231,35 +202,6 @@ export default function QuizTab() {
   const [lastWrong, setLastWrong] = useState<string | null>(null);
   const [displayedPhoto, setDisplayedPhoto] = useState<{ key: string; uri: string } | null>(null);
 
-  const scrollViewRef = useRef<ScrollView>(null);
-  const swipeUpBounce = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // We make the bounce a bit more pronounced as requested
-    const bounceAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(swipeUpBounce, { 
-          toValue: -14, 
-          duration: 700, 
-          useNativeDriver: true 
-        }),
-        Animated.spring(swipeUpBounce, {
-          toValue: 0,
-          friction: 4,
-          tension: 40,
-          useNativeDriver: true
-        }),
-        Animated.delay(200),
-      ])
-    );
-
-    bounceAnimation.start();
-    
-    return () => {
-      bounceAnimation.stop();
-    };
-  }, [swipeUpBounce]);
-
   const wrongShake = useRef(new Animated.Value(0)).current;
   const questionFade = useRef(new Animated.Value(1)).current;
   const photoFade = useRef(new Animated.Value(0)).current;
@@ -279,33 +221,6 @@ export default function QuizTab() {
   const photoLoadTokenRef = useRef(0);
 
   const photoSize = useMemo(() => Math.min(width - 56, height * 0.38, 360), [height, width]);
-
-  const combinedFeed = useMemo(() => {
-    const memoryRows = memories
-      .filter((m) => !isPatientJournalTimelineNote(m.note))
-      .map((m) => ({
-        type: 'MEMORY' as const,
-        id: m.publicId,
-        createdAt: m.createdAt,
-        kind: m.kind,
-        downloadUrl: m.downloadUrl,
-        note: m.note,
-      }));
-    const noteRows = notes.map((n) => ({
-      type: 'NOTE' as const,
-      id: (n as { id: string }).id,
-      createdAt: (n as { createdAt: string }).createdAt,
-      content: (n as { content: string }).content,
-    }));
-    return [...memoryRows, ...noteRows].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [memories, notes]);
-
-  const leaveMemoriesScrollGap = useMemo(
-    () => ({ minHeight: 120 }), // Increased spacing as requested
-    [],
-  );
 
   const introPrimaryMinHeight = useMemo(
     () => Math.max(450, Math.floor(height * 0.75)),
@@ -874,241 +789,6 @@ export default function QuizTab() {
     ]);
   }; // <-- Closes the logout function
 
-  const handlePickMedia = async (kind: 'PHOTO' | 'VIDEO') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'PHOTO' ? ImagePicker.MediaTypeOptions.Images : ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets?.[0]) {
-      const asset = result.assets[0];
-      setSelectedMedia({
-        uri: asset.uri,
-        kind: kind,
-        type: asset.mimeType || (kind === 'PHOTO' ? 'image/jpeg' : 'video/mp4'),
-      });
-    }
-  };
-
-  const handleStartRecording = async () => {
-    try {
-      const permission = await requestRecordingPermissionsAsync();
-      if (!permission.granted) return;
-
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-      });
-
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-      setIsRecording(true);
-    } catch (err) {
-      Alert.alert('Error', 'Failed to start recording');
-    }
-  };
-
-  const handleStopRecording = async () => {
-    if (!isRecording) return;
-    setIsRecording(false);
-    await recorder.stop();
-    await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
-    const uri = recorder.uri;
-    if (uri) {
-      setSelectedMedia({
-        uri,
-        kind: 'AUDIO',
-        type: 'audio/x-m4a',
-      });
-    }
-  };
-
-  const handleSaveMemory = async () => {
-    if ((!newNote.trim() && !selectedMedia) || !patient) return;
-
-    setIsSubmitting(true);
-    try {
-      if (selectedMedia) {
-        // Upload Media
-        const file = new File(selectedMedia.uri);
-        const fileInfo = { exists: file.exists, size: file.size };
-        if (!fileInfo.exists) throw new Error('File not found');
-
-        await uploadMediaByPatient({
-          patientId: patient.id,
-          kind: selectedMedia.kind,
-          contentType: selectedMedia.type,
-          fileUri: selectedMedia.uri,
-          byteSize: fileInfo.size,
-          metadata: {
-            collection: 'MEMORY',
-            note: newNote.trim() || `Recorded ${selectedMedia.kind.toLowerCase()}`,
-          },
-        });
-      } else {
-        // Just a text note
-        const note = await addPatientNote(patient.id, newNote);
-        setNotes((prev) => [note, ...prev]);
-      }
-      
-      setNewNote('');
-      setSelectedMedia(null);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined); // Success feedback
-      loadData(true); // Refresh feed
-    } catch (error: any) {
-      console.error('Save failed:', error.response?.data || error);
-      Alert.alert('Error', error.message || 'Failed to save. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const renderLeaveMemoriesSection = () => (
-    <View style={styles.leaveMemoriesSection}>
-      <View style={[styles.leaveMemoriesSpacer, leaveMemoriesScrollGap]} />
-      <View style={styles.scrollHintCard}>
-        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={themeColors.primary} />
-        <Text style={styles.scrollHintTitle}>Leave a memory for family</Text>
-        <Text style={styles.scrollHintBody}>
-          Keep scrolling on this page — below your practice area you can write a note or share a photo, video, or voice
-          message with loved ones.
-        </Text>
-      </View>
-
-      <View style={styles.noteInputCard}>
-        <Text style={styles.sectionTitle}>{"What's on your mind?"}</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Write a note or share a memory..."
-          placeholderTextColor={themeColors.textMuted}
-          multiline
-          value={newNote}
-          onChangeText={setNewNote}
-        />
-
-        {selectedMedia && (
-          <View style={styles.mediaPreview}>
-            {selectedMedia.kind === 'PHOTO' ? (
-              <Image source={{ uri: selectedMedia.uri }} style={styles.previewImage} />
-            ) : (
-              <View style={styles.mediaPlaceholder}>
-                <AppIcon
-                  iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
-                  androidFallback="M"
-                  size={24}
-                  color={themeColors.primary}
-                />
-                <Text style={styles.mediaPlaceholderText}>
-                  {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setSelectedMedia(null)}>
-              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color="#E74C3C" />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.mediaButtons}>
-            <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
-            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={themeColors.primary} />
-            <Text style={styles.mediaBtnText}>Photo</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('VIDEO')}>
-            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={themeColors.primary} />
-            <Text style={styles.mediaBtnText}>Video</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.mediaBtn, isRecording && styles.recordingBtn]}
-            onPressIn={handleStartRecording}
-            onPressOut={handleStopRecording}
-          >
-            <AppIcon
-              iosName={isRecording ? 'stop.fill' : 'mic.fill'}
-              androidFallback="A"
-              size={20}
-              color={isRecording ? '#fff' : themeColors.primary}
-            />
-            <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
-              {isRecording ? 'Recording...' : 'Voice'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.saveBtn,
-            ((!newNote.trim() && !selectedMedia) || isSubmitting) && styles.saveBtnDisabled,
-          ]}
-          onPress={handleSaveMemory}
-          disabled={(!newNote.trim() && !selectedMedia) || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.saveBtnText}>Share with Family</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {combinedFeed.length > 0 ? (
-        <>
-          <Text style={styles.recentMemoriesHeading}>Recent activity</Text>
-          {combinedFeed.map((item) => (
-            <View key={item.id} style={styles.feedListItem}>
-              <View style={styles.feedItemHeader}>
-                <AppIcon
-                  iosName={
-                    item.type === 'NOTE'
-                      ? 'note.text'
-                      : (item as { kind?: string }).kind === 'AUDIO'
-                        ? 'mic.fill'
-                        : (item as { kind?: string }).kind === 'VIDEO'
-                          ? 'video.fill'
-                          : 'photo.fill'
-                  }
-                  androidFallback={item.type === 'NOTE' ? 'N' : 'P'}
-                  size={16}
-                  color={themeColors.primary}
-                />
-                <Text style={styles.feedItemDate}>
-                  {new Date(item.createdAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </Text>
-              </View>
-              {item.type === 'MEMORY' &&
-                (item as { kind?: string }).kind === 'PHOTO' &&
-                (item as { downloadUrl?: string }).downloadUrl && (
-                  <Image
-                    source={{ uri: (item as { downloadUrl: string }).downloadUrl }}
-                    style={styles.feedImage}
-                  />
-                )}
-              {item.type === 'MEMORY' &&
-                ((item as { kind?: string }).kind === 'VIDEO' ||
-                  (item as { kind?: string }).kind === 'AUDIO') && (
-                  <View style={styles.mediaIndicator}>
-                    <Text style={styles.mediaIndicatorText}>
-                      {(item as { kind?: string }).kind === 'VIDEO' ? '▶ Video Clip' : '🎤 Voice Message'}
-                    </Text>
-                  </View>
-                )}
-              <Text style={styles.feedContent}>
-                {item.type === 'NOTE' ? (item as { content: string }).content : (item as { note?: string | null }).note}
-              </Text>
-            </View>
-          ))}
-        </>
-      ) : null}
-    </View>
-  );
-
   // We keep ALL the new UI screens that were added in alpha
   const renderLoading = () => (
     <View style={styles.centerFill}>
@@ -1128,29 +808,26 @@ export default function QuizTab() {
 
   const renderNoMedia = () => (
     <ScrollView
-      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.introScrollContent}
-      showsVerticalScrollIndicator
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
         <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={themeColors.primary} />
         <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
         <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
-        
-        {renderSwipeUpHint()}
       </View>
-      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
   const renderInsufficientIdentities = (count: number) => (
     <ScrollView
-      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.introScrollContent}
-      showsVerticalScrollIndicator
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
@@ -1159,43 +836,16 @@ export default function QuizTab() {
         <Text style={styles.emptySubtitle}>
           Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
         </Text>
-
-        {renderSwipeUpHint()}
       </View>
-      {renderLeaveMemoriesSection()}
     </ScrollView>
-  );
-
-  const renderSwipeUpHint = () => (
-    <Animated.View style={{ transform: [{ translateY: swipeUpBounce }], marginTop: 'auto', paddingTop: 24, paddingBottom: 16 }}>
-      <TouchableOpacity 
-        onPress={() => {
-           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
-           scrollViewRef.current?.scrollToEnd({ animated: true });
-        }}
-        activeOpacity={0.7}
-        style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}
-      >
-        <AppIcon iosName="chevron.up" androidFallback="^" size={26} color={themeColors.primary} />
-        <Text style={{ 
-          fontFamily: typography.fontFamily.bold, 
-          fontSize: 18, // Slightly larger
-          color: themeColors.primary,
-          textAlign: 'center',
-          letterSpacing: -0.3, // Modern touch
-        }}>
-          Swipe up to leave memory
-        </Text>
-      </TouchableOpacity>
-    </Animated.View>
   );
 
   const renderIntro = () => (
     <ScrollView
-      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.introScrollContent}
-      showsVerticalScrollIndicator
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.introContent, { minHeight: introPrimaryMinHeight }]}>
@@ -1232,9 +882,7 @@ export default function QuizTab() {
           )}
         </View>
 
-        {renderSwipeUpHint()}
       </View>
-      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
@@ -1258,10 +906,10 @@ export default function QuizTab() {
 
   const renderModeSelect = () => (
     <ScrollView
-      ref={scrollViewRef}
       style={styles.phaseScroll}
       contentContainerStyle={styles.modeSelectContent}
-      showsVerticalScrollIndicator
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
       keyboardShouldPersistTaps="handled"
     >
       <View style={{ minHeight: height * 0.7, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -1288,9 +936,7 @@ export default function QuizTab() {
             );
           })}
         </View>
-        {renderSwipeUpHint()}
       </View>
-      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
@@ -1399,7 +1045,6 @@ export default function QuizTab() {
 
     return (
       <ScrollView
-        ref={scrollViewRef}
         style={styles.phaseScroll}
         contentContainerStyle={[styles.summaryContent, { paddingTop: 40, paddingBottom: 60 }]}
         showsVerticalScrollIndicator
@@ -1493,9 +1138,7 @@ export default function QuizTab() {
             })}
           </View>
 
-          {renderSwipeUpHint()}
         </View>
-        {renderLeaveMemoriesSection()}
       </ScrollView>
     );
   };
@@ -1565,58 +1208,6 @@ const getStyles = (isDark: boolean) => {
   introScrollContent: {
     flexGrow: 1,
     paddingBottom: 180, // Clear the navigation bar
-  },
-  leaveMemoriesSection: {
-    width: '100%',
-    alignSelf: 'stretch',
-    paddingHorizontal: 0,
-    marginTop: 8,
-  },
-  leaveMemoriesSpacer: {
-    width: '100%',
-  },
-  scrollHintCard: {
-    width: '100%',
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.95)'),
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
-    gap: 8,
-    alignItems: 'center',
-  },
-  scrollHintTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 17,
-    color: themeColors.primary,
-    textAlign: 'center',
-  },
-  scrollHintBody: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: themeColors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.92,
-  },
-  recentMemoriesHeading: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: themeColors.primary,
-    marginBottom: 10,
-    marginTop: 4,
-    width: '100%',
-  },
-  feedListItem: {
-    width: '100%',
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: themeColors.neutral,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.12)'),
   },
   topRow: {
     flexDirection: 'row',
@@ -2065,146 +1656,6 @@ const getStyles = (isDark: boolean) => {
     fontSize: 15,
     color: themeColors.primary,
     textAlign: 'center',
-  },
-  mediaButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  mediaBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: themeColors.neutral,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.2)'),
-  },
-  mediaBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: themeColors.primary,
-  },
-  recordingBtn: {
-    backgroundColor: '#E74C3C',
-    borderColor: '#E74C3C',
-  },
-  recordingBtnText: {
-    color: '#fff',
-  },
-  mediaPreview: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  previewImage: {
-    width: '100%',
-    height: 150,
-    borderRadius: 12,
-  },
-  mediaPlaceholder: {
-    width: '100%',
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: themeColors.neutral,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  mediaPlaceholderText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.primary,
-  },
-  removeMediaBtn: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-  },
-  noteInputCard: {
-    width: '100%',
-    backgroundColor: themeColors.neutralLight,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.15)'),
-  },
-  sectionTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 17,
-    color: themeColors.primary,
-    marginBottom: 10,
-  },
-  textInput: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 16,
-    color: themeColors.textDark,
-    minHeight: 88,
-    textAlignVertical: 'top',
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
-    padding: 12,
-    marginBottom: 14,
-    backgroundColor: themeColors.neutral,
-  },
-  saveBtn: {
-    borderRadius: 999,
-    backgroundColor: themeColors.primary,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  saveBtnDisabled: {
-    opacity: 0.45,
-  },
-  saveBtnText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: themeColors.neutralLight,
-  },
-  feedItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-    gap: 8,
-  },
-  feedItemDate: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 11,
-    color: themeColors.textMuted,
-  },
-  feedImage: {
-
-    width: '100%',
-    height: 72,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-  feedContent: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: themeColors.textDark,
-    lineHeight: 16,
-  },
-  mediaIndicator: {
-    backgroundColor: themeColors.neutral,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: themeColors.primary,
-  },
-  mediaIndicatorText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: themeColors.primary,
   },
   patientGoalCard: {
     width: '100%',

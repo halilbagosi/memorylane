@@ -204,6 +204,7 @@ model Patient {
   creator             Caregiver           @relation(fields: [createdBy], references: [id])
   patientCaregivers   PatientCaregiver[]
   media               Media[]
+  messages            PatientMessage[]
   quizSessions        QuizSession[]
   aiTrainingSamples   AiTrainingSample[]
   analyticsSnapshots  AnalyticsSnapshot[]
@@ -298,10 +299,27 @@ model Media {
   patient      Patient       @relation(fields: [patientId], references: [id])
   caregiver    Caregiver?    @relation(fields: [caregiverId], references: [id])
   quizAttempts QuizAttempt[]
+  patientMessages PatientMessage[]
 
   @@index([patientId, createdAt])
   @@index([patientId, contentHash])
   @@map("media")
+}
+
+model PatientMessage {
+  id         String    @id @default(uuid())
+  patientId  String    @map("patient_id")
+  mediaId    String?   @map("media_id")
+  content    String    @db.Text
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  media      Media?    @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, readAt, createdAt])
+  @@index([mediaId])
+  @@map("patient_messages")
 }
 
 model QuizSession {

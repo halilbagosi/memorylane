@@ -25,6 +25,9 @@ export class DashboardService {
         const patient = relation.patient;
         const primaryLink = patient.patientCaregivers.find(pc => pc.isPrimary);
         const secondaryLinks = patient.patientCaregivers.filter(pc => !pc.isPrimary);
+        const unreadMessageCount = await this.prisma.patientMessage.count({
+          where: { patientId: patient.id, readAt: null },
+        });
 
         const { name, surname } = await decryptPatientNamesWithOptionalReencrypt(this.prisma, {
           id: patient.id,
@@ -45,6 +48,7 @@ export class DashboardService {
           lastLatitude: patient.lastLatitude,
           lastLongitude: patient.lastLongitude,
           lastLocationAt: patient.lastLocationAt,
+          unreadMessageCount,
           createdAt: patient.createdAt,
           primaryCaregiver: primaryLink
             ? {

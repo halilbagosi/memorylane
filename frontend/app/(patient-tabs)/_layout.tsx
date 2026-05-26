@@ -7,7 +7,7 @@ import { CommonActions } from '@react-navigation/native';
 import { colors } from '../../src/theme/colors';
 import { AppIcon } from '../../src/components/AppIcon';
 import { M3TabBar } from '../../src/components/M3TabBar';
-import { getPatientInfo, deletePatientInfo } from '../../src/utils/auth';
+import { getPatientInfo, savePatientInfo, deletePatientInfo } from '../../src/utils/auth';
 import { API_BASE_URL } from '../../src/config/api';
 import { PatientGreetingOverlay } from '../../src/components/PatientGreetingOverlay';
 import {
@@ -87,7 +87,25 @@ export default function PatientTabsLayout() {
     let cancelled = false;
 
     const sendCurrentLocation = async () => {
-      const patient = await getPatientInfo();
+      let patient = await getPatientInfo();
+      if (patient && !patient.locationShareToken && !cancelled) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/paired-status`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.locationShareToken) {
+              patient = {
+                ...patient,
+                biometricRecoveryEnabled: data.biometricRecoveryEnabled ?? patient.biometricRecoveryEnabled,
+                locationShareToken: data.locationShareToken,
+              };
+              await savePatientInfo(patient);
+            }
+          }
+        } catch (error) {
+          console.error('[Location] could not refresh location token', error);
+        }
+      }
       if (!patient?.locationShareToken || cancelled) {
         console.log('[Location] skipping sendCurrentLocation - token:', !!patient?.locationShareToken, 'cancelled:', cancelled);
         return;
@@ -171,6 +189,13 @@ export default function PatientTabsLayout() {
         const data = await res.json();
         if (data.paired) {
           syncPatientDeviceToken(patient.id).catch(() => undefined);
+          if (data.locationShareToken && data.locationShareToken !== patient.locationShareToken) {
+            await savePatientInfo({
+              ...patient,
+              biometricRecoveryEnabled: data.biometricRecoveryEnabled ?? patient.biometricRecoveryEnabled,
+              locationShareToken: data.locationShareToken,
+            });
+          }
         }
         if (!data.paired) {
           await deletePatientInfo();

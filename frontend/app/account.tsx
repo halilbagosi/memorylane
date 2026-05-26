@@ -1009,7 +1009,6 @@ export default function AccountScreen() {
                     secureTextEntry={!showEmailPw}
                     autoCorrect={false}
                     spellCheck={false}
-                    autoFocus
                   />
                   <TouchableOpacity onPress={() => setShowEmailPw(v => !v)} style={styles.modalEyeBtn}>
                     <AppIcon iosName={showEmailPw ? 'eye.slash' : 'eye'} androidFallback={showEmailPw ? '🙈' : '👁'} size={18} color={themeColors.textMuted} />
@@ -1039,7 +1038,6 @@ export default function AccountScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   spellCheck={false}
-                  autoFocus
                 />
                 {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
                 <View style={styles.modalActions}>

@@ -312,7 +312,7 @@ export class MediaService {
   async listForPatient(caregiverId: string, patientId: string): Promise<MediaListItem[]> {
     await this.assertCaregiverAccess(caregiverId, patientId);
     const rows = await this.prisma.media.findMany({
-      where: { patientId, status: { in: ['READY', 'PENDING_UPLOAD'] } },
+      where: { patientId, status: { in: ['READY', 'PENDING_UPLOAD'] }, patientMessages: { none: {} } },
       orderBy: { createdAt: 'desc' },
       select: {
         publicId: true,
@@ -538,7 +538,7 @@ export class MediaService {
    *  device can render photos/videos without a caregiver JWT. */
   async getPatientTimeline(patientId: string, apiBaseUrl: string): Promise<TimelineItem[]> {
     const rows = await this.prisma.media.findMany({
-      where: { patientId, collection: 'MEMORY', status: 'READY' },
+      where: { patientId, collection: 'MEMORY', status: 'READY', patientMessages: { none: {} } },
       orderBy: [{ eventYear: 'asc' }, { createdAt: 'asc' }],
       select: {
         publicId: true,
@@ -797,16 +797,22 @@ export class MediaService {
         status: 'READY',
         ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
       },
-      select: { firstName: true },
+      select: { firstName: true, storageKey: true, payloadTag: true },
     });
 
-    const duplicate = existing.some(
+    const nameMatches = existing.filter(
       (media) => this.normalizePersonName(media.firstName) === normalized,
     );
-    if (duplicate) {
-      throw new BadRequestException(
-        `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
-      );
+
+    // Only block if at least one matching record still has its file in storage.
+    for (const match of nameMatches) {
+      if (!match.payloadTag) continue;
+      const head = await this.storage.headObject(match.storageKey).catch(() => ({ exists: false }));
+      if (head.exists) {
+        throw new BadRequestException(
+          `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
+        );
+      }
     }
   }
 
@@ -822,11 +828,16 @@ export class MediaService {
         status: 'READY',
         ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
       },
-      select: { id: true },
+      select: { id: true, storageKey: true, payloadTag: true },
     });
-    if (existing) {
-      throw new ConflictException('This photo has already been added.');
+    if (!existing) return;
+    // If the file no longer exists in storage (e.g. ephemeral volume was wiped),
+    // treat the record as stale and allow re-upload.
+    if (existing.payloadTag) {
+      const head = await this.storage.headObject(existing.storageKey).catch(() => ({ exists: false }));
+      if (!head.exists) return;
     }
+    throw new ConflictException('This photo has already been added.');
   }
 
   private normalizePersonName(value?: string | null): string | null {

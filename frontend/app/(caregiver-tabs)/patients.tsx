@@ -28,6 +28,11 @@ import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { ManageDeletionSheet } from '../../src/components/ManageDeletionSheet';
 import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
+import {
+  listCaregiverPatientMessages,
+  markPatientMessageRead,
+  type PatientMessage,
+} from '../../src/services/messages';
 
 const isIOS = Platform.OS === 'ios';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -52,6 +57,7 @@ interface PatientItem {
   lastLatitude?: number | null;
   lastLongitude?: number | null;
   lastLocationAt?: string | null;
+  unreadMessageCount?: number;
 }
 
 interface PatientMapLocation {
@@ -654,6 +660,12 @@ export default function PatientsTab() {
                             </Text>
                           )}
                         </View>
+                        {(patient.unreadMessageCount ?? 0) > 0 && (
+                          <View style={styles.messageBadge}>
+                            <AppIcon iosName="envelope.fill" androidFallback="M" size={14} color={themeColors.neutralLight} />
+                            <Text style={styles.messageBadgeText}>{patient.unreadMessageCount}</Text>
+                          </View>
+                        )}
                         <TouchableOpacity
                           style={styles.deleteBtn}
                           onPress={() => handleDelete(patient)}
@@ -740,6 +752,12 @@ export default function PatientsTab() {
                           </View>
                           <PatientLocationPreview patient={patient} compact />
                         </View>
+                        {(patient.unreadMessageCount ?? 0) > 0 && (
+                          <View style={styles.messageBadge}>
+                            <AppIcon iosName="envelope.fill" androidFallback="M" size={14} color={themeColors.neutralLight} />
+                            <Text style={styles.messageBadgeText}>{patient.unreadMessageCount}</Text>
+                          </View>
+                        )}
                         <View style={styles.secondaryArrow}>
                           <AppIcon iosName="chevron.right" androidFallback="›" size={18} color="#7B73C0" />
                         </View>
@@ -972,7 +990,7 @@ function PatientDetailContent({
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const router = useRouter();
-  const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library' | 'reminders'>('detail');
+  const [view, setView] = React.useState<'detail' | 'careTeam' | 'memory-library' | 'reminders' | 'messages'>('detail');
   const [editModalVisible, setEditModalVisible] = React.useState(false);
   const [editName, setEditName] = React.useState('');
   const [editSurname, setEditSurname] = React.useState('');
@@ -1173,6 +1191,15 @@ function PatientDetailContent({
     );
   }
   /* ── Care Team view ── */
+  if (view === 'messages') {
+    return (
+      <PatientMessagesContent
+        patient={patient}
+        onBack={() => switchView('detail')}
+      />
+    );
+  }
+
   if (view === 'careTeam') {
     return (
       <View style={styles.sheetContainer}>
@@ -1511,6 +1538,19 @@ function PatientDetailContent({
       {/* Action rows */}
       <View style={styles.actionsList}>
 
+        <TouchableOpacity style={styles.actionRow} onPress={() => switchView('messages')}>
+          <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(180, 174, 232, 0.2)' }]}>
+            <AppIcon iosName="envelope.fill" androidFallback="M" size={18} color={themeColors.primary} />
+          </View>
+          <Text style={styles.actionRowLabel}>Messages</Text>
+          {(patient.unreadMessageCount ?? 0) > 0 && (
+            <View style={styles.careTeamCount}>
+              <Text style={styles.careTeamCountText}>{patient.unreadMessageCount}</Text>
+            </View>
+          )}
+          <AppIcon iosName="chevron.right" androidFallback="â€º" size={16} color={themeColors.textMuted} />
+        </TouchableOpacity>
+
         {patient.isPrimary && (
           <TouchableOpacity style={styles.actionRow} onPress={() => switchView('reminders')}>
             <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(180, 174, 232, 0.2)' }]}>
@@ -1599,6 +1639,147 @@ function PatientDetailContent({
       </View>
 
     </ScrollView>
+  );
+}
+
+function PatientMessagesContent({
+  patient,
+  onBack,
+}: {
+  patient: PatientItem;
+  onBack: () => void;
+}) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const [messages, setMessages] = React.useState<PatientMessage[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = React.useState<PatientMessage | null>(null);
+
+  const loadMessages = React.useCallback(async () => {
+    setError(null);
+    try {
+      const data = await listCaregiverPatientMessages(patient.id);
+      setMessages(data);
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not load messages.');
+    }
+  }, [patient.id]);
+
+  React.useEffect(() => {
+    setLoading(true);
+    loadMessages().finally(() => setLoading(false));
+  }, [loadMessages]);
+
+  const openMessage = async (message: PatientMessage) => {
+    setSelectedMessage(message);
+    if (!message.readAt) {
+      try {
+        const result = await markPatientMessageRead(patient.id, message.id);
+        setMessages((prev) =>
+          prev.map((item) => item.id === message.id ? { ...item, readAt: result.readAt ?? new Date().toISOString() } : item),
+        );
+      } catch {
+        /* keep message visible even if read receipt fails */
+      }
+    }
+  };
+
+  return (
+    <View style={styles.sheetContainer}>
+      <View style={styles.sheetNavHeader}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.6}>
+          <AppIcon
+            iosName="chevron.left"
+            androidFallback="<"
+            size={isIOS ? 22 : 24}
+            color={isIOS ? themeColors.secondary : themeColors.textDark}
+            weight={isIOS ? 'semibold' : 'medium'}
+          />
+          {isIOS && <Text style={styles.backBtnText}>Back</Text>}
+        </TouchableOpacity>
+        <Text style={styles.sheetNavTitle}>Messages</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      {loading ? (
+        <View style={styles.messagesCenter}>
+          <ActivityIndicator color={themeColors.primary} />
+        </View>
+      ) : error ? (
+        <View style={styles.messagesCenter}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => { setLoading(true); loadMessages().finally(() => setLoading(false)); }}>
+            <Text style={styles.retryBtnText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : messages.length === 0 ? (
+        <View style={styles.messagesCenter}>
+          <View style={styles.emptyIcon}>
+            <AppIcon iosName="envelope" androidFallback="M" size={28} color={themeColors.primary} />
+          </View>
+          <Text style={styles.emptyTitle}>No messages yet</Text>
+          <Text style={styles.emptyDesc}>Notes left from the patient device will appear here.</Text>
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.messagesList}>
+          {messages.map((message) => {
+            const unread = !message.readAt;
+            return (
+              <TouchableOpacity
+                key={message.id}
+                style={[styles.messageRow, unread && styles.messageRowUnread]}
+                onPress={() => openMessage(message)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.messageIcon, unread && styles.messageIconUnread]}>
+                  <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback="M" size={17} color={unread ? themeColors.neutralLight : themeColors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.messageRowHeader}>
+                    <Text style={styles.messageTitle} numberOfLines={1}>{patient.name}</Text>
+                    <Text style={styles.messageTime}>{new Date(message.createdAt).toLocaleDateString()}</Text>
+                  </View>
+                  <Text style={styles.messagePreview} numberOfLines={2}>{message.content}</Text>
+                </View>
+                {unread && <View style={styles.unreadDot} />}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <Modal visible={!!selectedMessage} transparent animationType="fade" onRequestClose={() => setSelectedMessage(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.messageModalCard}>
+            <View style={styles.messageModalHeader}>
+              <Text style={styles.modalTitle}>Message from {patient.name}</Text>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedMessage(null)}>
+                <AppIcon iosName="xmark" androidFallback="X" size={14} color={themeColors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {selectedMessage?.attachment?.kind === 'PHOTO' && (
+              <Image source={{ uri: selectedMessage.attachment.downloadUrl }} style={styles.messageAttachmentImage} resizeMode="cover" />
+            )}
+            {selectedMessage?.attachment && selectedMessage.attachment.kind !== 'PHOTO' && (
+              <View style={styles.messageAttachmentFallback}>
+                <AppIcon
+                  iosName={selectedMessage.attachment.kind === 'AUDIO' ? 'waveform' : selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'}
+                  androidFallback="A"
+                  size={28}
+                  color={themeColors.primary}
+                />
+                <Text style={styles.messageAttachmentText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
+              </View>
+            )}
+            <Text style={styles.messageModalDate}>
+              {selectedMessage ? new Date(selectedMessage.createdAt).toLocaleString() : ''}
+            </Text>
+            <Text style={styles.messageModalBody}>{selectedMessage?.content}</Text>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -2515,6 +2696,164 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.bold,
     fontSize: 12,
     color: themeColors.secondary,
+  },
+  messageBadge: {
+    minWidth: 34,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 8,
+    marginRight: 8,
+    backgroundColor: themeColors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  messageBadgeText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
+    color: themeColors.neutralLight,
+  },
+  messagesCenter: {
+    flex: 1,
+    minHeight: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 10,
+  },
+  messagesList: {
+    paddingBottom: 90,
+    gap: 10,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: isDark ? '#17231D' : '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.07)',
+  },
+  messageRowUnread: {
+    borderColor: themeColors.primary,
+    backgroundColor: isDark ? 'rgba(180, 174, 232, 0.14)' : 'rgba(180, 174, 232, 0.12)',
+  },
+  messageIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.14)',
+  },
+  messageIconUnread: {
+    backgroundColor: themeColors.primary,
+  },
+  messageRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  messageTitle: {
+    flex: 1,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.textDark,
+  },
+  messageTime: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: themeColors.textMuted,
+  },
+  messagePreview: {
+    marginTop: 3,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: themeColors.textMuted,
+  },
+  unreadDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: themeColors.primary,
+  },
+  messageModalCard: {
+    width: '100%',
+    maxHeight: '82%',
+    borderRadius: 24,
+    padding: 20,
+    backgroundColor: themeColors.neutral,
+    elevation: 3,
+  },
+  messageModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)',
+  },
+  messageAttachmentImage: {
+    width: '100%',
+    aspectRatio: 1.15,
+    borderRadius: 16,
+    marginTop: 8,
+    marginBottom: 12,
+    backgroundColor: isDark ? '#0F1713' : '#EEF3EF',
+  },
+  messageAttachmentFallback: {
+    minHeight: 110,
+    borderRadius: 16,
+    marginTop: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(180, 174, 232, 0.12)',
+    gap: 6,
+  },
+  messageAttachmentText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: themeColors.textMuted,
+    textTransform: 'capitalize',
+  },
+  messageModalDate: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: themeColors.textMuted,
+    marginBottom: 8,
+  },
+  messageModalBody: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 16,
+    lineHeight: 23,
+    color: themeColors.textDark,
+  },
+  errorText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: '#C0392B',
+    textAlign: 'center',
+  },
+  retryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: themeColors.primary,
+  },
+  retryBtnText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.neutralLight,
   },
 
   // Edit name modal

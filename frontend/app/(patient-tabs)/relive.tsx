@@ -24,7 +24,6 @@ import {
   setAudioModeAsync,
   useAudioRecorder,
 } from 'expo-audio';
-import { File } from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
@@ -33,8 +32,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '../../src/components/AppIcon';
 import { ZoomableImage } from '../../src/components/ZoomableImage';
 import { deletePatientInfo, getPatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
-import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
+import { getPatientTimeline, type TimelineItem, type MediaKind } from '../../src/services/media';
+import { listPatientMessages, sendPatientMessage, type PatientMessage } from '../../src/services/messages';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
@@ -494,6 +493,22 @@ function LeaveMemorySection({
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [messages, setMessages] = useState<PatientMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<PatientMessage | null>(null);
+
+  const loadMessages = useCallback(async () => {
+    if (!patient) return;
+    setMessagesLoading(true);
+    try {
+      setMessages(await listPatientMessages(patient.id));
+    } catch {
+      setMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [patient]);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
@@ -540,21 +555,12 @@ function LeaveMemorySection({
     setIsSubmitting(true);
     try {
       if (selectedMedia) {
-        const file = new File(selectedMedia.uri);
-        const fileInfo = { exists: file.exists, size: file.size };
-        if (!fileInfo.exists) throw new Error('File not found');
-        await uploadMediaByPatient({
-          patientId: patient.id,
-          kind: selectedMedia.kind,
-          contentType: selectedMedia.type,
-          fileUri: selectedMedia.uri,
-          byteSize: fileInfo.size,
-          metadata: { collection: 'MEMORY', note: newNote.trim() || `Recorded ${selectedMedia.kind.toLowerCase()}` },
-        });
+        await sendPatientMessage(patient.id, newNote.trim() || `Recorded ${selectedMedia.kind.toLowerCase()}`, selectedMedia);
       } else {
-        await addPatientNote(patient.id, newNote);
+        await sendPatientMessage(patient.id, newNote);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      loadMessages().catch(() => undefined);
       onMemorySaved?.();
       handleClose();
     } catch (error: any) {
@@ -573,8 +579,19 @@ function LeaveMemorySection({
         <View style={styles.lmTriggerIcon}>
           <AppIcon iosName="heart.fill" androidFallback="♥" size={13} color={themeColors.primary} />
         </View>
-        <Text style={styles.lmTriggerText}>Leave a memory for your family</Text>
+        <Text style={styles.lmTriggerText}>Send a note to your family</Text>
         <AppIcon iosName="pencil" androidFallback="✏" size={15} color={themeColors.textMuted} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.lmTrigger, styles.lmMessagesTrigger]}
+        onPress={() => { setMessagesOpen(true); loadMessages().catch(() => undefined); }}
+        activeOpacity={0.72}
+      >
+        <View style={styles.lmTriggerIcon}>
+          <AppIcon iosName="note.text" androidFallback="N" size={13} color={themeColors.primary} />
+        </View>
+        <Text style={styles.lmTriggerText}>Notes you left</Text>
+        <AppIcon iosName="chevron.right" androidFallback=">" size={15} color={themeColors.textMuted} />
       </TouchableOpacity>
 
       {/* Compose modal — centered card */}
@@ -666,6 +683,62 @@ function LeaveMemorySection({
                 <Text style={styles.lmSaveBtnText}>Share with Family</Text>
               )}
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={messagesOpen} animationType="fade" transparent onRequestClose={() => setMessagesOpen(false)}>
+        <View style={styles.lmOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setMessagesOpen(false)} activeOpacity={1} />
+          <View style={styles.lmCard}>
+            <View style={styles.lmCardHeader}>
+              <Text style={styles.lmCardTitle}>Notes you left</Text>
+              <TouchableOpacity style={styles.lmCardClose} onPress={() => setMessagesOpen(false)}>
+                <AppIcon iosName="xmark" androidFallback="X" size={13} color={themeColors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {messagesLoading ? (
+              <ActivityIndicator color={themeColors.primary} />
+            ) : messages.length === 0 ? (
+              <Text style={styles.lmEmptyMessages}>No notes yet.</Text>
+            ) : (
+              <ScrollView style={styles.lmMessagesList}>
+                {messages.map((message) => (
+                  <TouchableOpacity key={message.id} style={styles.lmMessageRow} onPress={() => setSelectedMessage(message)}>
+                    <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback="N" size={16} color={themeColors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.lmMessagePreview} numberOfLines={2}>{message.content}</Text>
+                      <Text style={styles.lmMessageDate}>{new Date(message.createdAt).toLocaleDateString()}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!selectedMessage} animationType="fade" transparent onRequestClose={() => setSelectedMessage(null)}>
+        <View style={styles.lmOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedMessage(null)} activeOpacity={1} />
+          <View style={styles.lmCard}>
+            <View style={styles.lmCardHeader}>
+              <Text style={styles.lmCardTitle}>Your note</Text>
+              <TouchableOpacity style={styles.lmCardClose} onPress={() => setSelectedMessage(null)}>
+                <AppIcon iosName="xmark" androidFallback="X" size={13} color={themeColors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {selectedMessage?.attachment?.kind === 'PHOTO' && (
+              <Image source={{ uri: selectedMessage.attachment.downloadUrl }} style={styles.lmMessageImage} resizeMode="cover" />
+            )}
+            {selectedMessage?.attachment && selectedMessage.attachment.kind !== 'PHOTO' && (
+              <View style={styles.lmMediaPlaceholder}>
+                <AppIcon iosName={selectedMessage.attachment.kind === 'AUDIO' ? 'waveform' : selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback="A" size={20} color={themeColors.primary} />
+                <Text style={styles.lmMediaPlaceholderText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
+              </View>
+            )}
+            <Text style={styles.lmMessageDate}>{selectedMessage ? new Date(selectedMessage.createdAt).toLocaleString() : ''}</Text>
+            <Text style={styles.lmMessageBody}>{selectedMessage?.content}</Text>
           </View>
         </View>
       </Modal>
@@ -1010,6 +1083,9 @@ const getStyles = (isDark: boolean) => {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.13)'),
   },
+  lmMessagesTrigger: {
+    marginTop: -6,
+  },
   lmTriggerIcon: {
     width: 24,
     height: 24,
@@ -1149,6 +1225,50 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
     color: themeColors.neutralLight,
+  },
+  lmEmptyMessages: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 14,
+    color: themeColors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 22,
+  },
+  lmMessagesList: {
+    maxHeight: 340,
+  },
+  lmMessageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.12)'),
+  },
+  lmMessagePreview: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 14,
+    color: themeColors.textDark,
+    lineHeight: 19,
+  },
+  lmMessageDate: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 12,
+    color: themeColors.textMuted,
+    marginTop: 4,
+  },
+  lmMessageImage: {
+    width: '100%',
+    aspectRatio: 1.1,
+    borderRadius: 14,
+    marginBottom: 12,
+    backgroundColor: themeColors.neutral,
+  },
+  lmMessageBody: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 16,
+    color: themeColors.textDark,
+    lineHeight: 23,
+    marginTop: 8,
   },
 });
 };
