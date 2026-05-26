@@ -30,6 +30,9 @@ function buildPlugins(iosUrlScheme) {
       },
     ]);
   }
+  if (!plugins.some((p) => (Array.isArray(p) ? p[0] : p) === 'expo-audio')) {
+    plugins.push('expo-audio');
+  }
   return plugins;
 }
 

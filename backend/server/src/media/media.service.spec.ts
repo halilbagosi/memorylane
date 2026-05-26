@@ -18,6 +18,9 @@ const makePrisma = () => ({
   caregiver: {
     findUnique: jest.fn().mockResolvedValue({ isSubscribed: true }),
   },
+  patient: {
+    findUnique: jest.fn(),
+  },
   patientCaregiver: {
     findUnique: jest.fn(),
   },
@@ -218,6 +221,168 @@ describe('MediaService', () => {
       ).rejects.toThrow(ConflictException);
       expect(prisma.media.create).not.toHaveBeenCalled();
     });
+
+    it('allows patient-originated photo memories for a paired patient', async () => {
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: false } });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      prisma.media.create.mockResolvedValueOnce({
+        publicId: 'patient-memory-1',
+        kind: 'PHOTO',
+        status: 'PENDING_UPLOAD',
+      });
+
+      const result = await service.createUploadIntent(
+        null,
+        {
+          patientId,
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: 512,
+          collection: 'MEMORY' as any,
+          note: 'Patient shared this from Relive',
+          contentHash: 'c'.repeat(64),
+        },
+        'http://localhost:3000',
+      );
+
+      expect(result.publicId).toBe('patient-memory-1');
+      expect(prisma.media.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            patientId,
+            caregiverId: null,
+            collection: 'MEMORY',
+            note: 'Patient shared this from Relive',
+          }),
+        }),
+      );
+      expect(prisma.caregiver.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('uses the patient creator subscription when patient uploads premium media', async () => {
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: true } });
+      prisma.media.create.mockResolvedValueOnce({
+        publicId: 'patient-audio-1',
+        kind: 'AUDIO',
+        status: 'PENDING_UPLOAD',
+      });
+
+      const result = await service.createUploadIntent(
+        null,
+        {
+          patientId,
+          kind: 'AUDIO' as any,
+          contentType: 'audio/x-m4a',
+          byteSize: 1024,
+          collection: 'MEMORY' as any,
+          note: 'Voice memory',
+        },
+        'http://localhost:3000',
+      );
+
+      expect(result.publicId).toBe('patient-audio-1');
+      expect(prisma.media.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            kind: 'AUDIO',
+            caregiverId: null,
+            contentType: 'audio/x-m4a',
+          }),
+        }),
+      );
+    });
+
+    it('rejects patient premium media when the patient creator is not subscribed', async () => {
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: false } });
+
+      await expect(
+        service.createUploadIntent(
+          null,
+          {
+            patientId,
+            kind: 'VIDEO' as any,
+            contentType: 'video/mp4',
+            byteSize: 1024,
+            collection: 'MEMORY' as any,
+            note: 'A video memory',
+          },
+          'http://localhost:3000',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.media.create).not.toHaveBeenCalled();
+    });
+
+    it('completes the full patient-originated memory upload flow', async () => {
+      const fakeRow: any = {};
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: false } });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      prisma.media.create.mockImplementationOnce(async ({ data }: any) => {
+        Object.assign(fakeRow, data, {
+          id: 'patient-upload-internal-1',
+          publicId: 'patient-upload-public-1',
+          kind: data.kind,
+          status: data.status,
+        });
+        return {
+          publicId: fakeRow.publicId,
+          kind: fakeRow.kind,
+          status: fakeRow.status,
+        };
+      });
+
+      const plaintext = Buffer.from('patient-memory');
+      const intent = await service.createUploadIntent(
+        null,
+        {
+          patientId,
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: plaintext.length,
+          collection: 'MEMORY' as any,
+          note: 'A patient memory',
+          contentHash: 'd'.repeat(64),
+        },
+        'http://localhost:3000',
+      );
+
+      prisma.media.findUnique.mockImplementation(async ({ where }: any) => {
+        if (where.publicId === fakeRow.publicId) return fakeRow;
+        return null;
+      });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      prisma.media.update.mockImplementation(async ({ data }: any) => {
+        Object.assign(fakeRow, data);
+        return fakeRow;
+      });
+
+      let storedCiphertext: Buffer | null = null;
+      storage.putObject.mockImplementationOnce(async (_key, body) => {
+        storedCiphertext = body;
+      });
+      const token = decodeURIComponent(intent.uploadUrl.split('/').pop() as string);
+      await service.storeUploadedPayload(token, plaintext);
+
+      prisma.patient.findUnique.mockResolvedValueOnce({ paired: true });
+      storage.headObject.mockResolvedValueOnce({ exists: true, size: storedCiphertext!.length });
+      prisma.media.update.mockImplementationOnce(async ({ data }: any) => {
+        Object.assign(fakeRow, data);
+        return { publicId: fakeRow.publicId, status: fakeRow.status };
+      });
+
+      const completed = await service.completeUpload(null, fakeRow.publicId);
+
+      expect(completed).toEqual({ publicId: 'patient-upload-public-1', status: 'READY' });
+      expect(storedCiphertext).not.toBeNull();
+      expect(fakeRow.payloadTag).toBeTruthy();
+    });
   });
 
   describe('listForPatient', () => {
@@ -237,6 +402,8 @@ describe('MediaService', () => {
           contentType: 'image/jpeg',
           byteSize: 1234,
           createdAt: new Date('2026-01-01T00:00:00Z'),
+          storageKey: 'media/pub-1',
+          payloadTag: 'tag',
         },
       ]);
       const list = await service.listForPatient('cg-1', 'patient-1');

@@ -877,7 +877,8 @@ export function MemoryLibrarySheetContent({
     );
   };
 
-  const hasSelectableMedia = !loading && !error && filteredItems.length > 0;
+  const mediaIsSettling = loading || uploading || verifyingQuizPhoto;
+  const hasSelectableMedia = !mediaIsSettling && !error && filteredItems.length > 0;
   const selectControlDisabled = !editMode && !hasSelectableMedia;
 
   return (
@@ -939,7 +940,7 @@ export function MemoryLibrarySheetContent({
           </View>
         )}
 
-        {libraryTab === 'QUIZ' && !hasEnoughQuizPhotos && (
+        {libraryTab === 'QUIZ' && !mediaIsSettling && !hasEnoughQuizPhotos && (
           <View style={styles.requirementBanner}>
             <View style={styles.requirementHeader}>
               <AppIcon iosName="info.circle.fill" androidFallback="i" size={16} color={themeColors.secondary} />
@@ -966,7 +967,7 @@ export function MemoryLibrarySheetContent({
             <Text style={styles.retryBtnText}>Try again</Text>
           </TouchableOpacity>
         </View>
-      ) : filteredItems.length === 0 ? (
+      ) : filteredItems.length === 0 && !mediaIsSettling ? (
         <View style={styles.centerFlex}>
           <View style={styles.emptyIconWrap}>
             <AppIcon iosName="photo.on.rectangle" androidFallback="📷" size={32} color={themeColors.textMuted} />

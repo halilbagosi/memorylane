@@ -5,6 +5,7 @@ export const ALLOWED_AUDIO_MIME = [
   'audio/mp4',
   'audio/aac',
   'audio/wav',
+  'audio/m4a',
   'audio/x-m4a',
 ] as const;
 

@@ -18,7 +18,12 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from 'expo-audio';
 import { File } from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
@@ -487,8 +492,8 @@ function LeaveMemorySection({
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
@@ -510,11 +515,11 @@ function LeaveMemorySection({
 
   const handleStartRecording = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') return;
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      setRecording(recording);
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) return;
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
     } catch {
       Alert.alert('Error', 'Failed to start recording');
@@ -522,12 +527,12 @@ function LeaveMemorySection({
   };
 
   const handleStopRecording = async () => {
-    if (!recording) return;
+    if (!isRecording) return;
     setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    if (uri) setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/m4a' });
-    setRecording(null);
+    await recorder.stop();
+    await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+    const uri = recorder.uri;
+    if (uri) setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/x-m4a' });
   };
 
   const handleSaveMemory = async () => {

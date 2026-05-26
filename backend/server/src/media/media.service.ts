@@ -132,19 +132,6 @@ export class MediaService {
   ): Promise<UploadIntentResponse> {
     const kind = dto.kind as MediaKindValue;
 
-    // ── Subscription: enforce allowed media kinds ──
-    const caregiver = await this.prisma.caregiver.findUnique({
-      where: { id: caregiverId },
-      select: { isSubscribed: true },
-    });
-    const { getPlanLimits } = await import('../auth/subscription.constants');
-    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
-    if (!limits.allowedMediaKinds.includes(kind)) {
-      throw new ForbiddenException(
-        `${kind.toLowerCase()} uploads require a Premium subscription. Upgrade to unlock video, audio, and document uploads.`,
-      );
-    }
-
     const allowed = ALLOWED_MIME_BY_KIND[kind];
     const normalizedMime = dto.contentType.trim().toLowerCase();
     if (!allowed.includes(normalizedMime)) {
@@ -161,6 +148,7 @@ export class MediaService {
     }
 
     await this.assertCaregiverAccess(caregiverId, dto.patientId);
+    await this.assertPlanAllowsUpload(caregiverId, dto.patientId, kind);
     if (kind === 'PHOTO' && dto.contentHash) {
       await this.assertUniqueContentHash(dto.patientId, dto.contentHash);
     }
@@ -728,6 +716,29 @@ export class MediaService {
     });
     if (!link) {
       throw new ForbiddenException('You do not have access to this patient');
+    }
+  }
+
+  private async assertPlanAllowsUpload(
+    caregiverId: string | null,
+    patientId: string,
+    kind: MediaKindValue,
+  ): Promise<void> {
+    const isSubscribed = caregiverId
+      ? (await this.prisma.caregiver.findUnique({
+          where: { id: caregiverId },
+          select: { isSubscribed: true },
+        }))?.isSubscribed === true
+      : (await this.prisma.patient.findUnique({
+          where: { id: patientId },
+          select: { creator: { select: { isSubscribed: true } } },
+        }))?.creator?.isSubscribed === true;
+
+    const limits = getPlanLimits(isSubscribed);
+    if (!limits.allowedMediaKinds.includes(kind)) {
+      throw new ForbiddenException(
+        `${kind.toLowerCase()} uploads require a Premium subscription. Upgrade to unlock video, audio, and document uploads.`,
+      );
     }
   }
 

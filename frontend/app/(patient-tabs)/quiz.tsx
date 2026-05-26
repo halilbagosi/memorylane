@@ -27,7 +27,12 @@ import type { SFSymbol } from 'expo-symbols';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from 'expo-audio';
 import { API_BASE_URL } from '../../src/config/api';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
 import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
@@ -177,8 +182,8 @@ export default function QuizTab() {
 
   // Media state
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const loadData = useCallback(async (isSilent = false) => {
     const info = await getPatientInfo();
@@ -507,9 +512,13 @@ export default function QuizTab() {
     const p = patientRef.current ?? await getPatientInfo();
     if (!p) return;
     setPatient(p);
+    const wasWaitingForMedia = ['no_media', 'insufficient_identities'].includes(phaseRef.current.type);
+    if (wasWaitingForMedia) {
+      setPhase({ type: 'loading' });
+    }
     const latest = await loadQuizRuntimeState(p.id, { validateUrls: true });
     const blocked = await applyQuizAvailabilityPhase(latest, p.id);
-    if (!blocked && ['no_media', 'insufficient_identities'].includes(phaseRef.current.type)) {
+    if (!blocked && (wasWaitingForMedia || ['no_media', 'insufficient_identities'].includes(phaseRef.current.type))) {
       setPhase({ type: 'intro' });
     }
   }, [applyQuizAvailabilityPhase, loadQuizRuntimeState]);
@@ -884,18 +893,16 @@ export default function QuizTab() {
 
   const handleStartRecording = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') return;
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) return;
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
     } catch (err) {
       Alert.alert('Error', 'Failed to start recording');
@@ -903,18 +910,18 @@ export default function QuizTab() {
   };
 
   const handleStopRecording = async () => {
-    if (!recording) return;
+    if (!isRecording) return;
     setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
+    await recorder.stop();
+    await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+    const uri = recorder.uri;
     if (uri) {
       setSelectedMedia({
         uri,
         kind: 'AUDIO',
-        type: 'audio/m4a',
+        type: 'audio/x-m4a',
       });
     }
-    setRecording(null);
   };
 
   const handleSaveMemory = async () => {
