@@ -43,6 +43,29 @@ interface RestoredState {
   patients: { patientName: string; newPrimaryName: string }[];
 }
 
+const GOOGLE_CLIENT_ID_PATTERN = /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/;
+
+function googleClientId(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed && GOOGLE_CLIENT_ID_PATTERN.test(trimmed) ? trimmed : undefined;
+}
+
+function matchesGoogleStatus(code: unknown, status: unknown) {
+  return status !== undefined && code === status;
+}
+
+function googleSignInErrorMessage(error: any) {
+  const code = error?.code;
+  const message = typeof error?.message === 'string' ? error.message : '';
+  if (matchesGoogleStatus(code, statusCodes.PLAY_SERVICES_NOT_AVAILABLE)) {
+    return 'Google Play Services are not available on this device.';
+  }
+  if (code === 'DEVELOPER_ERROR' || code === '10' || /DEVELOPER_ERROR|ApiException: 10/.test(message)) {
+    return 'Google Sign-In is not configured correctly for this build. Check the Google web client ID and Android SHA fingerprints, then rebuild the app.';
+  }
+  return message ? `Google sign-in failed: ${message}` : 'Google sign-in failed. Please try again.';
+}
+
 export default function LoginScreen() {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
@@ -81,15 +104,15 @@ export default function LoginScreen() {
       try {
         // On iOS, RNGoogleSignin requires either GoogleService-Info.plist
         // or an explicit iosClientId in configure().
-        const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-        const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-        if (Platform.OS === 'ios' && !iosClientId) {
+        const iosClientId = googleClientId(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
+        const webClientId = googleClientId(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+        if (!webClientId || (Platform.OS === 'ios' && !iosClientId)) {
           if (mounted) setGoogleConfigured(false);
           return;
         }
         await GoogleSignin.configure({
           webClientId,
-          iosClientId,
+          ...(iosClientId ? { iosClientId } : {}),
         });
         if (mounted) setGoogleConfigured(true);
       } catch {
@@ -157,19 +180,24 @@ export default function LoginScreen() {
   };
 
   const handleGoogleSignIn = async () => {
+    setApiError('');
+    setDeactivated(null);
+
     if (!GoogleSignin || !googleConfigured) {
       showDialog(
         'Google Sign-In Unavailable',
         Platform.OS === 'ios'
-          ? 'Google Sign-In is not configured for iOS yet. Add EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID or include GoogleService-Info.plist in the iOS build.'
-          : 'Google Sign-In is not available in this build yet. Rebuild the app after configuring Google auth.',
+          ? 'Google Sign-In is not configured for this iOS build. Set valid EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID and EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID values, then rebuild the app.'
+          : 'Google Sign-In is not configured for this Android build. Set a valid EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID value, then rebuild the app.',
         [{ label: 'OK', onPress: dismissDialog }],
       );
       return;
     }
 
     try {
-      await GoogleSignin.hasPlayServices();
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      }
       await GoogleSignin.signIn();
       const tokenResponse = await GoogleSignin.getTokens();
       if (tokenResponse.idToken) {
@@ -178,14 +206,12 @@ export default function LoginScreen() {
         setApiError('Could not retrieve Google ID token.');
       }
     } catch (error: any) {
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+      if (matchesGoogleStatus(error.code, statusCodes.SIGN_IN_CANCELLED)) {
         return;
-      } else if (error.code === statusCodes.IN_PROGRESS) {
+      } else if (matchesGoogleStatus(error.code, statusCodes.IN_PROGRESS)) {
         return;
-      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        setApiError('Google Play Services are not available on this device.');
       } else {
-        setApiError('Google sign-in failed. Please try again.');
+        setApiError(googleSignInErrorMessage(error));
       }
     }
   };
@@ -715,4 +741,3 @@ const getStyles = (isDark: boolean) => {
 });
 };
 // styles are computed at render time via `useTheme()` inside the component
-

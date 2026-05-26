@@ -297,7 +297,7 @@ export default function SignupScreen() {
           {/* Subscription toggle */}
           <View style={styles.subscriptionCard}>
             <View style={styles.subscriptionInfo}>
-              <Text style={styles.subscriptionTitle}>⭐ Premium Plan</Text>
+              <Text style={styles.subscriptionTitle}>Premium Plan</Text>
               <Text style={styles.subscriptionDesc}>
                 Unlock unlimited patients, caregivers, video/audio uploads, and AI-powered features.
               </Text>

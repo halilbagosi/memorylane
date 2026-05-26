@@ -1096,7 +1096,7 @@ export function MemoryLibrarySheetContent({
       <Modal visible={quizDetailsVisible && !previewItem} transparent animationType="fade" onRequestClose={() => setQuizDetailsVisible(false)}>
         <KeyboardAvoidingView style={styles.modalBackdrop} behavior={isIOS ? 'padding' : 'height'} keyboardVerticalOffset={24}>
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
-            <View style={styles.quizModal}>
+            <View style={styles.quizInfoModal}>
               <Text style={styles.quizModalTitle}>Add Quiz Info</Text>
               <Text style={styles.quizModalBody}>Add who is in the photo or speaking in the audio before saving this quiz media.</Text>
               <TextInput style={styles.detailInput} value={quizFirstName} onChangeText={t => setQuizFirstName(capFirst(t))} placeholder="Person name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" />
@@ -1396,18 +1396,19 @@ const getStyles = (isDark: boolean) => {
   fabDisabled: { opacity: 0.55 },
 
   modalBackdrop: { flex: 1, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.45)'), alignItems: 'center', justifyContent: 'center', padding: 20 },
-  modalScroll: { width: '100%' },
-  modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  modalScroll: { width: '100%', flex: 1 },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingTop: 24, paddingBottom: 40 },
   quizModal: { width: '100%', maxHeight: '86%', borderRadius: 18, backgroundColor: themeColors.neutral, padding: 18, gap: 10 },
+  quizInfoModal: { width: '100%', borderRadius: 18, backgroundColor: themeColors.neutral, padding: 18, gap: 10 },
   guidanceModal: { width: '100%', borderRadius: 18, backgroundColor: themeColors.neutral, padding: 18, gap: 14 },
   guidanceTips: { gap: 10 },
   guidanceTip: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 42 },
   guidanceIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3,87,58,0.1)') },
   guidanceIconError: { backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.1)') },
-  guidanceTipText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 14, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
-  quizModalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  guidanceTipText: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.textDark },
+  quizModalTitle: { fontFamily: typography.fontFamily.bold, fontSize: 18, color: themeColors.textDark },
   quizModalBody: { fontFamily: typography.fontFamily.regular, fontSize: 13, lineHeight: 18, color: themeColors.textMuted },
-  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'), backgroundColor: themeColors.neutralLight, paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  detailInput: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'), backgroundColor: themeColors.neutralLight, paddingHorizontal: 12, fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textDark },
   noteInput: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
   verificationBox: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 12, borderWidth: 1, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3,87,58,0.16)'), backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.72)'), paddingHorizontal: 12, paddingVertical: 10 },
   verificationBoxSuccess: { backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(167,215,197,0.32)') },
@@ -1420,7 +1421,7 @@ const getStyles = (isDark: boolean) => {
   previewImageLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: themeColors.neutralLight, alignItems: 'center', justifyContent: 'center' },
   detailsList: { gap: 6 },
-  detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: themeColors.textDark },
   detailMeta: { fontFamily: typography.fontFamily.regular, fontSize: 13, color: themeColors.textMuted },
   editDetailsBtn: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: themeColors.secondary },
   editDetailsText: { fontFamily: typography.fontFamily.medium, fontSize: 14, color: themeColors.neutralLight },
@@ -1443,7 +1444,7 @@ const getStyles = (isDark: boolean) => {
   approxCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.15)'), backgroundColor: themeColors.neutralLight, alignItems: 'center', justifyContent: 'center' },
   approxCheckboxActive: { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary },
   approxCheckmark: { fontFamily: typography.fontFamily.bold, fontSize: 13, color: themeColors.neutralLight },
-  approxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: (isDark ? (isDark ? '#223127' : '#F5FBF7') : themeColors.textDark) },
+  approxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textDark },
 
   fsPreviewScreen: { flex: 1, backgroundColor: '#000' },
   fsPreviewImage: { width: '100%', height: '100%' },
