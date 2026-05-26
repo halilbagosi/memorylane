@@ -7,7 +7,9 @@ import {
   Dimensions,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -497,6 +499,8 @@ function LeaveMemorySection({
   const [messages, setMessages] = useState<PatientMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<PatientMessage | null>(null);
+  const [msgPhotoError, setMsgPhotoError] = useState(false);
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
 
   const loadMessages = useCallback(async () => {
     if (!patient) return;
@@ -596,7 +600,10 @@ function LeaveMemorySection({
 
       {/* Compose modal — centered card */}
       <Modal visible={isOpen} animationType="fade" transparent onRequestClose={handleClose}>
-        <View style={styles.lmOverlay}>
+        <KeyboardAvoidingView
+          style={styles.lmOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={handleClose} activeOpacity={1} />
           <View style={styles.lmCard}>
             {/* Header */}
@@ -615,7 +622,6 @@ function LeaveMemorySection({
               multiline
               value={newNote}
               onChangeText={setNewNote}
-              autoFocus
             />
 
             {/* Media preview */}
@@ -684,7 +690,7 @@ function LeaveMemorySection({
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={messagesOpen} animationType="fade" transparent onRequestClose={() => setMessagesOpen(false)}>
@@ -704,7 +710,15 @@ function LeaveMemorySection({
             ) : (
               <ScrollView style={styles.lmMessagesList}>
                 {messages.map((message) => (
-                  <TouchableOpacity key={message.id} style={styles.lmMessageRow} onPress={() => setSelectedMessage(message)}>
+                  <TouchableOpacity
+                    key={message.id}
+                    style={styles.lmMessageRow}
+                    onPress={() => {
+                      setMessagesOpen(false);
+                      setMsgPhotoError(false);
+                      setSelectedMessage(message);
+                    }}
+                  >
                     <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback="N" size={16} color={themeColors.primary} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.lmMessagePreview} numberOfLines={2}>{message.content}</Text>
@@ -718,18 +732,37 @@ function LeaveMemorySection({
         </View>
       </Modal>
 
-      <Modal visible={!!selectedMessage} animationType="fade" transparent onRequestClose={() => setSelectedMessage(null)}>
+      <Modal
+        visible={!!selectedMessage}
+        animationType="fade"
+        transparent
+        onRequestClose={() => { setSelectedMessage(null); setMessagesOpen(true); }}
+      >
         <View style={styles.lmOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedMessage(null)} activeOpacity={1} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => { setSelectedMessage(null); setMessagesOpen(true); }} activeOpacity={1} />
           <View style={styles.lmCard}>
             <View style={styles.lmCardHeader}>
-              <Text style={styles.lmCardTitle}>Your note</Text>
-              <TouchableOpacity style={styles.lmCardClose} onPress={() => setSelectedMessage(null)}>
-                <AppIcon iosName="xmark" androidFallback="X" size={13} color={themeColors.textMuted} />
+              <TouchableOpacity style={styles.lmCardClose} onPress={() => { setSelectedMessage(null); setMessagesOpen(true); }}>
+                <AppIcon iosName="chevron.left" androidFallback="‹" size={16} color={themeColors.primary} />
               </TouchableOpacity>
+              <Text style={styles.lmCardTitle}>Your note</Text>
+              <View style={{ width: 28 }} />
             </View>
-            {selectedMessage?.attachment?.kind === 'PHOTO' && (
-              <Image source={{ uri: selectedMessage.attachment.downloadUrl }} style={styles.lmMessageImage} resizeMode="cover" />
+            {selectedMessage?.attachment?.kind === 'PHOTO' && !msgPhotoError && (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => setFullscreenPhoto(selectedMessage.attachment!.downloadUrl)}>
+                <Image
+                  source={{ uri: selectedMessage.attachment.downloadUrl }}
+                  style={styles.lmMessageImage}
+                  resizeMode="cover"
+                  onError={() => setMsgPhotoError(true)}
+                />
+              </TouchableOpacity>
+            )}
+            {selectedMessage?.attachment?.kind === 'PHOTO' && msgPhotoError && (
+              <View style={styles.lmMediaPlaceholder}>
+                <AppIcon iosName="photo" androidFallback="P" size={20} color={themeColors.textMuted} />
+                <Text style={styles.lmMediaPlaceholderText}>Photo unavailable</Text>
+              </View>
             )}
             {selectedMessage?.attachment && selectedMessage.attachment.kind !== 'PHOTO' && (
               <View style={styles.lmMediaPlaceholder}>
@@ -740,6 +773,19 @@ function LeaveMemorySection({
             <Text style={styles.lmMessageDate}>{selectedMessage ? new Date(selectedMessage.createdAt).toLocaleString() : ''}</Text>
             <Text style={styles.lmMessageBody}>{selectedMessage?.content}</Text>
           </View>
+        </View>
+      </Modal>
+
+      {/* Fullscreen photo viewer */}
+      <Modal visible={!!fullscreenPhoto} animationType="fade" transparent onRequestClose={() => setFullscreenPhoto(null)}>
+        <View style={styles.fullscreenOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setFullscreenPhoto(null)} activeOpacity={1} />
+          {fullscreenPhoto && (
+            <Image source={{ uri: fullscreenPhoto }} style={styles.fullscreenImage} resizeMode="contain" />
+          )}
+          <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenPhoto(null)}>
+            <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={30} color="#fff" />
+          </TouchableOpacity>
         </View>
       </Modal>
     </>
@@ -1269,6 +1315,23 @@ const getStyles = (isDark: boolean) => {
     color: themeColors.textDark,
     lineHeight: 23,
     marginTop: 8,
+  },
+  fullscreenOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '80%',
+  },
+  fullscreenClose: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+    padding: 8,
+    zIndex: 10,
   },
 });
 };

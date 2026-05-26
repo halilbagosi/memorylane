@@ -147,7 +147,9 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
         onRequestClose={onClose}
       >
         <View style={[styles.iosSheet, { backgroundColor: isDark ? '#0E1712' : colors.neutral }]}>
-          <View style={styles.handle} />
+          <View style={styles.handleArea}>
+            <View style={styles.handle} />
+          </View>
           {children}
         </View>
       </Modal>
@@ -214,19 +216,25 @@ const getStyles = (isDark: boolean) => {
     maxHeight: '85%',
     overflow: 'hidden',
   },
+  handleArea: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
   handleTouchArea: {
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    // 48dp minimum touch target per M3 accessibility guidelines
+    paddingTop: 12,
+    paddingBottom: 6,
     minHeight: 48,
   },
   handle: {
-    width: 32,
-    height: 4,
+    width: 36,
+    height: 3,
     borderRadius: 2,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.28)' : 'rgba(0, 0, 0, 0.25)'),
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.22)' : 'rgba(45, 79, 62, 0.22)'),
   },
 });
 };

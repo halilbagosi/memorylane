@@ -140,8 +140,8 @@ export default function PatientTabsLayout() {
             console.log('[Location] server update ok (no json)');
           }
         }
-      } catch (e) {
-        console.error('[Location] sendCurrentLocation error', e);
+      } catch {
+        // best-effort — network unavailable
       }
     };
 

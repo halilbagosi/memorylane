@@ -85,6 +85,7 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'location.fill': 'crosshairs-gps',
   'location.slash': 'map-marker-off-outline',
   'map': 'map-outline',
+  'globe': 'earth',
   'arrow.up.right': 'open-in-new',
   'moon.stars.fill': 'weather-night',
   'sun.max.fill': 'white-balance-sunny',

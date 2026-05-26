@@ -4,7 +4,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Platform, Dimensions, TextInput, Modal, Image,
-  Linking, Animated, Pressable, TouchableWithoutFeedback, LayoutAnimation, UIManager,
+  Linking, Animated, Pressable, TouchableWithoutFeedback, LayoutAnimation, UIManager, BackHandler,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -15,6 +15,7 @@ import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { CommonActions } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { typography } from '../../src/theme/typography';
 import { API_BASE_URL } from '../../src/config/api';
 import { getToken, getCaregiverInfo, saveCaregiverInfo, clearAuth, CaregiverInfo } from '../../src/utils/auth';
@@ -68,7 +69,7 @@ interface PatientMapLocation {
   updatedAt: string;
 }
 
-const OPEN_MAP_ZOOM = 14;
+const MAP_ZOOM = 16;
 
 function lonToTileX(longitude: number, zoom: number) {
   return Math.floor(((longitude + 180) / 360) * Math.pow(2, zoom));
@@ -82,14 +83,24 @@ function latToTileY(latitude: number, zoom: number) {
   );
 }
 
-function getOpenMapTileUrl(location: PatientMapLocation) {
-  const x = lonToTileX(location.longitude, OPEN_MAP_ZOOM);
-  const y = latToTileY(location.latitude, OPEN_MAP_ZOOM);
-  return `https://tile.openstreetmap.org/${OPEN_MAP_ZOOM}/${x}/${y}.png`;
+function getMapTileUrl(location: PatientMapLocation) {
+  const x = lonToTileX(location.longitude, MAP_ZOOM);
+  const y = latToTileY(location.latitude, MAP_ZOOM);
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${MAP_ZOOM}/${y}/${x}`;
 }
 
-function getOpenMapUrl(location: PatientMapLocation) {
-  return `https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=${OPEN_MAP_ZOOM}/${location.latitude}/${location.longitude}`;
+function getMapLabelUrl(location: PatientMapLocation) {
+  const x = lonToTileX(location.longitude, MAP_ZOOM);
+  const y = latToTileY(location.latitude, MAP_ZOOM);
+  return `https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/${MAP_ZOOM}/${y}/${x}`;
+}
+
+function getMapsUrl(location: PatientMapLocation) {
+  const { latitude, longitude } = location;
+  if (Platform.OS === 'ios') {
+    return `https://maps.apple.com/?ll=${latitude},${longitude}&q=Patient+Location`;
+  }
+  return `https://maps.google.com/?q=${latitude},${longitude}`;
 }
 
 function formatLocationTime(updatedAt: string) {
@@ -146,6 +157,7 @@ export default function PatientsTab() {
   const [deletionSheetVisible, setDeletionSheetVisible] = useState(false);
 
   const [selectedPatient, setSelectedPatient] = useState<PatientItem | null>(null);
+  const [patientInitialView, setPatientInitialView] = useState<'detail' | 'messages'>('detail');
   const [dialog, setDialog] = useState<{
     visible: boolean;
     title: string;
@@ -661,10 +673,14 @@ export default function PatientsTab() {
                           )}
                         </View>
                         {(patient.unreadMessageCount ?? 0) > 0 && (
-                          <View style={styles.messageBadge}>
+                          <TouchableOpacity
+                            style={styles.messageBadge}
+                            onPress={() => { setPatientInitialView('messages'); setSelectedPatient(patient); }}
+                            activeOpacity={0.75}
+                          >
                             <AppIcon iosName="envelope.fill" androidFallback="M" size={14} color={themeColors.neutralLight} />
                             <Text style={styles.messageBadgeText}>{patient.unreadMessageCount}</Text>
-                          </View>
+                          </TouchableOpacity>
                         )}
                         <TouchableOpacity
                           style={styles.deleteBtn}
@@ -753,10 +769,14 @@ export default function PatientsTab() {
                           <PatientLocationPreview patient={patient} compact />
                         </View>
                         {(patient.unreadMessageCount ?? 0) > 0 && (
-                          <View style={styles.messageBadge}>
+                          <TouchableOpacity
+                            style={styles.messageBadge}
+                            onPress={() => { setPatientInitialView('messages'); setSelectedPatient(patient); }}
+                            activeOpacity={0.75}
+                          >
                             <AppIcon iosName="envelope.fill" androidFallback="M" size={14} color={themeColors.neutralLight} />
                             <Text style={styles.messageBadgeText}>{patient.unreadMessageCount}</Text>
-                          </View>
+                          </TouchableOpacity>
                         )}
                         <View style={styles.secondaryArrow}>
                           <AppIcon iosName="chevron.right" androidFallback="›" size={18} color="#7B73C0" />
@@ -774,11 +794,11 @@ export default function PatientsTab() {
       {/* Patient Detail Bottom Sheet */}
       <M3BottomSheet
         visible={!!selectedPatient}
-        onClose={() => { if (!dialog.visible) setSelectedPatient(null); }}
+        onClose={() => { if (!dialog.visible) { setSelectedPatient(null); setPatientInitialView('detail'); } }}
       >
         <PatientDetailContent
           patient={selectedPatient}
-          onClose={() => setSelectedPatient(null)}
+          onClose={() => { setSelectedPatient(null); setPatientInitialView('detail'); }}
           onUnpair={handleUnpair}
           onLeave={handleLeave}
           onDelete={handleDelete}
@@ -790,6 +810,7 @@ export default function PatientsTab() {
           myId={caregiver?.id ?? ''}
           showDialog={showDialog}
           dismissDialog={dismissDialog}
+          initialView={patientInitialView}
         />
       </M3BottomSheet>
 
@@ -854,7 +875,10 @@ function PatientLocationPreview({ patient, compact = false }: { patient: Patient
   }
 
   const openMap = () => {
-    Linking.openURL(getOpenMapUrl(location)).catch((error) => {
+    const { latitude, longitude } = location;
+    WebBrowser.openBrowserAsync(
+      `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+    ).catch((error) => {
       console.error('[Location] Unable to open map URL', error);
     });
   };
@@ -890,7 +914,7 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
       <View style={styles.locationPanel}>
         <View style={styles.locationPanelHeader}>
           <View>
-            <Text style={styles.locationPanelEyebrow}>OpenStreetMap</Text>
+            <Text style={styles.locationPanelEyebrow}>Map</Text>
             <Text style={styles.locationPanelTitle}>Location</Text>
           </View>
           <View style={styles.locationPanelStatus}>
@@ -910,7 +934,10 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
   }
 
   const openMap = () => {
-    Linking.openURL(getOpenMapUrl(location)).catch((error) => {
+    const { latitude, longitude } = location;
+    WebBrowser.openBrowserAsync(
+      `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+    ).catch((error) => {
       console.error('[Location] Unable to open map URL', error);
     });
   };
@@ -919,7 +946,7 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
     <View style={styles.locationPanel}>
       <View style={styles.locationPanelHeader}>
         <View>
-          <Text style={styles.locationPanelEyebrow}>OpenStreetMap</Text>
+          <Text style={styles.locationPanelEyebrow}>Satellite</Text>
           <Text style={styles.locationPanelTitle}>Location</Text>
         </View>
         <View style={styles.locationPanelStatus}>
@@ -933,7 +960,8 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
         onPress={openMap}
         android_ripple={{ color: 'rgba(255,255,255,0.16)', borderless: false }}
       >
-        <Image source={{ uri: getOpenMapTileUrl(location) }} style={styles.locationPanelTile} />
+        <Image source={{ uri: getMapTileUrl(location) }} style={styles.locationPanelTile} />
+        <Image source={{ uri: getMapLabelUrl(location) }} style={styles.locationPanelTile} />
         <LinearGradient
           colors={['rgba(10, 32, 24, 0.08)', 'rgba(10, 32, 24, 0.52)']}
           style={styles.locationMapGradient}
@@ -971,7 +999,7 @@ function PatientLocationPanel({ patient }: { patient: PatientItem }) {
 }
 
 function PatientDetailContent({
-  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, onSaveQuizReminders, myId, showDialog, dismissDialog,
+  patient, onClose, onUnpair, onLeave, onDelete, onEdit, onAvatarChange, onRemoveCaregiver, onRequestPrimary, onSaveQuizReminders, myId, showDialog, dismissDialog, initialView,
 }: {
   patient: PatientItem | null;
   onClose: () => void;
@@ -986,6 +1014,7 @@ function PatientDetailContent({
   myId: string;
   showDialog: (title: string, body: string, actions: M3DialogAction[]) => void;
   dismissDialog: () => void;
+  initialView?: 'detail' | 'messages';
 }) {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
@@ -1020,7 +1049,7 @@ function PatientDetailContent({
     setView(v);
   };
 
-  React.useEffect(() => { switchView('detail'); }, [patient?.id]);
+  React.useEffect(() => { switchView(initialView ?? 'detail'); }, [patient?.id]);
   React.useEffect(() => { setReminderTimes((patient?.quizReminderTimes ?? []).slice().sort()); }, [patient?.id, patient?.quizReminderTimes]);
 
   if (!patient) return null;
@@ -1655,6 +1684,8 @@ function PatientMessagesContent({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = React.useState<PatientMessage | null>(null);
+  const [fullscreenPhoto, setFullscreenPhoto] = React.useState<string | null>(null);
+  const [msgPhotoError, setMsgPhotoError] = React.useState(false);
 
   const loadMessages = React.useCallback(async () => {
     setError(null);
@@ -1671,7 +1702,17 @@ function PatientMessagesContent({
     loadMessages().finally(() => setLoading(false));
   }, [loadMessages]);
 
+  React.useEffect(() => {
+    if (Platform.OS === 'ios') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
+
   const openMessage = async (message: PatientMessage) => {
+    setMsgPhotoError(false);
     setSelectedMessage(message);
     if (!message.readAt) {
       try {
@@ -1749,6 +1790,20 @@ function PatientMessagesContent({
         </ScrollView>
       )}
 
+      <Modal visible={!!fullscreenPhoto} transparent animationType="fade" onRequestClose={() => setFullscreenPhoto(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 }}
+            onPress={() => setFullscreenPhoto(null)}
+          >
+            <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={32} color="rgba(255,255,255,0.85)" />
+          </TouchableOpacity>
+          {fullscreenPhoto && (
+            <Image source={{ uri: fullscreenPhoto }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
+
       <Modal visible={!!selectedMessage} transparent animationType="fade" onRequestClose={() => setSelectedMessage(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.messageModalCard}>
@@ -1759,7 +1814,21 @@ function PatientMessagesContent({
               </TouchableOpacity>
             </View>
             {selectedMessage?.attachment?.kind === 'PHOTO' && (
-              <Image source={{ uri: selectedMessage.attachment.downloadUrl }} style={styles.messageAttachmentImage} resizeMode="cover" />
+              msgPhotoError ? (
+                <View style={styles.messageAttachmentFallback}>
+                  <AppIcon iosName="photo" androidFallback="P" size={28} color={themeColors.primary} />
+                  <Text style={styles.messageAttachmentText}>Photo unavailable</Text>
+                </View>
+              ) : (
+                <TouchableOpacity activeOpacity={0.85} onPress={() => setFullscreenPhoto(selectedMessage.attachment!.downloadUrl)}>
+                  <Image
+                    source={{ uri: selectedMessage.attachment.downloadUrl }}
+                    style={styles.messageAttachmentImage}
+                    resizeMode="cover"
+                    onError={() => setMsgPhotoError(true)}
+                  />
+                </TouchableOpacity>
+              )
             )}
             {selectedMessage?.attachment && selectedMessage.attachment.kind !== 'PHOTO' && (
               <View style={styles.messageAttachmentFallback}>
