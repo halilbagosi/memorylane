@@ -9,9 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logoS.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F5FBF7"
+      "backgroundColor": "#E8F5EC",
+      "dark": {
+        "image": "./assets/logoS.png",
+        "backgroundColor": "#0E1712"
+      }
     },
     "extra": {
       "eas": {

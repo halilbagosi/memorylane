@@ -1,5 +1,5 @@
 import { lightColors, darkColors } from '../../src/theme/colors';
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
@@ -25,6 +25,7 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
+  type RecordingOptions,
 } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
@@ -32,6 +33,7 @@ import { useNavigation } from 'expo-router';
 import { typography } from '../../src/theme/typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '../../src/components/AppIcon';
+import { VoiceMessagePlayer } from '../../src/components/VoiceMessagePlayer';
 import { ZoomableImage } from '../../src/components/ZoomableImage';
 import { deletePatientInfo, getPatientInfo, PatientInfo } from '../../src/utils/auth';
 import { getPatientTimeline, type TimelineItem, type MediaKind } from '../../src/services/media';
@@ -41,6 +43,17 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
 const GRID_GAP = 2;
 const TILE_SIZE = (SCREEN_WIDTH - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+
+const VOICE_QUALITY: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  sampleRate: 24000,
+  numberOfChannels: 1,
+  bitRate: 32000,
+  ios: {
+    ...RecordingPresets.HIGH_QUALITY.ios,
+    audioQuality: 32, // AudioQuality.LOW
+  },
+};
 
 type KindFilter = 'ALL' | 'PHOTO' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
@@ -413,11 +426,15 @@ function MemoryPreviewModal({
               </View>
             )}
           </>
+        ) : item.kind === 'AUDIO' ? (
+          <View style={styles.previewFullscreenFallback}>
+            <VoiceMessagePlayer uri={item.downloadUrl} style={styles.previewVoicePlayer} />
+          </View>
         ) : (
           <View style={styles.previewFullscreenFallback}>
             <AppIcon
-              iosName={imageFailed ? 'exclamationmark.triangle' : item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
-              androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
+              iosName={imageFailed ? 'exclamationmark.triangle' : 'doc.fill'}
+              androidFallback="File"
               size={56}
               color={themeColors.primary}
             />
@@ -494,7 +511,8 @@ function LeaveMemorySection({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const isPressingRef = useRef(false);
+  const recorder = useAudioRecorder(VOICE_QUALITY);
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [messages, setMessages] = useState<PatientMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -533,11 +551,18 @@ function LeaveMemorySection({
   };
 
   const handleStartRecording = async () => {
+    isPressingRef.current = true;
     try {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) return;
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
+      
+      if (!isPressingRef.current) {
+        // User released the button before preparation finished
+        return;
+      }
+      
       recorder.record();
       setIsRecording(true);
     } catch {
@@ -546,12 +571,20 @@ function LeaveMemorySection({
   };
 
   const handleStopRecording = async () => {
+    isPressingRef.current = false;
     if (!isRecording) return;
     setIsRecording(false);
+    
+    // Determine duration before stopping
+    const duration = recorder.getStatus().durationMillis;
     await recorder.stop();
     await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+    
     const uri = recorder.uri;
-    if (uri) setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/x-m4a' });
+    // Ignore accidental short taps
+    if (uri && duration > 500) {
+      setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/mp4' });
+    }
   };
 
   const handleSaveMemory = async () => {
@@ -629,16 +662,18 @@ function LeaveMemorySection({
               <View style={styles.lmMediaPreview}>
                 {selectedMedia.kind === 'PHOTO' ? (
                   <Image source={{ uri: selectedMedia.uri }} style={styles.lmPreviewImage} />
+                ) : selectedMedia.kind === 'AUDIO' ? (
+                  <VoiceMessagePlayer uri={selectedMedia.uri} style={styles.lmVoicePlayer} />
                 ) : (
                   <View style={styles.lmMediaPlaceholder}>
                     <AppIcon
-                      iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
+                      iosName="video.fill"
                       androidFallback="M"
                       size={20}
                       color={themeColors.primary}
                     />
                     <Text style={styles.lmMediaPlaceholderText}>
-                      {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
+                      Video selected
                     </Text>
                   </View>
                 )}
@@ -765,10 +800,14 @@ function LeaveMemorySection({
               </View>
             )}
             {selectedMessage?.attachment && selectedMessage.attachment.kind !== 'PHOTO' && (
-              <View style={styles.lmMediaPlaceholder}>
-                <AppIcon iosName={selectedMessage.attachment.kind === 'AUDIO' ? 'waveform' : selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback="A" size={20} color={themeColors.primary} />
-                <Text style={styles.lmMediaPlaceholderText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
-              </View>
+              selectedMessage.attachment.kind === 'AUDIO' ? (
+                <VoiceMessagePlayer uri={selectedMessage.attachment.downloadUrl} style={styles.lmVoicePlayer} />
+              ) : (
+                <View style={styles.lmMediaPlaceholder}>
+                  <AppIcon iosName={selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback="A" size={20} color={themeColors.primary} />
+                  <Text style={styles.lmMediaPlaceholderText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
+                </View>
+              )
             )}
             <Text style={styles.lmMessageDate}>{selectedMessage ? new Date(selectedMessage.createdAt).toLocaleString() : ''}</Text>
             <Text style={styles.lmMessageBody}>{selectedMessage?.content}</Text>
@@ -1005,6 +1044,10 @@ const getStyles = (isDark: boolean) => {
     justifyContent: 'center',
     gap: 12,
     backgroundColor: themeColors.neutral,
+    paddingHorizontal: 24,
+  },
+  previewVoicePlayer: {
+    maxWidth: 430,
   },
   previewBackBtn: {
     position: 'absolute',
@@ -1215,6 +1258,9 @@ const getStyles = (isDark: boolean) => {
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
+  },
+  lmVoicePlayer: {
+    marginBottom: 12,
   },
   lmMediaPlaceholderText: {
     fontFamily: typography.fontFamily.medium,

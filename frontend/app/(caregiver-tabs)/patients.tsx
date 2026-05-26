@@ -29,6 +29,7 @@ import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { CaregiverAvatarButton } from '../../src/components/CaregiverAvatarButton';
 import { ManageDeletionSheet } from '../../src/components/ManageDeletionSheet';
 import { MemoryLibrarySheetContent } from '../../src/components/MemoryLibraryModal';
+import { VoiceMessagePlayer } from '../../src/components/VoiceMessagePlayer';
 import {
   listCaregiverPatientMessages,
   markPatientMessageRead,
@@ -1831,15 +1832,19 @@ function PatientMessagesContent({
               )
             )}
             {selectedMessage?.attachment && selectedMessage.attachment.kind !== 'PHOTO' && (
-              <View style={styles.messageAttachmentFallback}>
-                <AppIcon
-                  iosName={selectedMessage.attachment.kind === 'AUDIO' ? 'waveform' : selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'}
-                  androidFallback="A"
-                  size={28}
-                  color={themeColors.primary}
-                />
-                <Text style={styles.messageAttachmentText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
-              </View>
+              selectedMessage.attachment.kind === 'AUDIO' ? (
+                <VoiceMessagePlayer uri={selectedMessage.attachment.downloadUrl} style={styles.messageVoicePlayer} />
+              ) : (
+                <View style={styles.messageAttachmentFallback}>
+                  <AppIcon
+                    iosName={selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'}
+                    androidFallback="A"
+                    size={28}
+                    color={themeColors.primary}
+                  />
+                  <Text style={styles.messageAttachmentText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
+                </View>
+              )
             )}
             <Text style={styles.messageModalDate}>
               {selectedMessage ? new Date(selectedMessage.createdAt).toLocaleString() : ''}
@@ -2878,6 +2883,10 @@ const getStyles = (isDark: boolean) => {
     marginTop: 8,
     marginBottom: 12,
     backgroundColor: isDark ? '#0F1713' : '#EEF3EF',
+  },
+  messageVoicePlayer: {
+    marginTop: 8,
+    marginBottom: 12,
   },
   messageAttachmentFallback: {
     minHeight: 110,

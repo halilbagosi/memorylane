@@ -30,6 +30,7 @@ import { colors, lightColors, darkColors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { AppIcon } from './AppIcon';
 import { M3Dialog, type M3DialogAction } from './M3Dialog';
+import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 import { ZoomableImage } from './ZoomableImage';
 import { getCaregiverInfo } from '../utils/auth';
 import { canUploadMediaKind } from '../utils/subscription';
@@ -1227,6 +1228,8 @@ function MediaDetailsModal({ item, onClose, onEdit }: { item: MediaTileVM | null
               {imageLoading && <View style={styles.previewImageLoading}><ActivityIndicator size="small" color={themeColors.secondary} /></View>}
               <Image source={{ uri: item.signedUrl }} style={styles.previewMediaImage} resizeMode="contain" onError={() => setImageFailed(true)} onLoadEnd={() => setImageLoading(false)} />
             </View>
+          ) : item.kind === 'AUDIO' && item.signedUrl ? (
+            <VoiceMessagePlayer uri={item.signedUrl} style={styles.previewVoicePlayer} />
           ) : (
             <View style={styles.previewMediaFallback}><AppIcon iosName={item.kind === 'AUDIO' ? 'waveform' : item.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={item.kind === 'AUDIO' ? 'Audio' : item.kind === 'VIDEO' ? 'Video' : 'File'} size={40} color={themeColors.secondary} /></View>
           )}
@@ -1419,6 +1422,7 @@ const getStyles = (isDark: boolean) => {
   previewMediaImageFrame: { width: '100%', height: Math.min(SCREEN_WIDTH * 0.72, 360), alignSelf: 'center', borderRadius: 14, overflow: 'hidden', backgroundColor: themeColors.neutral },
   previewMediaImage: { width: '100%', height: '100%' },
   previewImageLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  previewVoicePlayer: { marginVertical: 4 },
   previewMediaFallback: { width: '100%', height: 160, borderRadius: 14, backgroundColor: themeColors.neutralLight, alignItems: 'center', justifyContent: 'center' },
   detailsList: { gap: 6 },
   detailLine: { fontFamily: typography.fontFamily.medium, fontSize: 15, lineHeight: 21, color: themeColors.textDark },

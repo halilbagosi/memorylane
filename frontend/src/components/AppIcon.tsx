@@ -69,6 +69,7 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'mic.fill': 'microphone',
   'stop.fill': 'stop',
   'play.fill': 'play',
+  'pause.fill': 'pause',
   'note.text': 'note-text-outline',
   'photo.fill': 'image',
   'doc.fill': 'file-document',
@@ -103,6 +104,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'bookmark.fill': 'bookmark',
   'newspaper.fill': 'newspaper-variant',
   'link': 'link-variant',
+  'paperclip': 'paperclip',
+  'photo': 'image-outline',
 };
 
 interface AppIconProps {

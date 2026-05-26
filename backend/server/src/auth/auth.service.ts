@@ -238,11 +238,17 @@ export class AuthService {
     const key = await this.appleJwksClient.getSigningKey(decoded.header.kid);
     const signingKey = key.getPublicKey();
 
-    const payload = jwt.verify(idToken, signingKey, {
-      algorithms: ['RS256'],
-      issuer: 'https://appleid.apple.com',
-      audience: process.env.APPLE_BUNDLE_ID || '',
-    }) as jwt.JwtPayload;
+    let payload: jwt.JwtPayload;
+    try {
+      payload = jwt.verify(idToken, signingKey, {
+        algorithms: ['RS256'],
+        issuer: 'https://appleid.apple.com',
+        audience: process.env.APPLE_BUNDLE_ID || '',
+      }) as jwt.JwtPayload;
+    } catch (error) {
+      console.error('Apple token verification failed:', error.message);
+      throw new UnauthorizedException('Invalid Apple token or missing environment configuration');
+    }
 
     if (!payload.email) {
       throw new UnauthorizedException('Apple token missing email');

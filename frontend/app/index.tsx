@@ -183,7 +183,7 @@ export default function WelcomeScreen() {
               >
                 <View style={styles.cardTopRow}>
                   <View style={[styles.iconBubble, { backgroundColor: (isDark ? 'rgba(240, 201, 135, 0.15)' : 'rgba(180, 140, 100, 0.15)') }]}>
-                    <AppIcon iosName="person.fill" androidFallback="P" size={22} color={isDark ? '#F0C987' : '#8B7355'} />
+                    <AppIcon iosName="person.fill" androidFallback="P" size={22} color={isDark ? 'rgba(240, 201, 135, 0.15)' : 'rgba(180, 140, 100, 0.15)'} />
                   </View>
                   <AdaptiveBadge
                     label="Daily Quiz"
