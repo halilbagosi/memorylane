@@ -1,5 +1,5 @@
 import { lightColors, darkColors } from '../../src/theme/colors';
-import React, { memo, useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
@@ -25,7 +25,6 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
-  type RecordingOptions,
 } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
@@ -43,17 +42,6 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
 const GRID_GAP = 2;
 const TILE_SIZE = (SCREEN_WIDTH - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-
-const VOICE_QUALITY: RecordingOptions = {
-  ...RecordingPresets.HIGH_QUALITY,
-  sampleRate: 24000,
-  numberOfChannels: 1,
-  bitRate: 32000,
-  ios: {
-    ...RecordingPresets.HIGH_QUALITY.ios,
-    audioQuality: 32, // AudioQuality.LOW
-  },
-};
 
 type KindFilter = 'ALL' | 'PHOTO' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
@@ -350,19 +338,19 @@ const MemoryTile = memo(function MemoryTile({
         </>
       ) : (
         <View style={styles.gridMediaFallback}>
-            <AppIcon
-              iosName={item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
-              androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
-              size={24}
-              color={themeColors.primary}
-            />
+          <AppIcon
+            iosName={item.kind === 'AUDIO' ? 'waveform' : 'doc.fill'}
+            androidFallback={item.kind === 'AUDIO' ? '♪' : '📄'}
+            size={24}
+            color={themeColors.primary}
+          />
         </View>
       )}
       {isVideo && (
-          <View style={styles.videoBadge}>
-            <AppIcon iosName="play.fill" androidFallback="▶" size={10} color={themeColors.neutralLight} />
-          </View>
-        )}
+        <View style={styles.videoBadge}>
+          <AppIcon iosName="play.fill" androidFallback="▶" size={10} color={themeColors.neutralLight} />
+        </View>
+      )}
     </TouchableOpacity>
   );
 });
@@ -511,8 +499,7 @@ function LeaveMemorySection({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const isPressingRef = useRef(false);
-  const recorder = useAudioRecorder(VOICE_QUALITY);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [messages, setMessages] = useState<PatientMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -551,18 +538,11 @@ function LeaveMemorySection({
   };
 
   const handleStartRecording = async () => {
-    isPressingRef.current = true;
     try {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) return;
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
-      
-      if (!isPressingRef.current) {
-        // User released the button before preparation finished
-        return;
-      }
-      
       recorder.record();
       setIsRecording(true);
     } catch {
@@ -571,20 +551,12 @@ function LeaveMemorySection({
   };
 
   const handleStopRecording = async () => {
-    isPressingRef.current = false;
     if (!isRecording) return;
     setIsRecording(false);
-    
-    // Determine duration before stopping
-    const duration = recorder.getStatus().durationMillis;
     await recorder.stop();
     await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
-    
     const uri = recorder.uri;
-    // Ignore accidental short taps
-    if (uri && duration > 500) {
-      setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/mp4' });
-    }
+    if (uri) setSelectedMedia({ uri, kind: 'AUDIO', type: 'audio/mp4' });
   };
 
   const handleSaveMemory = async () => {
@@ -836,549 +808,549 @@ function LeaveMemorySection({
 const getStyles = (isDark: boolean) => {
   const themeColors = isDark ? darkColors : lightColors;
   return StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: themeColors.neutral,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 24,
-  },
-  greeting: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 22,
-    color: themeColors.textDark,
-  },
-  subtitle: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: themeColors.textMuted,
-    marginTop: 2,
-  },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  logoutBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.1)'),
-  },
-  headerAvatarFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: themeColors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerAvatarText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 15,
-    color: themeColors.neutralLight,
-  },
+    container: {
+      flex: 1,
+      backgroundColor: themeColors.neutral,
+    },
+    topRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+      paddingHorizontal: 24,
+    },
+    greeting: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 22,
+      color: themeColors.textDark,
+    },
+    subtitle: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 13,
+      color: themeColors.textMuted,
+      marginTop: 2,
+    },
+    headerAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    logoutBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(192,57,43,0.1)'),
+    },
+    headerAvatarFallback: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: themeColors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerAvatarText: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 15,
+      color: themeColors.neutralLight,
+    },
 
-  // Filter chips
-  filterRow: { flexGrow: 0, marginBottom: 12, paddingHorizontal: 24 },
-  filterContent: { gap: 8, paddingRight: 32 },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: themeColors.neutralLight,
-    borderWidth: 1,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
-  },
-  chipActive: { backgroundColor: themeColors.primary, borderColor: themeColors.primary },
-  chipText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: themeColors.textMuted,
-  },
-  chipTextActive: { color: themeColors.neutralLight },
+    // Filter chips
+    filterRow: { flexGrow: 0, marginBottom: 12, paddingHorizontal: 24 },
+    filterContent: { gap: 8, paddingRight: 32 },
+    chip: {
+      paddingHorizontal: 16,
+      paddingVertical: 7,
+      borderRadius: 20,
+      backgroundColor: themeColors.neutralLight,
+      borderWidth: 1,
+      borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
+    },
+    chipActive: { backgroundColor: themeColors.primary, borderColor: themeColors.primary },
+    chipText: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 13,
+      color: themeColors.textMuted,
+    },
+    chipTextActive: { color: themeColors.neutralLight },
 
-  // States
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingBottom: 80,
-  },
-  emptyIconWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.08)'),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  emptyTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
-    color: themeColors.textDark,
-  },
-  emptyBody: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: themeColors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  errorText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: (isDark ? '#FFB4A8' : '#C0392B'),
-    textAlign: 'center',
-  },
-  retryBtn: {
-    paddingHorizontal: 22,
-    paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: themeColors.primary,
-  },
-  retryBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.neutralLight,
-  },
+    // States
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      paddingHorizontal: 24,
+      paddingBottom: 80,
+    },
+    emptyIconWrap: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.08)'),
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    emptyTitle: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 18,
+      color: themeColors.textDark,
+    },
+    emptyBody: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 14,
+      color: themeColors.textMuted,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    errorText: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 14,
+      color: (isDark ? '#FFB4A8' : '#C0392B'),
+      textAlign: 'center',
+    },
+    retryBtn: {
+      paddingHorizontal: 22,
+      paddingVertical: 11,
+      borderRadius: 12,
+      backgroundColor: themeColors.primary,
+    },
+    retryBtnText: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 14,
+      color: themeColors.neutralLight,
+    },
 
-  // List
-  listContent: {
-    paddingBottom: 180, // Clear the navigation bar
-    paddingTop: 4,
-  },
-  yearHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 28,
-    paddingBottom: 8,
-  },
-  yearHeaderText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 15,
-    color: themeColors.textMuted,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  yearHeaderSuffix: {
-    fontSize: 10,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    gap: GRID_GAP,
-    marginBottom: GRID_GAP,
-  },
+    // List
+    listContent: {
+      paddingBottom: 180, // Clear the navigation bar
+      paddingTop: 4,
+    },
+    yearHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 28,
+      paddingBottom: 8,
+    },
+    yearHeaderText: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 15,
+      color: themeColors.textMuted,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    yearHeaderSuffix: {
+      fontSize: 10,
+    },
+    gridRow: {
+      flexDirection: 'row',
+      gap: GRID_GAP,
+      marginBottom: GRID_GAP,
+    },
 
-  // Memory grid
-  gridTile: {
-    width: TILE_SIZE,
-    aspectRatio: 1,
-    overflow: 'hidden',
-    backgroundColor: themeColors.neutralLight,
-  },
-  gridTileSpacer: {
-    width: TILE_SIZE,
-    aspectRatio: 1,
-  },
-  gridImage: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-  tileLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: themeColors.neutralLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gridMediaFallback: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.06)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.5)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Preview modal
-  previewScreen: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  previewFullscreenImage: {
-    width: '100%',
-    height: '100%',
-  },
-  previewLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-  },
-  previewFullscreenFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: themeColors.neutral,
-    paddingHorizontal: 24,
-  },
-  previewVoicePlayer: {
-    maxWidth: 430,
-  },
-  previewBackBtn: {
-    position: 'absolute',
-    top: 52,
-    left: 18,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: (isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255,255,255,0.85)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  previewSheerDetails: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 28,
-    gap: 5,
-  },
-  previewBackdrop: {
-    flex: 1,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.6)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  previewCard: {
-    width: '100%',
-    maxHeight: '88%',
-    borderRadius: 22,
-    backgroundColor: themeColors.neutralLight,
-    overflow: 'hidden',
-  },
-  previewImage: {
-    width: '100%',
-    height: SCREEN_WIDTH * 0.8,
-    backgroundColor: '#000',
-  },
-  previewMediaFallback: {
-    height: 160,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.06)'),
-  },
-  previewKindLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.textMuted,
-  },
-  previewMeta: {
-    padding: 18,
-    gap: 6,
-  },
-  previewYear: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
-    color: themeColors.neutralLight,
-  },
-  previewCategory: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.65)'),
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  previewNote: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 15,
-    color: (isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255,255,255,0.95)'),
-    lineHeight: 22,
-    marginTop: 2,
-  },
-  previewCounter: {
-    position: 'absolute',
-    top: 56,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-    pointerEvents: 'none',
-  },
-  previewCounterText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: '#fff',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  previewNavBtn: {
-    position: 'absolute',
-    top: '44%',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.85)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  previewNavLeft: { left: 14 },
-  previewNavRight: { right: 14 },
+    // Memory grid
+    gridTile: {
+      width: TILE_SIZE,
+      aspectRatio: 1,
+      overflow: 'hidden',
+      backgroundColor: themeColors.neutralLight,
+    },
+    gridTileSpacer: {
+      width: TILE_SIZE,
+      aspectRatio: 1,
+    },
+    gridImage: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+    },
+    tileLoadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: themeColors.neutralLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    gridMediaFallback: {
+      width: '100%',
+      height: '100%',
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.06)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    videoBadge: {
+      position: 'absolute',
+      top: 6,
+      right: 6,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.5)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // Preview modal
+    previewScreen: {
+      flex: 1,
+      backgroundColor: '#000',
+    },
+    previewFullscreenImage: {
+      width: '100%',
+      height: '100%',
+    },
+    previewLoadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#000',
+    },
+    previewFullscreenFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      backgroundColor: themeColors.neutral,
+      paddingHorizontal: 24,
+    },
+    previewVoicePlayer: {
+      maxWidth: 430,
+    },
+    previewBackBtn: {
+      position: 'absolute',
+      top: 52,
+      left: 18,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: (isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255,255,255,0.85)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 10,
+    },
+    previewSheerDetails: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      paddingHorizontal: 20,
+      paddingTop: 56,
+      paddingBottom: 28,
+      gap: 5,
+    },
+    previewBackdrop: {
+      flex: 1,
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.6)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20,
+    },
+    previewCard: {
+      width: '100%',
+      maxHeight: '88%',
+      borderRadius: 22,
+      backgroundColor: themeColors.neutralLight,
+      overflow: 'hidden',
+    },
+    previewImage: {
+      width: '100%',
+      height: SCREEN_WIDTH * 0.8,
+      backgroundColor: '#000',
+    },
+    previewMediaFallback: {
+      height: 160,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.06)'),
+    },
+    previewKindLabel: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 14,
+      color: themeColors.textMuted,
+    },
+    previewMeta: {
+      padding: 18,
+      gap: 6,
+    },
+    previewYear: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 20,
+      color: themeColors.neutralLight,
+    },
+    previewCategory: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 13,
+      color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.65)'),
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    previewNote: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 15,
+      color: (isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255,255,255,0.95)'),
+      lineHeight: 22,
+      marginTop: 2,
+    },
+    previewCounter: {
+      position: 'absolute',
+      top: 56,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      zIndex: 10,
+      pointerEvents: 'none',
+    },
+    previewCounterText: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 14,
+      color: '#fff',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      paddingHorizontal: 14,
+      paddingVertical: 5,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    previewNavBtn: {
+      position: 'absolute',
+      top: '44%',
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.85)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 10,
+    },
+    previewNavLeft: { left: 14 },
+    previewNavRight: { right: 14 },
 
-  // ── LeaveMemorySection styles ─────────────────────────────────────────────
-  lmTrigger: {
-    marginHorizontal: 24,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: themeColors.neutralLight,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.13)'),
-  },
-  lmMessagesTrigger: {
-    marginTop: -6,
-  },
-  lmTriggerIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.1)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lmTriggerText: {
-    flex: 1,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: themeColors.textMuted,
-  },
-  lmOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    paddingHorizontal: 20,
-  },
-  lmCard: {
-    width: '100%',
-    backgroundColor: themeColors.neutralLight,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.15)'),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  lmCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  lmCardTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 17,
-    color: themeColors.primary,
-  },
-  lmCardClose: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lmTextInput: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 16,
-    color: themeColors.textDark,
-    minHeight: 88,
-    textAlignVertical: 'top',
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
-    padding: 12,
-    marginBottom: 14,
-    backgroundColor: themeColors.neutral,
-  },
-  lmMediaPreview: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  lmPreviewImage: {
-    width: '100%',
-    height: 150,
-    borderRadius: 12,
-  },
-  lmMediaPlaceholder: {
-    width: '100%',
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: themeColors.neutral,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  lmVoicePlayer: {
-    marginBottom: 12,
-  },
-  lmMediaPlaceholderText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.primary,
-  },
-  lmRemoveMedia: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-    backgroundColor: (isDark ? themeColors.neutral : '#fff'),
-    borderRadius: 12,
-  },
-  lmMediaBtns: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  lmMediaBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: themeColors.neutral,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.2)'),
-  },
-  lmMediaBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
-    color: themeColors.primary,
-  },
-  lmRecordingBtn: {
-    backgroundColor: '#E74C3C',
-    borderColor: '#E74C3C',
-  },
-  lmRecordingBtnText: {
-    color: '#fff',
-  },
-  lmSaveBtn: {
-    borderRadius: 999,
-    backgroundColor: themeColors.primary,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  lmSaveBtnDisabled: {
-    opacity: 0.45,
-  },
-  lmSaveBtnText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: themeColors.neutralLight,
-  },
-  lmEmptyMessages: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: themeColors.textMuted,
-    textAlign: 'center',
-    paddingVertical: 22,
-  },
-  lmMessagesList: {
-    maxHeight: 340,
-  },
-  lmMessageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.12)'),
-  },
-  lmMessagePreview: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: themeColors.textDark,
-    lineHeight: 19,
-  },
-  lmMessageDate: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: themeColors.textMuted,
-    marginTop: 4,
-  },
-  lmMessageImage: {
-    width: '100%',
-    aspectRatio: 1.1,
-    borderRadius: 14,
-    marginBottom: 12,
-    backgroundColor: themeColors.neutral,
-  },
-  lmMessageBody: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 16,
-    color: themeColors.textDark,
-    lineHeight: 23,
-    marginTop: 8,
-  },
-  fullscreenOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullscreenImage: {
-    width: '100%',
-    height: '80%',
-  },
-  fullscreenClose: {
-    position: 'absolute',
-    top: 52,
-    right: 20,
-    padding: 8,
-    zIndex: 10,
-  },
-});
+    // ── LeaveMemorySection styles ─────────────────────────────────────────────
+    lmTrigger: {
+      marginHorizontal: 24,
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: themeColors.neutralLight,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.13)'),
+    },
+    lmMessagesTrigger: {
+      marginTop: -6,
+    },
+    lmTriggerIcon: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30,77,48,0.1)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    lmTriggerText: {
+      flex: 1,
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 14,
+      color: themeColors.textMuted,
+    },
+    lmOverlay: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0,0,0,0.52)',
+      paddingHorizontal: 20,
+    },
+    lmCard: {
+      width: '100%',
+      backgroundColor: themeColors.neutralLight,
+      borderRadius: 20,
+      padding: 20,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.15)'),
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.18,
+      shadowRadius: 24,
+      elevation: 16,
+    },
+    lmCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    lmCardTitle: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 17,
+      color: themeColors.primary,
+    },
+    lmCardClose: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    lmTextInput: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 16,
+      color: themeColors.textDark,
+      minHeight: 88,
+      textAlignVertical: 'top',
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.2)'),
+      padding: 12,
+      marginBottom: 14,
+      backgroundColor: themeColors.neutral,
+    },
+    lmMediaPreview: {
+      position: 'relative',
+      marginBottom: 16,
+    },
+    lmPreviewImage: {
+      width: '100%',
+      height: 150,
+      borderRadius: 12,
+    },
+    lmMediaPlaceholder: {
+      width: '100%',
+      height: 80,
+      borderRadius: 12,
+      backgroundColor: themeColors.neutral,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+    },
+    lmVoicePlayer: {
+      marginBottom: 12,
+    },
+    lmMediaPlaceholderText: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 14,
+      color: themeColors.primary,
+    },
+    lmRemoveMedia: {
+      position: 'absolute',
+      top: -10,
+      right: -10,
+      backgroundColor: (isDark ? themeColors.neutral : '#fff'),
+      borderRadius: 12,
+    },
+    lmMediaBtns: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 20,
+    },
+    lmMediaBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: themeColors.neutral,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.2)'),
+    },
+    lmMediaBtnText: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 13,
+      color: themeColors.primary,
+    },
+    lmRecordingBtn: {
+      backgroundColor: '#E74C3C',
+      borderColor: '#E74C3C',
+    },
+    lmRecordingBtnText: {
+      color: '#fff',
+    },
+    lmSaveBtn: {
+      borderRadius: 999,
+      backgroundColor: themeColors.primary,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    lmSaveBtnDisabled: {
+      opacity: 0.45,
+    },
+    lmSaveBtnText: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 16,
+      color: themeColors.neutralLight,
+    },
+    lmEmptyMessages: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 14,
+      color: themeColors.textMuted,
+      textAlign: 'center',
+      paddingVertical: 22,
+    },
+    lmMessagesList: {
+      maxHeight: 340,
+    },
+    lmMessageRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.12)'),
+    },
+    lmMessagePreview: {
+      fontFamily: typography.fontFamily.medium,
+      fontSize: 14,
+      color: themeColors.textDark,
+      lineHeight: 19,
+    },
+    lmMessageDate: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 12,
+      color: themeColors.textMuted,
+      marginTop: 4,
+    },
+    lmMessageImage: {
+      width: '100%',
+      aspectRatio: 1.1,
+      borderRadius: 14,
+      marginBottom: 12,
+      backgroundColor: themeColors.neutral,
+    },
+    lmMessageBody: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 16,
+      color: themeColors.textDark,
+      lineHeight: 23,
+      marginTop: 8,
+    },
+    fullscreenOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.95)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    fullscreenImage: {
+      width: '100%',
+      height: '80%',
+    },
+    fullscreenClose: {
+      position: 'absolute',
+      top: 52,
+      right: 20,
+      padding: 8,
+      zIndex: 10,
+    },
+  });
 };
 // styles are computed at render time via `useTheme()` inside the component

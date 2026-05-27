@@ -53,18 +53,13 @@ export function VoiceMessagePlayer({ uri, style }: VoiceMessagePlayerProps) {
   const timeLabel = isPreparing
     ? '--:--'
     : status.playing && duration > 0
-    ? formatDuration(Math.max(duration - currentTime, 0))
-    : formatDuration(duration || currentTime);
+      ? formatDuration(Math.max(duration - currentTime, 0))
+      : formatDuration(duration || currentTime);
 
   const togglePlayback = useCallback(async () => {
     setPlayError(false);
     try {
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-        shouldRouteThroughEarpiece: false,
-        interruptionMode: 'mixWithOthers',
-      });
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
       if (isPreparing) return;
       if (status.playing) {
         player.pause();
@@ -198,4 +193,5 @@ const getStyles = (isDark: boolean) => {
       color: isDark ? '#FFB4A8' : '#C0392B',
     },
   });
+};
 };

@@ -9,13 +9,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/logoS.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#E8F5EC",
-      "dark": {
-        "image": "./assets/logoS.png",
-        "backgroundColor": "#0E1712"
-      }
+      "backgroundColor": "#F5FBF7"
     },
     "extra": {
       "eas": {
@@ -36,9 +32,7 @@
         }
       }
     },
-    
     "owner": "halilbagosi",
-    
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

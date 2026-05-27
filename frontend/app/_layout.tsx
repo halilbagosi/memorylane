@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { GothicA1_700Bold } from '@expo-google-fonts/gothic-a1';
@@ -22,7 +21,7 @@ const isIOS = Platform.OS === 'ios';
 
 function RootLayoutContent() {
   const { isDark, colors: themeColors } = useTheme();
-  
+
   const paperTheme = {
     ...MD3LightTheme,
     colors: {
@@ -117,18 +116,20 @@ export default function RootLayout() {
     DMSans_700Bold,
     GothicA1_700Bold,
   });
-  const [isSplashAnimationComplete, setSplashAnimationComplete] = useState(false);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   return (
     <ThemeProvider>
-      {(fontsLoaded || fontError) && <RootLayoutContent />}
-      {!isSplashAnimationComplete && (
-        <AnimatedSplashScreen
-          onAnimationComplete={() => setSplashAnimationComplete(true)}
-          fontsLoaded={fontsLoaded}
-          fontError={fontError}
-        />
-      )}
+      <RootLayoutContent />
     </ThemeProvider>
   );
 }

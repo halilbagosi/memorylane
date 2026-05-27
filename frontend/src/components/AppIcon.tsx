@@ -104,8 +104,6 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'bookmark.fill': 'bookmark',
   'newspaper.fill': 'newspaper-variant',
   'link': 'link-variant',
-  'paperclip': 'paperclip',
-  'photo': 'image-outline',
 };
 
 interface AppIconProps {
@@ -171,10 +169,10 @@ export function AppIcon({
 const getStyles = (isDark: boolean) => {
   const themeColors = isDark ? darkColors : lightColors;
   return StyleSheet.create({
-  androidContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});
+    androidContainer: {
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+  });
 };
 // Styles are created per-render via `getStyles(isDark)` in `AppIcon`.
