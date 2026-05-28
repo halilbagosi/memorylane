@@ -7,6 +7,7 @@ import { MediaModule } from './media/media.module';
 import { PushModule } from './push/push.module';
 import { InsightsModule } from './insights/insights.module';
 import { PaymentsModule } from './payments/payments.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -19,5 +20,6 @@ import { PaymentsModule } from './payments/payments.module';
     InsightsModule,
     PaymentsModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule {}
