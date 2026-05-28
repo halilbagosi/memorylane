@@ -4,10 +4,6 @@ import { Controller, Get } from '@nestjs/common';
 export class AppController {
   @Get()
   getHome() {
-    return {
-      name: 'MemoryLane API',
-      status: 'healthy',
-      version: '1.0.0',
-    };
+    return { message: 'MemoryLane API is running' };
   }
 }
