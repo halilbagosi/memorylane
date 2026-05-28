@@ -825,6 +825,7 @@ export class PatientService {
         where: { session: { patientId } },
         select: {
           id: true,
+          sessionId: true,
           mediaId: true,
           questionMode: true,
           firstTapCorrect: true,
@@ -832,17 +833,25 @@ export class PatientService {
           timeToCorrectMs: true,
           attemptedAt: true,
           endAttemptAt: true,
+          session: {
+            select: {
+              startedAt: true,
+              endedAt: true,
+            },
+          },
         } as any,
         orderBy: { attemptedAt: 'desc' },
       }),
     ]);
 
-    const attemptsByKey = new Map<string, typeof attemptRows>();
+    const mediaById = new Map(mediaRows.map((media) => [media.id, media]));
+    const attemptsByModeSession = new Map<string, any[]>();
     for (const attempt of attemptRows as any[]) {
-      const key = `${attempt.questionMode ?? 'NAME'}:${attempt.mediaId}`;
-      const list = attemptsByKey.get(key) ?? [];
+      const mode = attempt.questionMode ?? 'NAME';
+      const key = `${mode}:${attempt.sessionId}`;
+      const list = attemptsByModeSession.get(key) ?? [];
       list.push(attempt);
-      attemptsByKey.set(key, list);
+      attemptsByModeSession.set(key, list);
     }
 
     const modeEligible = (mode: string, media: typeof mediaRows[number]) => {
@@ -861,43 +870,64 @@ export class PatientService {
       const seconds = totalSeconds % 60;
       return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     };
+    const formatSessionName = (modeLabel: string, startedAt: Date) => {
+      const formatted = new Intl.DateTimeFormat('en', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(startedAt);
+      return `${modeLabel} quiz - ${formatted}`;
+    };
 
     const modes = patient.quizModes.filter((mode) => QUIZ_MODE_LABELS[mode]);
     const quizTypes = modes.map((mode) => {
       const config = QUIZ_MODE_LABELS[mode];
-      const quizzes = mediaRows.filter((media) => modeEligible(mode, media)).map((media) => {
-        const attempts = (attemptsByKey.get(`${mode}:${media.id}`) ?? []) as any[];
-        const correct = attempts.filter((attempt) => attempt.firstTapCorrect).length;
-        const averageMs = attempts.length > 0
-          ? Math.round(attempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / attempts.length)
-          : 0;
-        const averagePercent = attempts.length > 0 ? Math.round((correct / attempts.length) * 100) : 0;
+      const quizzes = [...attemptsByModeSession.entries()].flatMap(([key, attempts]) => {
+        if (!key.startsWith(`${mode}:`)) return [];
+        const eligibleAttempts = attempts.filter((attempt) => {
+          const media = mediaById.get(attempt.mediaId);
+          return media ? modeEligible(mode, media) : false;
+        });
+        if (eligibleAttempts.length === 0) return [];
 
-        return {
-          id: `${mode}:${media.publicId}`,
+        const sessionId = eligibleAttempts[0].sessionId;
+        const startedAt = eligibleAttempts[0].session?.startedAt ?? eligibleAttempts[0].attemptedAt;
+        const correct = eligibleAttempts.filter((attempt) => attempt.firstTapCorrect).length;
+        const averageMs = Math.round(
+          eligibleAttempts.reduce((sum, attempt) => sum + attempt.timeToCorrectMs, 0) / eligibleAttempts.length,
+        );
+        const averagePercent = Math.round((correct / eligibleAttempts.length) * 100);
+
+        return [{
+          id: `${mode}:${sessionId}`,
           mode,
-          mediaPublicId: media.publicId,
-          name: displayName(media),
-          attempts: attempts.length,
+          mediaPublicId: '',
+          name: formatSessionName(config.label, startedAt),
+          attempts: 1,
           averagePercent,
           pointsEarned: correct,
-          pointsTotal: attempts.length,
-          completed: attempts.length,
+          pointsTotal: eligibleAttempts.length,
+          completed: 1,
           averageTimeMs: averageMs,
-          createdAt: media.createdAt.toISOString(),
-          questionOutcomes: attempts.map((attempt, index) => ({
-            id: attempt.id,
-            prompt: `${config.description}: ${displayName(media)}`,
-            status: attempt.firstTapCorrect ? 'Correct' : 'Wrong',
-            attemptsUntilResult: attempt.totalTaps,
-            duration: formatDuration(attempt.timeToCorrectMs),
-            takenAt: attempt.attemptedAt.toISOString(),
-            takenAtLabel: attempt.attemptedAt.toISOString(),
-            skipped: false,
-            sequence: attempts.length - index,
-          })),
-        };
-      });
+          createdAt: startedAt.toISOString(),
+          questionOutcomes: eligibleAttempts.map((attempt, index) => {
+            const media = mediaById.get(attempt.mediaId);
+            const name = media ? displayName(media) : 'Quiz item';
+            return {
+              id: attempt.id,
+              prompt: `${config.description}: ${name}`,
+              status: attempt.firstTapCorrect ? 'Correct' : 'Wrong',
+              attemptsUntilResult: attempt.totalTaps,
+              duration: formatDuration(attempt.timeToCorrectMs),
+              takenAt: attempt.attemptedAt.toISOString(),
+              takenAtLabel: attempt.attemptedAt.toISOString(),
+              skipped: false,
+              sequence: eligibleAttempts.length - index,
+            };
+          }),
+        }];
+      }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       return {
         id: mode,

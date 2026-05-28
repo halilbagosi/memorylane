@@ -622,7 +622,7 @@ export default function PatientsTab() {
       ) : patients.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <AppIcon iosName="person.2.slash" androidFallback="--" size={28} color={themeColors.primary} />
+            <AppIcon iosName="person.crop.circle.badge.plus" androidFallback="+" size={34} color={themeColors.secondary} />
           </View>
           <Text style={styles.emptyTitle}>No patients yet</Text>
           <Text style={styles.emptyDesc}>
@@ -1939,13 +1939,13 @@ const getStyles = (isDark: boolean) => {
     paddingHorizontal: 48,
   },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(180, 174, 232, 0.15)'),
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   emptyTitle: {
     fontFamily: typography.fontFamily.bold,
