@@ -238,12 +238,14 @@ export class AuthService {
     const key = await this.appleJwksClient.getSigningKey(decoded.header.kid);
     const signingKey = key.getPublicKey();
 
+    const audienceIds = process.env.APPLE_BUNDLE_ID ? process.env.APPLE_BUNDLE_ID.split(',').map(id => id.trim()).filter(Boolean) : [];
+
     let payload: jwt.JwtPayload;
     try {
       payload = jwt.verify(idToken, signingKey, {
         algorithms: ['RS256'],
         issuer: 'https://appleid.apple.com',
-        audience: process.env.APPLE_BUNDLE_ID || '',
+        audience: audienceIds.length > 0 ? (audienceIds as [string, ...string[]]) : undefined,
       }) as jwt.JwtPayload;
     } catch (error) {
       console.error('Apple token verification failed:', error.message);
