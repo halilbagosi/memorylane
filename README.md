@@ -360,12 +360,17 @@ The backend uses Prisma ORM and currently avoids raw SQL query construction. To 
    npx expo start
    ```
 
-4. **Run with development build** (full functionality including social login):
+4. **Run with development build** (Google Sign-In, Apple Sign-In, push notifications):
+
+   Configure Google OAuth in `frontend/.env.local` and `backend/server/.env`, then:
 
    ```bash
-   npx expo prebuild
+   npx expo prebuild --clean
    npx expo run:ios      # or npx expo run:android
+   npm start             # Metro — use the dev client, not Expo Go
    ```
+
+   **Push notifications:** Run `npm run eas:init` in `frontend/`, set `EXPO_PUBLIC_EAS_PROJECT_ID` in `.env.local`, configure APNs/FCM with `npm run eas:credentials`, and test on a **physical device** (simulators do not receive remote push on iOS).
 
 ## Backend Scripts
 

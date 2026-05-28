@@ -5,6 +5,7 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { AiDifficultyService } from '../patient/ai-difficulty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { KeyWrapService } from './crypto/key-wrap.service';
 import { MediaCryptoService } from './crypto/media-crypto.service';
@@ -14,6 +15,12 @@ import { MediaService } from './media.service';
 import { STORAGE_SERVICE, StorageService } from './storage/storage.interface';
 
 const makePrisma = () => ({
+  caregiver: {
+    findUnique: jest.fn().mockResolvedValue({ isSubscribed: true }),
+  },
+  patient: {
+    findUnique: jest.fn(),
+  },
   patientCaregiver: {
     findUnique: jest.fn(),
   },
@@ -46,6 +53,7 @@ describe('MediaService', () => {
     | 'validateAndProcessQuizPhoto'
     | 'validateQuizPhoto'
     | 'checkForDuplicateFace'
+    | 'findDuplicateFaceExternalImageIds'
     | 'indexFaceInCollection'
     | 'removeFaceFromCollection'
   >;
@@ -54,6 +62,7 @@ describe('MediaService', () => {
     process.env.MEDIA_MASTER_KEY =
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
     process.env.MEDIA_SIGNED_URL_SECRET = 'unit-test-secret';
+    process.env.QUIZ_BLOCK_DUPLICATE_FACES = 'true';
 
     keyWrap = new KeyWrapService();
     keyWrap.onModuleInit();
@@ -72,6 +81,7 @@ describe('MediaService', () => {
       })),
       validateQuizPhoto: jest.fn(async () => ({ accepted: true })),
       checkForDuplicateFace: jest.fn(async () => false),
+      findDuplicateFaceExternalImageIds: jest.fn(async () => []),
       indexFaceInCollection: jest.fn(async () => 'aws-face-1'),
       removeFaceFromCollection: jest.fn(async () => undefined),
     };
@@ -84,6 +94,16 @@ describe('MediaService', () => {
         { provide: MediaCryptoService, useValue: mediaCrypto },
         { provide: SignedUrlService, useValue: signedUrls },
         { provide: FaceVerificationService, useValue: faceVerification },
+        {
+          provide: AiDifficultyService,
+          useValue: {
+            normalizeResponseTime: jest.fn(() => 1),
+            timeOfDayScore: jest.fn(() => 0.5),
+            difficultyToComplexity: jest.fn(() => 0.5),
+            predict: jest.fn(() => ({ difficulty: 'MEDIUM', targetComplexity: 0.5, source: 'AI' })),
+            ruleBased: jest.fn(() => ({ difficulty: 'MEDIUM', targetComplexity: 0.5, source: 'RULE_BASED' })),
+          },
+        },
         { provide: STORAGE_SERVICE, useValue: storage },
       ],
     }).compile();
@@ -201,6 +221,168 @@ describe('MediaService', () => {
       ).rejects.toThrow(ConflictException);
       expect(prisma.media.create).not.toHaveBeenCalled();
     });
+
+    it('allows patient-originated photo memories for a paired patient', async () => {
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: false } });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      prisma.media.create.mockResolvedValueOnce({
+        publicId: 'patient-memory-1',
+        kind: 'PHOTO',
+        status: 'PENDING_UPLOAD',
+      });
+
+      const result = await service.createUploadIntent(
+        null,
+        {
+          patientId,
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: 512,
+          collection: 'MEMORY' as any,
+          note: 'Patient shared this from Relive',
+          contentHash: 'c'.repeat(64),
+        },
+        'http://localhost:3000',
+      );
+
+      expect(result.publicId).toBe('patient-memory-1');
+      expect(prisma.media.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            patientId,
+            caregiverId: null,
+            collection: 'MEMORY',
+            note: 'Patient shared this from Relive',
+          }),
+        }),
+      );
+      expect(prisma.caregiver.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('uses the patient creator subscription when patient uploads premium media', async () => {
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: true } });
+      prisma.media.create.mockResolvedValueOnce({
+        publicId: 'patient-audio-1',
+        kind: 'AUDIO',
+        status: 'PENDING_UPLOAD',
+      });
+
+      const result = await service.createUploadIntent(
+        null,
+        {
+          patientId,
+          kind: 'AUDIO' as any,
+          contentType: 'audio/x-m4a',
+          byteSize: 1024,
+          collection: 'MEMORY' as any,
+          note: 'Voice memory',
+        },
+        'http://localhost:3000',
+      );
+
+      expect(result.publicId).toBe('patient-audio-1');
+      expect(prisma.media.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            kind: 'AUDIO',
+            caregiverId: null,
+            contentType: 'audio/x-m4a',
+          }),
+        }),
+      );
+    });
+
+    it('rejects patient premium media when the patient creator is not subscribed', async () => {
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: false } });
+
+      await expect(
+        service.createUploadIntent(
+          null,
+          {
+            patientId,
+            kind: 'VIDEO' as any,
+            contentType: 'video/mp4',
+            byteSize: 1024,
+            collection: 'MEMORY' as any,
+            note: 'A video memory',
+          },
+          'http://localhost:3000',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.media.create).not.toHaveBeenCalled();
+    });
+
+    it('completes the full patient-originated memory upload flow', async () => {
+      const fakeRow: any = {};
+      prisma.patient.findUnique
+        .mockResolvedValueOnce({ paired: true })
+        .mockResolvedValueOnce({ creator: { isSubscribed: false } });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      prisma.media.create.mockImplementationOnce(async ({ data }: any) => {
+        Object.assign(fakeRow, data, {
+          id: 'patient-upload-internal-1',
+          publicId: 'patient-upload-public-1',
+          kind: data.kind,
+          status: data.status,
+        });
+        return {
+          publicId: fakeRow.publicId,
+          kind: fakeRow.kind,
+          status: fakeRow.status,
+        };
+      });
+
+      const plaintext = Buffer.from('patient-memory');
+      const intent = await service.createUploadIntent(
+        null,
+        {
+          patientId,
+          kind: 'PHOTO' as any,
+          contentType: 'image/jpeg',
+          byteSize: plaintext.length,
+          collection: 'MEMORY' as any,
+          note: 'A patient memory',
+          contentHash: 'd'.repeat(64),
+        },
+        'http://localhost:3000',
+      );
+
+      prisma.media.findUnique.mockImplementation(async ({ where }: any) => {
+        if (where.publicId === fakeRow.publicId) return fakeRow;
+        return null;
+      });
+      prisma.media.findFirst.mockResolvedValueOnce(null);
+      prisma.media.update.mockImplementation(async ({ data }: any) => {
+        Object.assign(fakeRow, data);
+        return fakeRow;
+      });
+
+      let storedCiphertext: Buffer | null = null;
+      storage.putObject.mockImplementationOnce(async (_key, body) => {
+        storedCiphertext = body;
+      });
+      const token = decodeURIComponent(intent.uploadUrl.split('/').pop() as string);
+      await service.storeUploadedPayload(token, plaintext);
+
+      prisma.patient.findUnique.mockResolvedValueOnce({ paired: true });
+      storage.headObject.mockResolvedValueOnce({ exists: true, size: storedCiphertext!.length });
+      prisma.media.update.mockImplementationOnce(async ({ data }: any) => {
+        Object.assign(fakeRow, data);
+        return { publicId: fakeRow.publicId, status: fakeRow.status };
+      });
+
+      const completed = await service.completeUpload(null, fakeRow.publicId);
+
+      expect(completed).toEqual({ publicId: 'patient-upload-public-1', status: 'READY' });
+      expect(storedCiphertext).not.toBeNull();
+      expect(fakeRow.payloadTag).toBeTruthy();
+    });
   });
 
   describe('listForPatient', () => {
@@ -220,6 +402,8 @@ describe('MediaService', () => {
           contentType: 'image/jpeg',
           byteSize: 1234,
           createdAt: new Date('2026-01-01T00:00:00Z'),
+          storageKey: 'media/pub-1',
+          payloadTag: 'tag',
         },
       ]);
       const list = await service.listForPatient('cg-1', 'patient-1');
@@ -394,7 +578,7 @@ describe('MediaService', () => {
       await service.storeUploadedPayload(token, plaintext);
 
       expect(faceVerification.validateAndProcessQuizPhoto).toHaveBeenCalledWith(plaintext);
-      expect(faceVerification.checkForDuplicateFace).toHaveBeenCalled();
+      expect(faceVerification.findDuplicateFaceExternalImageIds).toHaveBeenCalled();
       expect(faceVerification.indexFaceInCollection).toHaveBeenCalled();
       expect(fakeRow.awsFaceId).toBe('aws-face-1');
       expect(fakeRow.birthYear).toBe(2004);
@@ -406,8 +590,10 @@ describe('MediaService', () => {
   describe('verifyQuizPhoto', () => {
     it('rejects a quiz photo that already matches an indexed face', async () => {
       prisma.patientCaregiver.findUnique.mockResolvedValueOnce({ caregiverId: 'cg-1' });
-      prisma.media.findFirst.mockResolvedValueOnce(null);
-      (faceVerification.checkForDuplicateFace as jest.Mock).mockResolvedValueOnce(true);
+      prisma.media.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'matching-face-media' });
+      (faceVerification.findDuplicateFaceExternalImageIds as jest.Mock).mockResolvedValueOnce(['matching-public-id']);
 
       const result = await service.verifyQuizPhoto(
         'cg-1',

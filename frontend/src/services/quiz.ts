@@ -1,6 +1,7 @@
 import { CareLevel, QuizDifficulty, QuizMediaItem, QuizMode } from './media';
 
 const FALLBACK_RELATIONSHIPS = ['Friend', 'Cousin', 'Neighbor', 'Coworker', 'Teacher', 'Classmate'];
+const ALL_QUIZ_MODES: QuizMode[] = ['NAME', 'AGE', 'RELATIONSHIP'];
 
 export interface QuizQuestion {
   media: QuizMediaItem;
@@ -54,8 +55,9 @@ function getRawAnswer(media: QuizMediaItem, mode: QuizMode): string | null {
     case 'RELATIONSHIP':
       return media.relationshipType || null;
     case 'AGE': {
-      if (!media.birthYear || !media.eventYear) return null;
-      const age = media.eventYear - media.birthYear;
+      if (!media.birthYear) return null;
+      const referenceYear = media.eventYear ?? new Date().getFullYear();
+      const age = referenceYear - media.birthYear;
       return age > 0 ? String(age) : null;
     }
   }
@@ -132,7 +134,7 @@ function questionText(mode: QuizMode): string {
   switch (mode) {
     case 'NAME': return 'Who is this person?';
     case 'RELATIONSHIP': return 'How do you know this person?';
-    case 'AGE': return 'How old was this person\nin this memory?';
+    case 'AGE': return 'How old is this person?';
   }
 }
 
@@ -162,6 +164,24 @@ function buildQuestion(
     choices,
     questionText: questionText(mode),
   };
+}
+
+export function shouldMixQuestionTypes(
+  careLevel: CareLevel,
+  difficulty: QuizDifficulty,
+  aiAdaptiveEnabled = false,
+): boolean {
+  if (aiAdaptiveEnabled) return difficulty === 'HARD';
+  return careLevel === 'PREVENTATIVE';
+}
+
+function modesForAdaptiveSession(
+  modes: QuizMode[],
+  difficulty: QuizDifficulty,
+  aiAdaptiveEnabled: boolean,
+): QuizMode[] {
+  if (aiAdaptiveEnabled && difficulty === 'HARD') return ALL_QUIZ_MODES;
+  return modes;
 }
 
 export function buildQuizPool(
@@ -231,15 +251,17 @@ export function buildAdaptiveQuizSet(
   modes: QuizMode[],
   careLevel: CareLevel,
   difficulty: QuizDifficulty = 'MEDIUM',
+  aiAdaptiveEnabled = false,
 ): QuizQuestion[] {
-  if (careLevel !== 'PREVENTATIVE') {
-    const preferredMode = modes.includes('NAME') ? 'NAME' : modes[0];
+  const sessionModes = modesForAdaptiveSession(modes, difficulty, aiAdaptiveEnabled);
+  if (!shouldMixQuestionTypes(careLevel, difficulty, aiAdaptiveEnabled)) {
+    const preferredMode = sessionModes.includes('NAME') ? 'NAME' : sessionModes[0];
     return preferredMode ? buildQuizSet(pool, preferredMode, difficulty) : [];
   }
 
   const mixed: QuizQuestion[] = [];
   const seen = new Set<string>();
-  for (const mode of shuffle(modes)) {
+  for (const mode of shuffle(sessionModes)) {
     for (const question of buildQuizSet(pool, mode, difficulty)) {
       const key = `${question.media.publicId}:${question.mode}`;
       if (seen.has(key)) continue;
@@ -256,9 +278,11 @@ export function buildAdaptiveQuizSetFromIds(
   careLevel: CareLevel,
   publicIds: string[],
   difficulty: QuizDifficulty = 'MEDIUM',
+  aiAdaptiveEnabled = false,
 ): QuizQuestion[] {
-  if (careLevel !== 'PREVENTATIVE') {
-    const preferredMode = modes.includes('NAME') ? 'NAME' : modes[0];
+  const sessionModes = modesForAdaptiveSession(modes, difficulty, aiAdaptiveEnabled);
+  if (!shouldMixQuestionTypes(careLevel, difficulty, aiAdaptiveEnabled)) {
+    const preferredMode = sessionModes.includes('NAME') ? 'NAME' : sessionModes[0];
     return preferredMode ? buildQuizSetFromIds(pool, preferredMode, publicIds, difficulty) : [];
   }
 
@@ -270,7 +294,7 @@ export function buildAdaptiveQuizSetFromIds(
   for (const publicId of publicIds) {
     const item = byPublicId.get(publicId);
     if (!item) continue;
-    const eligibleModes = modes.filter(mode => getRawAnswer(item.media, mode) !== null);
+    const eligibleModes = sessionModes.filter(mode => getRawAnswer(item.media, mode) !== null);
     if (eligibleModes.length === 0) continue;
     const index = perMediaModeIndex.get(publicId) ?? 0;
     const mode = eligibleModes[index % eligibleModes.length];

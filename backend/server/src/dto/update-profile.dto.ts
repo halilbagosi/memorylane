@@ -22,4 +22,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   isSubscribed?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  insightNotificationsEnabled?: boolean;
 }

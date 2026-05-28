@@ -1,17 +1,26 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "MemoryLane",
+    "slug": "memorylane",
     "scheme": "memorylane",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logoS.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#E8F5EC",
+      "dark": {
+        "image": "./assets/logoS.png",
+        "backgroundColor": "#0E1712"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "72125389-abd1-48a8-92fa-99af7986623d"
+      }
     },
     "ios": {
       "supportsTablet": true,
@@ -19,6 +28,7 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "MemoryLane needs your camera to scan the QR code and link to a patient's account.",
+        "NSLocationWhenInUseUsageDescription": "MemoryLane shares the patient's live location with their care team while the patient app is open.",
         "NSFaceIDUsageDescription": "MemoryLane uses Face ID to help the patient get back to their photos easily.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -26,17 +36,22 @@
         }
       }
     },
+    
+    "owner": "halilbagosi",
+    
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#F5FBF7"
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.memorylane.app"
     },
@@ -46,6 +61,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MemoryLane shares the patient's live location with their care team while the patient app is open."
+        }
+      ],
       [
         "expo-camera",
         {
@@ -58,19 +79,24 @@
           "android": {
             "datePicker": {
               "colorAccent": {
-                "light": "#2D4F3E"
+                "light": "#9BE7B4",
+                "dark": "#9BE7B4"
               },
               "colorControlActivated": {
-                "light": "#2D4F3E"
+                "light": "#9BE7B4",
+                "dark": "#9BE7B4"
               },
               "textColorPrimary": {
-                "light": "#1A1A1A"
+                "light": "#F5FBF7",
+                "dark": "#F5FBF7"
               },
               "textColorSecondary": {
-                "light": "#666666"
+                "light": "#AEBDAF",
+                "dark": "#AEBDAF"
               },
               "windowBackground": {
-                "light": "#F2F0E6"
+                "light": "#17231D",
+                "dark": "#17231D"
               }
             }
           }
@@ -81,7 +107,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
+          "iosUrlScheme": "com.googleusercontent.apps.1006582252554-9h90j34o6g4tphhu6drp49r3d20vohfu"
         }
       ]
     ]

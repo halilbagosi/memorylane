@@ -7,8 +7,8 @@
   - You are about to drop the column `legacy_relationship` on the `media` table. All the data in the column will be lost.
 
 */
--- AlterTable
-ALTER TABLE "media" DROP COLUMN "legacy_correct_name",
-DROP COLUMN "legacy_decoy_1",
-DROP COLUMN "legacy_decoy_2",
-DROP COLUMN "legacy_relationship";
+-- AlterTable (idempotent: legacy columns may already be absent)
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_correct_name";
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_decoy_1";
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_decoy_2";
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_relationship";

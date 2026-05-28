@@ -132,19 +132,6 @@ export class MediaService {
   ): Promise<UploadIntentResponse> {
     const kind = dto.kind as MediaKindValue;
 
-    // ── Subscription: enforce allowed media kinds ──
-    const caregiver = await this.prisma.caregiver.findUnique({
-      where: { id: caregiverId },
-      select: { isSubscribed: true },
-    });
-    const { getPlanLimits } = await import('../auth/subscription.constants');
-    const limits = getPlanLimits(caregiver?.isSubscribed ?? false);
-    if (!limits.allowedMediaKinds.includes(kind)) {
-      throw new ForbiddenException(
-        `${kind.toLowerCase()} uploads require a Premium subscription. Upgrade to unlock video, audio, and document uploads.`,
-      );
-    }
-
     const allowed = ALLOWED_MIME_BY_KIND[kind];
     const normalizedMime = dto.contentType.trim().toLowerCase();
     if (!allowed.includes(normalizedMime)) {
@@ -161,6 +148,7 @@ export class MediaService {
     }
 
     await this.assertCaregiverAccess(caregiverId, dto.patientId);
+    await this.assertPlanAllowsUpload(caregiverId, dto.patientId, kind);
     if (kind === 'PHOTO' && dto.contentHash) {
       await this.assertUniqueContentHash(dto.patientId, dto.contentHash);
     }
@@ -324,7 +312,7 @@ export class MediaService {
   async listForPatient(caregiverId: string, patientId: string): Promise<MediaListItem[]> {
     await this.assertCaregiverAccess(caregiverId, patientId);
     const rows = await this.prisma.media.findMany({
-      where: { patientId, status: { in: ['READY', 'PENDING_UPLOAD'] } },
+      where: { patientId, status: { in: ['READY', 'PENDING_UPLOAD'] }, patientMessages: { none: {} } },
       orderBy: { createdAt: 'desc' },
       select: {
         publicId: true,
@@ -347,9 +335,12 @@ export class MediaService {
         eventYear: true,
         isApproximateYear: true,
         memoryCategory: true,
+        storageKey: true,
+        payloadTag: true,
       },
     });
-    return rows.map((r) => ({
+    const availableRows = await this.filterRowsWithExistingPayload(rows);
+    return availableRows.map((r) => ({
       publicId: r.publicId,
       kind: r.kind as MediaKindValue,
       status: r.status as MediaListItem['status'],
@@ -403,7 +394,12 @@ export class MediaService {
       throw new BadRequestException('Media is not ready');
     }
 
-    const ciphertext = await this.storage.getObject(media.storageKey);
+    const ciphertext = await this.storage.getObject(media.storageKey).catch(() => {
+      throw new NotFoundException({
+        code: 'MEDIA_PAYLOAD_MISSING',
+        message: 'Stored media file is missing. The media record exists, but the uploaded file is no longer available.',
+      });
+    });
     const dek = this.keyWrap.unwrapDek({
       wrappedDek: media.wrappedDek,
       dekIv: media.dekIv,
@@ -473,6 +469,7 @@ export class MediaService {
       where: { patientId, collection: 'QUIZ', status: 'READY', kind: 'PHOTO' },
       select: {
         publicId: true,
+        status: true,
         firstName: true,
         lastName: true,
         relationshipType: true,
@@ -480,11 +477,14 @@ export class MediaService {
         eventYear: true,
         hint: true,
         nickname: true,
+        storageKey: true,
+        payloadTag: true,
       },
     });
 
+    const availableRows = await this.filterRowsWithExistingPayload(rows);
     const ttl = getSignedUrlTtlSeconds();
-    const media: QuizMediaItem[] = rows.map((r) => {
+    const media: QuizMediaItem[] = availableRows.map((r) => {
       const { token, expiresAt } = this.signedUrls.issue(r.publicId, 'get', ttl);
       return {
         publicId: r.publicId,
@@ -512,7 +512,7 @@ export class MediaService {
     const latestTimeMs = attempts[0]?.timeToCorrectMs ?? averageTimeMs;
     const fallbackInputs = {
       accuracy: patient.successRate,
-      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, averageTimeMs),
+      responseTimeNormalized: this.aiDifficulty.normalizeResponseTime(latestTimeMs, Math.min(averageTimeMs, 8000)),
       timeOfDay: this.aiDifficulty.timeOfDayScore(),
       currentDifficulty: this.aiDifficulty.difficultyToComplexity(patient.quizDifficulty),
     };
@@ -538,10 +538,11 @@ export class MediaService {
    *  device can render photos/videos without a caregiver JWT. */
   async getPatientTimeline(patientId: string, apiBaseUrl: string): Promise<TimelineItem[]> {
     const rows = await this.prisma.media.findMany({
-      where: { patientId, collection: 'MEMORY', status: 'READY' },
+      where: { patientId, collection: 'MEMORY', status: 'READY', patientMessages: { none: {} } },
       orderBy: [{ eventYear: 'asc' }, { createdAt: 'asc' }],
       select: {
         publicId: true,
+        status: true,
         kind: true,
         contentType: true,
         note: true,
@@ -549,11 +550,14 @@ export class MediaService {
         isApproximateYear: true,
         memoryCategory: true,
         createdAt: true,
+        storageKey: true,
+        payloadTag: true,
       },
     });
 
+    const availableRows = await this.filterRowsWithExistingPayload(rows);
     const ttl = getSignedUrlTtlSeconds();
-    return rows.map((r) => {
+    return availableRows.map((r) => {
       const { token, expiresAt } = this.signedUrls.issue(r.publicId, 'get', ttl);
       return {
         publicId: r.publicId,
@@ -715,6 +719,29 @@ export class MediaService {
     }
   }
 
+  private async assertPlanAllowsUpload(
+    caregiverId: string | null,
+    patientId: string,
+    kind: MediaKindValue,
+  ): Promise<void> {
+    const isSubscribed = caregiverId
+      ? (await this.prisma.caregiver.findUnique({
+          where: { id: caregiverId },
+          select: { isSubscribed: true },
+        }))?.isSubscribed === true
+      : (await this.prisma.patient.findUnique({
+          where: { id: patientId },
+          select: { creator: { select: { isSubscribed: true } } },
+        }))?.creator?.isSubscribed === true;
+
+    const limits = getPlanLimits(isSubscribed);
+    if (!limits.allowedMediaKinds.includes(kind)) {
+      throw new ForbiddenException(
+        `${kind.toLowerCase()} uploads require a Premium subscription. Upgrade to unlock video, audio, and document uploads.`,
+      );
+    }
+  }
+
   private async requireAccessToMedia(caregiverId: string | null, publicId: string) {
     if (typeof publicId !== 'string' || publicId.length === 0) {
       throw new BadRequestException('Invalid media id');
@@ -729,6 +756,22 @@ export class MediaService {
 
   private async requireCaregiverMedia(caregiverId: string, publicId: string) {
     return this.requireAccessToMedia(caregiverId, publicId);
+  }
+
+  private async filterRowsWithExistingPayload<T extends {
+    status: string;
+    storageKey: string;
+    payloadTag: string | null;
+  }>(rows: T[]): Promise<T[]> {
+    const checks = await Promise.all(
+      rows.map(async (row) => {
+        if (row.status !== 'READY') return true;
+        if (!row.payloadTag) return false;
+        const head = await this.storage.headObject(row.storageKey).catch(() => ({ exists: false }));
+        return head.exists;
+      }),
+    );
+    return rows.filter((_, index) => checks[index]);
   }
 
   private generateStorageKey(): string {
@@ -754,16 +797,22 @@ export class MediaService {
         status: 'READY',
         ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
       },
-      select: { firstName: true },
+      select: { firstName: true, storageKey: true, payloadTag: true },
     });
 
-    const duplicate = existing.some(
+    const nameMatches = existing.filter(
       (media) => this.normalizePersonName(media.firstName) === normalized,
     );
-    if (duplicate) {
-      throw new BadRequestException(
-        `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
-      );
+
+    // Only block if at least one matching record still has its file in storage.
+    for (const match of nameMatches) {
+      if (!match.payloadTag) continue;
+      const head = await this.storage.headObject(match.storageKey).catch(() => ({ exists: false }));
+      if (head.exists) {
+        throw new BadRequestException(
+          `A quiz photo for ${firstName} already exists. Please edit the existing quiz photo instead.`,
+        );
+      }
     }
   }
 
@@ -779,11 +828,16 @@ export class MediaService {
         status: 'READY',
         ...(excludeMediaId ? { id: { not: excludeMediaId } } : {}),
       },
-      select: { id: true },
+      select: { id: true, storageKey: true, payloadTag: true },
     });
-    if (existing) {
-      throw new ConflictException('This photo has already been added.');
+    if (!existing) return;
+    // If the file no longer exists in storage (e.g. ephemeral volume was wiped),
+    // treat the record as stale and allow re-upload.
+    if (existing.payloadTag) {
+      const head = await this.storage.headObject(existing.storageKey).catch(() => ({ exists: false }));
+      if (!head.exists) return;
     }
+    throw new ConflictException('This photo has already been added.');
   }
 
   private normalizePersonName(value?: string | null): string | null {

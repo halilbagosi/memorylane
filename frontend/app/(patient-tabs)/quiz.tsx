@@ -1,8 +1,9 @@
+import { colors, lightColors, darkColors } from '../../src/theme/colors';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   AppState,
   AppStateStatus,
@@ -12,7 +13,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -22,16 +22,10 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { SFSymbol } from 'expo-symbols';
-import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 import { AppIcon } from '../../src/components/AppIcon';
-import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
 import { API_BASE_URL } from '../../src/config/api';
 import { getPatientInfo, deletePatientInfo, PatientInfo } from '../../src/utils/auth';
-import { getPatientTimeline, uploadMediaByPatient, type TimelineItem, type MediaKind } from '../../src/services/media';
-import { getPatientNotes, addPatientNote, isPatientJournalTimelineNote, type Note } from '../../src/services/notes';
-import * as FileSystem from 'expo-file-system';
 import { M3Dialog, type M3DialogAction } from '../../src/components/M3Dialog';
 import { QuizSuccessOverlay } from '../../src/components/QuizSuccessOverlay';
 import {
@@ -50,8 +44,24 @@ import {
   buildQuizSet,
   buildQuizSetFromIds,
   QuizQuestion,
+  shouldMixQuestionTypes,
   uniqueIdentityCount,
 } from '../../src/services/quiz';
+
+const EMOJI_STAGES = [
+  { max: 20, emoji: '🥺', label: 'Needs encouragement' },
+  { max: 40, emoji: '😕', label: 'Getting started' },
+  { max: 60, emoji: '😐', label: 'Making progress' },
+  { max: 80, emoji: '🙂', label: 'Doing well' },
+  { max: 100, emoji: '🤩', label: 'Excellent!' },
+];
+
+function getEmojiStage(percent: number) {
+  for (const stage of EMOJI_STAGES) {
+    if (percent <= stage.max) return stage;
+  }
+  return EMOJI_STAGES[EMOJI_STAGES.length - 1];
+}
 
 type Phase =
   | { type: 'loading' }
@@ -81,10 +91,16 @@ interface ResumeSession {
   currentIndex: number;
 }
 
+interface QuizRuntimeState {
+  quizModes: QuizMode[];
+  difficulty: QuizDifficulty;
+  careLevel: CareLevel;
+  aiAdaptiveEnabled: boolean;
+  pool: ReturnType<typeof buildQuizPool>;
+  identityCount: number;
+}
+
 const MIN_IDENTITIES = 4;
-const QUIZ_BACKGROUND = '#E8F5EC';
-const CREAM = '#FCFEF9';
-const FOREST_GREEN = '#1E4D30';
 const SESSION_KEY_PREFIX = 'memorylane_patient_quiz_session';
 
 const MODE_CONFIG: Record<QuizMode, { label: string; icon: SFSymbol; androidFallback: string }> = {
@@ -92,6 +108,13 @@ const MODE_CONFIG: Record<QuizMode, { label: string; icon: SFSymbol; androidFall
   AGE: { label: 'Practice Ages', icon: 'calendar', androidFallback: 'A' },
   RELATIONSHIP: { label: 'Practice Relationships', icon: 'heart.fill', androidFallback: 'R' },
 };
+
+function getTimeGreeting(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 function sessionKey(patientId: string) {
   return `${SESSION_KEY_PREFIX}_${patientId.replace(/[^A-Za-z0-9._-]/g, '_')}`;
@@ -129,22 +152,16 @@ async function deleteSavedSession(patientId: string): Promise<void> {
 }
 
 export default function QuizTab() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
 
   const [patient, setPatient] = useState<PatientInfo | null>(null);
-  const [memories, setMemories] = useState<TimelineItem[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [newNote, setNewNote] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Media state
-  const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
 
   const loadData = useCallback(async (isSilent = false) => {
     const info = await getPatientInfo();
@@ -153,12 +170,11 @@ export default function QuizTab() {
 
     if (!isSilent) setLoading(true);
     try {
-      const [timelineData, notesData] = await Promise.all([
-        getPatientTimeline(info.id),
-        getPatientNotes(info.id),
-      ]);
-      setMemories(timelineData);
-      setNotes(notesData);
+      // Fetch patient stats for goal progress display
+      const statsRes = await fetch(`${API_BASE_URL}/patients/${info.id}/stats`);
+      if (statsRes.ok) {
+        setStats(await statsRes.json());
+      }
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -184,6 +200,7 @@ export default function QuizTab() {
   const [successMessage, setSuccessMessage] = useState('Well done.');
   const [hintVisible, setHintVisible] = useState(false);
   const [lastWrong, setLastWrong] = useState<string | null>(null);
+  const [displayedPhoto, setDisplayedPhoto] = useState<{ key: string; uri: string } | null>(null);
 
   const wrongShake = useRef(new Animated.Value(0)).current;
   const questionFade = useRef(new Animated.Value(1)).current;
@@ -201,38 +218,12 @@ export default function QuizTab() {
   const questionStartTimeRef = useRef(Date.now());
   const attemptResultsRef = useRef<QuizResultAttempt[]>([]);
   const quizAttemptRecordsRef = useRef<QuizAttemptInput[]>([]);
+  const photoLoadTokenRef = useRef(0);
 
   const photoSize = useMemo(() => Math.min(width - 56, height * 0.38, 360), [height, width]);
 
-  const combinedFeed = useMemo(() => {
-    const memoryRows = memories
-      .filter((m) => !isPatientJournalTimelineNote(m.note))
-      .map((m) => ({
-        type: 'MEMORY' as const,
-        id: m.publicId,
-        createdAt: m.createdAt,
-        kind: m.kind,
-        downloadUrl: m.downloadUrl,
-        note: m.note,
-      }));
-    const noteRows = notes.map((n) => ({
-      type: 'NOTE' as const,
-      id: (n as { id: string }).id,
-      createdAt: (n as { createdAt: string }).createdAt,
-      content: (n as { content: string }).content,
-    }));
-    return [...memoryRows, ...noteRows].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [memories, notes]);
-
-  const leaveMemoriesScrollGap = useMemo(
-    () => ({ minHeight: Math.max(88, Math.floor(height * 0.28)) }),
-    [height],
-  );
-
   const introPrimaryMinHeight = useMemo(
-    () => Math.max(360, Math.floor(height * 0.52)),
+    () => Math.max(450, Math.floor(height * 0.75)),
     [height],
   );
 
@@ -271,9 +262,19 @@ export default function QuizTab() {
   useEffect(() => {
     if (phase.type !== 'quiz') return;
     const current = questions[questionIndex];
+    const token = photoLoadTokenRef.current + 1;
+    photoLoadTokenRef.current = token;
+    setDisplayedPhoto(null);
     photoFade.setValue(0);
     if (current?.imageUrl) {
-      Image.prefetch(current.imageUrl).catch(() => undefined);
+      const photoKey = `${current.media.publicId}-${current.imageUrl}`;
+      Image.prefetch(current.imageUrl)
+        .catch(() => false)
+        .finally(() => {
+          if (photoLoadTokenRef.current === token) {
+            setDisplayedPhoto({ key: photoKey, uri: current.imageUrl });
+          }
+        });
       const next = questions[questionIndex + 1];
       if (next?.imageUrl) Image.prefetch(next.imageUrl).catch(() => undefined);
     }
@@ -306,6 +307,69 @@ export default function QuizTab() {
     if (p) await deleteSavedSession(p.id);
   }, []);
 
+  const filterAvailableQuizMedia = useCallback((
+    media: Awaited<ReturnType<typeof getPatientQuizData>>['media'],
+    validateUrls = false,
+  ) => {
+    if (!validateUrls) return Promise.resolve(media);
+    return Promise.all(
+      media.map(async (item) => {
+        const response = await fetch(item.downloadUrl).catch(() => null);
+        return response?.ok ? item : null;
+      }),
+    ).then((items) => items.filter((item): item is typeof media[number] => item !== null));
+  }, []);
+
+  const loadQuizRuntimeState = useCallback(async (
+    patientId: string,
+    options?: { validateUrls?: boolean },
+  ): Promise<QuizRuntimeState> => {
+    const {
+      quizModes,
+      quizDifficulty: manualDifficulty,
+      predictedDifficulty,
+      careLevel: nextCareLevel,
+      aiAdaptiveEnabled: nextAiAdaptiveEnabled,
+      media,
+    } = await getPatientQuizData(patientId);
+    const availableMedia = await filterAvailableQuizMedia(media, options?.validateUrls === true);
+    const difficulty = nextAiAdaptiveEnabled ? (predictedDifficulty ?? manualDifficulty) : manualDifficulty;
+    const nextPool = buildQuizPool(availableMedia);
+    const identityCount = uniqueIdentityCount(availableMedia);
+    const normalizedCareLevel = nextCareLevel ?? 'DEMENTIA';
+    const normalizedDifficulty = difficulty ?? 'MEDIUM';
+    const normalizedAiAdaptiveEnabled = nextAiAdaptiveEnabled === true;
+
+    setMediaPool(nextPool);
+    setEnabledModes(quizModes);
+    setQuizDifficulty(normalizedDifficulty);
+    setCareLevel(normalizedCareLevel);
+    setAiAdaptiveEnabled(normalizedAiAdaptiveEnabled);
+
+    return {
+      quizModes,
+      difficulty: normalizedDifficulty,
+      careLevel: normalizedCareLevel,
+      aiAdaptiveEnabled: normalizedAiAdaptiveEnabled,
+      pool: nextPool,
+      identityCount,
+    };
+  }, [filterAvailableQuizMedia]);
+
+  const applyQuizAvailabilityPhase = useCallback(async (state: QuizRuntimeState, patientId?: string) => {
+    if (state.pool.length === 0) {
+      if (patientId) await deleteSavedSession(patientId);
+      setPhase({ type: 'no_media' });
+      return true;
+    }
+    if (state.identityCount < MIN_IDENTITIES) {
+      if (patientId) await deleteSavedSession(patientId);
+      setPhase({ type: 'insufficient_identities', count: state.identityCount });
+      return true;
+    }
+    return false;
+  }, []);
+
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
@@ -326,37 +390,21 @@ export default function QuizTab() {
       }
       setPatient(p);
 
-      const {
-        quizModes,
-        quizDifficulty: manualDifficulty,
-        predictedDifficulty,
-        careLevel: nextCareLevel,
-        aiAdaptiveEnabled: nextAiAdaptiveEnabled,
-        media,
-      } = await getPatientQuizData(p.id);
-      const difficulty = nextAiAdaptiveEnabled ? (predictedDifficulty ?? manualDifficulty) : manualDifficulty;
-      const pool = buildQuizPool(media);
-      const identityCount = uniqueIdentityCount(media);
-      setMediaPool(pool);
-      setEnabledModes(quizModes);
-      setQuizDifficulty(difficulty ?? 'MEDIUM');
-      setCareLevel(nextCareLevel ?? 'DEMENTIA');
-      setAiAdaptiveEnabled(nextAiAdaptiveEnabled === true);
-
-      if (pool.length === 0) {
-        setPhase({ type: 'no_media' });
-        return;
-      }
-      if (identityCount < MIN_IDENTITIES) {
-        setPhase({ type: 'insufficient_identities', count: identityCount });
-        return;
-      }
+      const quizState = await loadQuizRuntimeState(p.id, { validateUrls: true });
+      if (await applyQuizAvailabilityPhase(quizState, p.id)) return;
 
       const saved = await readSavedSession(p.id);
-      if (saved && (saved.mode === 'MIXED' || quizModes.includes(saved.mode))) {
+      if (saved && (saved.mode === 'MIXED' || quizState.quizModes.includes(saved.mode))) {
         const restoredQuestions = saved.mode === 'MIXED'
-          ? buildAdaptiveQuizSetFromIds(pool, quizModes, nextCareLevel ?? 'DEMENTIA', saved.questionIds, difficulty ?? 'MEDIUM')
-          : buildQuizSetFromIds(pool, saved.mode, saved.questionIds, difficulty ?? 'MEDIUM');
+          ? buildAdaptiveQuizSetFromIds(
+            quizState.pool,
+            quizState.quizModes,
+            quizState.careLevel,
+            saved.questionIds,
+            quizState.difficulty,
+            quizState.aiAdaptiveEnabled,
+          )
+          : buildQuizSetFromIds(quizState.pool, saved.mode, saved.questionIds, quizState.difficulty);
         const currentIndex = Math.max(0, saved.currentIndex);
         if (restoredQuestions.length > currentIndex) {
           setResumeSession({ mode: saved.mode, questions: restoredQuestions, currentIndex });
@@ -369,80 +417,194 @@ export default function QuizTab() {
     } catch (err: any) {
       setPhase({ type: 'error', message: err?.message ?? 'Something went wrong.' });
     }
-  }, [navigation]);
+  }, [applyQuizAvailabilityPhase, loadQuizRuntimeState, navigation]);
 
   useEffect(() => {
     initialise();
   }, [initialise]);
 
-  const startSet = useCallback((mode: QuizMode) => {
-    console.log(`[Quiz] Starting set for mode: ${mode}, pool size: ${mediaPool.length}`);
-    const qs = buildQuizSet(mediaPool, mode, quizDifficulty);
-    console.log(`[Quiz] Generated ${qs.length} questions`);
-    if (qs.length === 0) {
-      console.warn('[Quiz] No questions generated, cannot start quiz');
-      return;
+  const refreshQuizStateForCurrentPhase = useCallback(async () => {
+    const p = patientRef.current ?? await getPatientInfo();
+    if (!p) return;
+    setPatient(p);
+    const wasWaitingForMedia = ['no_media', 'insufficient_identities'].includes(phaseRef.current.type);
+    if (wasWaitingForMedia) {
+      setPhase({ type: 'loading' });
     }
-    setQuestions(qs);
-    setActiveMode(mode);
-    setQuestionIds(qs.map((q) => q.media.publicId));
-    setQuestionIndex(0);
-    setScore(0);
-    quizAttemptRecordsRef.current = [];
-    setWrongTaps(new Set());
-    setLastWrong(null);
-    setHintVisible(false);
-    hintOpacity.setValue(0);
-    setShowSuccess(false);
-    attemptResultsRef.current = [];
-    questionStartTimeRef.current = Date.now();
-    setPhase({ type: 'quiz' });
-  }, [hintOpacity, mediaPool, quizDifficulty]);
-
-  const startAdaptiveSet = useCallback(() => {
-    console.log(`[Quiz] Starting adaptive set. CareLevel: ${careLevel}, Modes: ${enabledModes.join(',')}, Pool: ${mediaPool.length}`);
-    const qs = buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty);
-    console.log(`[Quiz] Generated ${qs.length} adaptive questions`);
-    if (qs.length === 0) {
-      console.warn('[Quiz] No adaptive questions generated, cannot start quiz');
-      return;
+    const latest = await loadQuizRuntimeState(p.id, { validateUrls: true });
+    const blocked = await applyQuizAvailabilityPhase(latest, p.id);
+    if (!blocked && (wasWaitingForMedia || ['no_media', 'insufficient_identities'].includes(phaseRef.current.type))) {
+      setPhase({ type: 'intro' });
     }
-    setQuestions(qs);
-    setActiveMode(careLevel === 'PREVENTATIVE' ? 'MIXED' : qs[0].mode);
-    setQuestionIds(qs.map((q) => q.media.publicId));
-    setQuestionIndex(0);
-    setScore(0);
-    setWrongTaps(new Set());
-    setLastWrong(null);
-    setHintVisible(false);
-    hintOpacity.setValue(0);
-    setShowSuccess(false);
-    attemptResultsRef.current = [];
-    questionStartTimeRef.current = Date.now();
-    setPhase({ type: 'quiz' });
-  }, [careLevel, enabledModes, hintOpacity, mediaPool, quizDifficulty]);
+  }, [applyQuizAvailabilityPhase, loadQuizRuntimeState]);
 
-  const continueSavedSession = useCallback(() => {
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (phaseRef.current.type !== 'quiz' && phaseRef.current.type !== 'resume_prompt' && phaseRef.current.type !== 'loading') {
+        refreshQuizStateForCurrentPhase().catch((err: any) => {
+          setPhase({ type: 'error', message: err?.message ?? 'Something went wrong.' });
+        });
+      }
+    });
+    return unsubscribe;
+  }, [navigation, refreshQuizStateForCurrentPhase]);
+
+  const clearDisplayedPhoto = useCallback(() => {
+    const token = photoLoadTokenRef.current + 1;
+    photoLoadTokenRef.current = token;
+    setDisplayedPhoto(null);
+    photoFade.setValue(0);
+  }, [photoFade]);
+
+  const startSet = useCallback(async (mode: QuizMode) => {
+    const p = patientRef.current ?? await getPatientInfo();
+    if (!p) return;
+    try {
+      const latest: QuizRuntimeState = {
+        quizModes: enabledModesRef.current,
+        difficulty: quizDifficultyRef.current,
+        careLevel: careLevelRef.current,
+        aiAdaptiveEnabled,
+        pool: mediaPool,
+        identityCount: uniqueIdentityCount(mediaPool.map((item) => item.media)),
+      };
+      if (await applyQuizAvailabilityPhase(latest, p.id)) return;
+      if (!latest.quizModes.includes(mode)) {
+        await deleteSavedSession(p.id);
+        setPhase(latest.quizModes.length > 1 ? { type: 'mode_select' } : { type: 'intro' });
+        return;
+      }
+      console.log(`[Quiz] Starting set for mode: ${mode}, pool size: ${latest.pool.length}`);
+      const qs = buildQuizSet(latest.pool, mode, latest.difficulty);
+      console.log(`[Quiz] Generated ${qs.length} questions`);
+      if (qs.length === 0) {
+        console.warn('[Quiz] No questions generated, cannot start quiz');
+        setPhase({ type: 'intro' });
+        return;
+      }
+      await deleteSavedSession(p.id);
+      clearDisplayedPhoto();
+      setQuestions(qs);
+      setActiveMode(mode);
+      setQuestionIds(qs.map((q) => q.media.publicId));
+      setQuestionIndex(0);
+      setScore(0);
+      quizAttemptRecordsRef.current = [];
+      setWrongTaps(new Set());
+      setLastWrong(null);
+      setHintVisible(false);
+      hintOpacity.setValue(0);
+      setShowSuccess(false);
+      attemptResultsRef.current = [];
+      questionStartTimeRef.current = Date.now();
+      setPhase({ type: 'quiz' });
+    } catch (err: any) {
+      setPhase({ type: 'error', message: err?.message ?? 'Something went wrong.' });
+    }
+  }, [aiAdaptiveEnabled, applyQuizAvailabilityPhase, clearDisplayedPhoto, hintOpacity, mediaPool]);
+
+  const startAdaptiveSet = useCallback(async () => {
+    const p = patientRef.current ?? await getPatientInfo();
+    if (!p) return;
+    try {
+      const latest: QuizRuntimeState = {
+        quizModes: enabledModesRef.current,
+        difficulty: quizDifficultyRef.current,
+        careLevel: careLevelRef.current,
+        aiAdaptiveEnabled,
+        pool: mediaPool,
+        identityCount: uniqueIdentityCount(mediaPool.map((item) => item.media)),
+      };
+      if (await applyQuizAvailabilityPhase(latest, p.id)) return;
+      console.log(`[Quiz] Starting adaptive set. CareLevel: ${latest.careLevel}, Modes: ${latest.quizModes.join(',')}, Pool: ${latest.pool.length}`);
+      const qs = buildAdaptiveQuizSet(
+        latest.pool,
+        latest.quizModes,
+        latest.careLevel,
+        latest.difficulty,
+        latest.aiAdaptiveEnabled,
+      );
+      console.log(`[Quiz] Generated ${qs.length} adaptive questions`);
+      if (qs.length === 0) {
+        console.warn('[Quiz] No adaptive questions generated, cannot start quiz');
+        setPhase({ type: 'intro' });
+        return;
+      }
+      await deleteSavedSession(p.id);
+      clearDisplayedPhoto();
+      setQuestions(qs);
+      setActiveMode(shouldMixQuestionTypes(latest.careLevel, latest.difficulty, latest.aiAdaptiveEnabled) ? 'MIXED' : qs[0].mode);
+      setQuestionIds(qs.map((q) => q.media.publicId));
+      setQuestionIndex(0);
+      setScore(0);
+      setWrongTaps(new Set());
+      setLastWrong(null);
+      setHintVisible(false);
+      hintOpacity.setValue(0);
+      setShowSuccess(false);
+      attemptResultsRef.current = [];
+      questionStartTimeRef.current = Date.now();
+      setPhase({ type: 'quiz' });
+    } catch (err: any) {
+      setPhase({ type: 'error', message: err?.message ?? 'Something went wrong.' });
+    }
+  }, [aiAdaptiveEnabled, applyQuizAvailabilityPhase, clearDisplayedPhoto, hintOpacity, mediaPool]);
+
+  const continueSavedSession = useCallback(async () => {
     if (!resumeSession) return;
-    setQuestions(resumeSession.questions);
-    setActiveMode(resumeSession.mode);
-    setQuestionIds(resumeSession.questions.map((q) => q.media.publicId));
-    setQuestionIndex(resumeSession.currentIndex);
-    setScore(0);
-    quizAttemptRecordsRef.current = [];
-    setWrongTaps(new Set());
-    setLastWrong(null);
-    setHintVisible(false);
-    hintOpacity.setValue(0);
-    setShowSuccess(false);
-    attemptResultsRef.current = [];
-    questionStartTimeRef.current = Date.now();
-    setResumeSession(null);
-    setPhase({ type: 'quiz' });
-  }, [resumeSession]);
+    const p = patientRef.current ?? await getPatientInfo();
+    if (!p) return;
+    try {
+      const latest = await loadQuizRuntimeState(p.id, { validateUrls: true });
+      if (await applyQuizAvailabilityPhase(latest, p.id)) {
+        setResumeSession(null);
+        return;
+      }
+      const restoredQuestions = resumeSession.mode === 'MIXED'
+        ? buildAdaptiveQuizSetFromIds(
+          latest.pool,
+          latest.quizModes,
+          latest.careLevel,
+          resumeSession.questions.map((q) => q.media.publicId),
+          latest.difficulty,
+          latest.aiAdaptiveEnabled,
+        )
+        : buildQuizSetFromIds(
+          latest.pool,
+          resumeSession.mode,
+          resumeSession.questions.map((q) => q.media.publicId),
+          latest.difficulty,
+        );
+      if (restoredQuestions.length <= resumeSession.currentIndex) {
+        await deleteSavedSession(p.id);
+        setResumeSession(null);
+        setPhase({ type: 'intro' });
+        return;
+      }
+      clearDisplayedPhoto();
+      setQuestions(restoredQuestions);
+      setActiveMode(resumeSession.mode);
+      setQuestionIds(restoredQuestions.map((q) => q.media.publicId));
+      setQuestionIndex(resumeSession.currentIndex);
+      setScore(0);
+      quizAttemptRecordsRef.current = [];
+      setWrongTaps(new Set());
+      setLastWrong(null);
+      setHintVisible(false);
+      hintOpacity.setValue(0);
+      setShowSuccess(false);
+      attemptResultsRef.current = [];
+      questionStartTimeRef.current = Date.now();
+      setResumeSession(null);
+      setPhase({ type: 'quiz' });
+    } catch (err: any) {
+      setPhase({ type: 'error', message: err?.message ?? 'Something went wrong.' });
+    }
+  }, [applyQuizAvailabilityPhase, clearDisplayedPhoto, hintOpacity, loadQuizRuntimeState, resumeSession]);
 
   const startNewSession = useCallback(async () => {
     await clearCurrentSession();
+    clearDisplayedPhoto();
     setResumeSession(null);
     setQuestions([]);
     setQuestionIds([]);
@@ -455,16 +617,28 @@ export default function QuizTab() {
     hintOpacity.setValue(0);
     setShowSuccess(false);
     setPhase({ type: 'intro' });
-  }, [clearCurrentSession]);
+  }, [clearCurrentSession, clearDisplayedPhoto]);
 
-  const handleIntroStart = useCallback(() => {
-    if (careLevel === 'PREVENTATIVE') {
-      startAdaptiveSet();
-      return;
+  const handleIntroStart = useCallback(async () => {
+    try {
+      const p = patientRef.current ?? await getPatientInfo();
+      if (!p) return;
+      const latest: QuizRuntimeState = {
+        quizModes: enabledModesRef.current,
+        difficulty: quizDifficultyRef.current,
+        careLevel: careLevelRef.current,
+        aiAdaptiveEnabled,
+        pool: mediaPool,
+        identityCount: uniqueIdentityCount(mediaPool.map((item) => item.media)),
+      };
+      if (await applyQuizAvailabilityPhase(latest, p.id)) return;
+
+      const preferredMode = latest.quizModes.includes('NAME') ? 'NAME' : latest.quizModes[0];
+      if (preferredMode) startSet(preferredMode);
+    } catch (err: any) {
+      setPhase({ type: 'error', message: err?.message ?? 'Something went wrong.' });
     }
-    const preferredMode = enabledModes.includes('NAME') ? 'NAME' : enabledModes[0];
-    if (preferredMode) startSet(preferredMode);
-  }, [careLevel, enabledModes, startAdaptiveSet, startSet]);
+  }, [aiAdaptiveEnabled, applyQuizAvailabilityPhase, mediaPool, startAdaptiveSet, startSet]);
 
   const showHint = useCallback(() => {
     const current = questions[questionIndexRef.current];
@@ -564,7 +738,12 @@ export default function QuizTab() {
       const p = patientRef.current;
       const attempts = attemptResultsRef.current;
       if (p && attempts.length > 0) {
-        submitQuizResults(p.id, attempts).catch(() => undefined);
+        submitQuizResults(p.id, attempts).then(() => {
+          fetch(`${API_BASE_URL}/patients/${p.id}/patient-stats`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if (data) setStats(data); })
+            .catch(() => undefined);
+        }).catch(() => undefined);
       }
       setPhase({ type: 'summary' });
     } else {
@@ -572,7 +751,12 @@ export default function QuizTab() {
         toValue: 0,
         duration: 140,
         useNativeDriver: true,
-      }).start(() => setQuestionIndex(nextIndex));
+      }).start(() => {
+        photoLoadTokenRef.current += 1;
+        setDisplayedPhoto(null);
+        photoFade.setValue(0);
+        setQuestionIndex(nextIndex);
+      });
     }
   }, [clearCurrentSession, hintOpacity, questionFade]);
 
@@ -590,252 +774,17 @@ export default function QuizTab() {
           dismissDialog();
           await deletePatientInfo();
           navigation.dispatch(
-            CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
+            CommonActions.reset({ index: 0, routes: [{ name: 'index', params: { transition: 'logout' } }] })
           ); // <-- Note: I closed the parentheses here for you!
         }
       }
     ]);
   }; // <-- Closes the logout function
 
-  const handlePickMedia = async (kind: 'PHOTO' | 'VIDEO') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'PHOTO' ? ImagePicker.MediaTypeOptions.Images : ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets?.[0]) {
-      const asset = result.assets[0];
-      setSelectedMedia({
-        uri: asset.uri,
-        kind: kind,
-        type: asset.mimeType || (kind === 'PHOTO' ? 'image/jpeg' : 'video/mp4'),
-      });
-    }
-  };
-
-  const handleStartRecording = async () => {
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') return;
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      setIsRecording(true);
-    } catch (err) {
-      Alert.alert('Error', 'Failed to start recording');
-    }
-  };
-
-  const handleStopRecording = async () => {
-    if (!recording) return;
-    setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    if (uri) {
-      setSelectedMedia({
-        uri,
-        kind: 'AUDIO',
-        type: 'audio/m4a',
-      });
-    }
-    setRecording(null);
-  };
-
-  const handleSaveMemory = async () => {
-    if ((!newNote.trim() && !selectedMedia) || !patient) return;
-
-    setIsSubmitting(true);
-    try {
-      if (selectedMedia) {
-        // Upload Media
-        const fileInfo = await FileSystem.getInfoAsync(selectedMedia.uri);
-        if (!fileInfo.exists) throw new Error('File not found');
-
-        await uploadMediaByPatient({
-          patientId: patient.id,
-          kind: selectedMedia.kind,
-          contentType: selectedMedia.type,
-          fileUri: selectedMedia.uri,
-          byteSize: fileInfo.size,
-          metadata: {
-            collection: 'MEMORY',
-            note: newNote.trim() || `Recorded ${selectedMedia.kind.toLowerCase()}`,
-          },
-        });
-      } else {
-        // Just a text note
-        const note = await addPatientNote(patient.id, newNote);
-        setNotes((prev) => [note, ...prev]);
-      }
-      
-      setNewNote('');
-      setSelectedMedia(null);
-      loadData(true); // Refresh feed
-    } catch (error: any) {
-      console.error('Save failed:', error);
-      Alert.alert('Error', error.message || 'Failed to save. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const renderLeaveMemoriesSection = () => (
-    <View style={styles.leaveMemoriesSection}>
-      <View style={[styles.leaveMemoriesSpacer, leaveMemoriesScrollGap]} />
-      <View style={styles.scrollHintCard}>
-        <AppIcon iosName="arrow.down.circle.fill" androidFallback="v" size={26} color={FOREST_GREEN} />
-        <Text style={styles.scrollHintTitle}>Leave a memory for family</Text>
-        <Text style={styles.scrollHintBody}>
-          Keep scrolling on this page — below your practice area you can write a note or share a photo, video, or voice
-          message with loved ones.
-        </Text>
-      </View>
-
-      <View style={styles.noteInputCard}>
-        <Text style={styles.sectionTitle}>{"What's on your mind?"}</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Write a note or share a memory..."
-          placeholderTextColor={colors.textMuted}
-          multiline
-          value={newNote}
-          onChangeText={setNewNote}
-        />
-
-        {selectedMedia && (
-          <View style={styles.mediaPreview}>
-            {selectedMedia.kind === 'PHOTO' ? (
-              <Image source={{ uri: selectedMedia.uri }} style={styles.previewImage} />
-            ) : (
-              <View style={styles.mediaPlaceholder}>
-                <AppIcon
-                  iosName={selectedMedia.kind === 'VIDEO' ? 'video.fill' : 'mic.fill'}
-                  androidFallback="M"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text style={styles.mediaPlaceholderText}>
-                  {selectedMedia.kind === 'VIDEO' ? 'Video selected' : 'Voice message recorded'}
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setSelectedMedia(null)}>
-              <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={24} color="#E74C3C" />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.mediaButtons}>
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('PHOTO')}>
-            <AppIcon iosName="camera.fill" androidFallback="P" size={20} color={colors.primary} />
-            <Text style={styles.mediaBtnText}>Photo</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => handlePickMedia('VIDEO')}>
-            <AppIcon iosName="video.fill" androidFallback="V" size={20} color={colors.primary} />
-            <Text style={styles.mediaBtnText}>Video</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.mediaBtn, isRecording && styles.recordingBtn]}
-            onPressIn={handleStartRecording}
-            onPressOut={handleStopRecording}
-          >
-            <AppIcon
-              iosName={isRecording ? 'stop.fill' : 'mic.fill'}
-              androidFallback="A"
-              size={20}
-              color={isRecording ? '#fff' : colors.primary}
-            />
-            <Text style={[styles.mediaBtnText, isRecording && styles.recordingBtnText]}>
-              {isRecording ? 'Recording...' : 'Voice'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.saveBtn,
-            ((!newNote.trim() && !selectedMedia) || isSubmitting) && styles.saveBtnDisabled,
-          ]}
-          onPress={handleSaveMemory}
-          disabled={(!newNote.trim() && !selectedMedia) || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.saveBtnText}>Share with Family</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {combinedFeed.length > 0 ? (
-        <>
-          <Text style={styles.recentMemoriesHeading}>Recent activity</Text>
-          {combinedFeed.map((item) => (
-            <View key={item.id} style={styles.feedListItem}>
-              <View style={styles.feedItemHeader}>
-                <AppIcon
-                  iosName={
-                    item.type === 'NOTE'
-                      ? 'note.text'
-                      : (item as { kind?: string }).kind === 'AUDIO'
-                        ? 'mic.fill'
-                        : (item as { kind?: string }).kind === 'VIDEO'
-                          ? 'video.fill'
-                          : 'photo.fill'
-                  }
-                  androidFallback={item.type === 'NOTE' ? 'N' : 'P'}
-                  size={16}
-                  color={colors.primary}
-                />
-                <Text style={styles.feedItemDate}>
-                  {new Date(item.createdAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </Text>
-              </View>
-              {item.type === 'MEMORY' &&
-                (item as { kind?: string }).kind === 'PHOTO' &&
-                (item as { downloadUrl?: string }).downloadUrl && (
-                  <Image
-                    source={{ uri: (item as { downloadUrl: string }).downloadUrl }}
-                    style={styles.feedImage}
-                  />
-                )}
-              {item.type === 'MEMORY' &&
-                ((item as { kind?: string }).kind === 'VIDEO' ||
-                  (item as { kind?: string }).kind === 'AUDIO') && (
-                  <View style={styles.mediaIndicator}>
-                    <Text style={styles.mediaIndicatorText}>
-                      {(item as { kind?: string }).kind === 'VIDEO' ? '▶ Video Clip' : '🎤 Voice Message'}
-                    </Text>
-                  </View>
-                )}
-              <Text style={styles.feedContent}>
-                {item.type === 'NOTE' ? (item as { content: string }).content : (item as { note?: string | null }).note}
-              </Text>
-            </View>
-          ))}
-        </>
-      ) : null}
-    </View>
-  );
-
   // We keep ALL the new UI screens that were added in alpha
   const renderLoading = () => (
     <View style={styles.centerFill}>
-      <ActivityIndicator size="large" color={FOREST_GREEN} />
+      <ActivityIndicator size="large" color={themeColors.primary} />
     </View>
   );
 
@@ -850,39 +799,82 @@ export default function QuizTab() {
   );
 
   const renderNoMedia = () => (
-    <View style={styles.centerFill}>
-      <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={FOREST_GREEN} />
-      <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
-      <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
-    </View>
+    <ScrollView
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
+        <AppIcon iosName="photo.on.rectangle.angled" androidFallback="P" size={56} color={themeColors.primary} />
+        <Text style={styles.emptyTitle}>No Quiz Photos Yet</Text>
+        <Text style={styles.emptySubtitle}>Ask your caregiver to add photos to your quiz library.</Text>
+      </View>
+    </ScrollView>
   );
 
   const renderInsufficientIdentities = (count: number) => (
-    <View style={styles.centerFill}>
-      <AppIcon iosName="sparkles" androidFallback="*" size={52} color={FOREST_GREEN} />
-      <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
-      <Text style={styles.emptySubtitle}>
-        Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
-      </Text>
-    </View>
+    <ScrollView
+      style={styles.phaseScroll}
+      contentContainerStyle={styles.introScrollContent}
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.centerFill, { minHeight: height * 0.7 }]}>
+        <AppIcon iosName="sparkles" androidFallback="*" size={52} color={themeColors.primary} />
+        <Text style={styles.emptyTitle}>Quiz Coming Soon</Text>
+        <Text style={styles.emptySubtitle}>
+          Your quiz will be ready when there are 4 familiar faces. Current: {count}/4.
+        </Text>
+      </View>
+    </ScrollView>
   );
 
   const renderIntro = () => (
     <ScrollView
       style={styles.phaseScroll}
       contentContainerStyle={styles.introScrollContent}
-      showsVerticalScrollIndicator
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.introContent, { minHeight: introPrimaryMinHeight }]}>
-        <Text style={styles.introText}>
-          {`Good morning${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
-        </Text>
-        <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
-          <Text style={styles.startButtonText}>Start</Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+          <Text style={styles.introText}>
+            {`${getTimeGreeting()}${patient?.name ? `, ${patient.name}` : ''}. Let's see some familiar faces!`}
+          </Text>
+          <View style={{ height: 48 }} />
+          <TouchableOpacity style={styles.startButton} onPress={handleIntroStart} activeOpacity={0.85}>
+            <Text style={styles.startButtonText}>Start</Text>
+          </TouchableOpacity>
+
+          {stats && stats.goal && (
+            <View style={[styles.patientGoalCard, { marginTop: 48 }]}>
+              <View style={styles.patientGoalHeader}>
+                <Text style={styles.patientGoalTitle}>Your Goal</Text>
+                <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+              </View>
+              <View style={styles.patientGoalTrack}>
+                <View 
+                  style={[
+                    styles.patientGoalFill, 
+                    { width: `${Math.min(100, (stats.currentAccuracy / stats.goal.targetAccuracy) * 100)}%` }
+                  ]} 
+                />
+                <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]} />
+              </View>
+              <Text style={styles.patientGoalSubtext}>
+                {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                  ? '🎉 You reached your goal!' 
+                  : `${stats.goal.targetAccuracy}% accuracy target`}
+              </Text>
+            </View>
+          )}
+        </View>
+
       </View>
-      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
@@ -908,33 +900,35 @@ export default function QuizTab() {
     <ScrollView
       style={styles.phaseScroll}
       contentContainerStyle={styles.modeSelectContent}
-      showsVerticalScrollIndicator
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
-      <View style={styles.modeButtonsCol}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-          return (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
-            >
-              <AppIcon
-                iosName={cfg.icon}
-                androidFallback={cfg.androidFallback}
-                size={24}
-                color={hasMedia ? CREAM : '#888888'}
-              />
-              <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={{ minHeight: height * 0.7, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={styles.modeSelectTitle}>What would you like to practice?</Text>
+        <View style={styles.modeButtonsCol}>
+          {enabledModes.map((mode) => {
+            const cfg = MODE_CONFIG[mode];
+            const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.modePill, !hasMedia && styles.modePillDisabled]}
+                onPress={() => hasMedia && startSet(mode)}
+                activeOpacity={hasMedia ? 0.75 : 1}
+              >
+                <AppIcon
+                  iosName={cfg.icon}
+                  androidFallback={cfg.androidFallback}
+                  size={24}
+                  color={hasMedia ? themeColors.neutralLight : '#888888'}
+                />
+                <Text style={[styles.modePillText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
-      {renderLeaveMemoriesSection()}
     </ScrollView>
   );
 
@@ -942,90 +936,94 @@ export default function QuizTab() {
   const renderQuestion = () => {
     const q = questions[questionIndex];
     if (!q) return null;
+    const photoKey = `${q.media.publicId}-${q.imageUrl}`;
 
     return (
-      <Animated.View
+      <View
         style={[
           styles.quizScreen,
           {
             paddingTop: insets.top + 18,
             paddingBottom: insets.bottom + 22,
-            opacity: questionFade,
           },
         ]}
       >
-        <View style={styles.progressDashRow}>
-          {questions.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.progressDash, index <= questionIndex && styles.progressDashActive]}
-            />
-          ))}
-        </View>
-
-        <Text style={styles.questionText}>{q.questionText}</Text>
-
-        {!!q.media.hint && (
-          <View style={styles.hintArea}>
-            {hintVisible ? (
-              <Animated.View style={[styles.hintBubble, { opacity: hintOpacity }]}>
-                <Text style={styles.hintText}>{q.media.hint}</Text>
-              </Animated.View>
-            ) : (
-              <TouchableOpacity style={styles.hintButton} onPress={showHint} activeOpacity={0.75}>
-                <Text style={styles.hintButtonText}>Need a hint?</Text>
-              </TouchableOpacity>
-            )}
+        <Animated.View style={[styles.quizContent, { opacity: questionFade }]}>
+          <View style={styles.progressDashRow}>
+            {questions.map((_, index) => (
+              <View
+                key={index}
+                style={[styles.progressDash, index <= questionIndex && styles.progressDashActive]}
+              />
+            ))}
           </View>
-        )}
 
-        <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
-          <View style={styles.photoClip}>
-            <View style={styles.photoLoading}>
-              <ActivityIndicator size="small" color={FOREST_GREEN} />
-            </View>
-            <Animated.Image
-              key={`${q.media.publicId}-${q.imageUrl}`}
-              source={{ uri: q.imageUrl }}
-              style={[styles.photo, { opacity: photoFade }]}
-              resizeMode="cover"
-              onLoad={() => {
-                Animated.timing(photoFade, {
-                  toValue: 1,
-                  duration: 220,
-                  useNativeDriver: true,
-                }).start();
-              }}
-            />
-          </View>
-        </View>
+          <Text style={styles.questionText}>{q.questionText}</Text>
 
-        <View style={styles.choiceGrid}>
-          {q.choices.map((choice) => {
-            const isWrong = wrongTaps.has(choice);
-            const isLastWrong = choice === lastWrong;
-            return (
-              <Animated.View
-                key={choice}
-                style={[styles.choiceCell, isLastWrong && { transform: [{ translateX: wrongShake }] }]}
-              >
-                <TouchableOpacity
-                  style={[styles.choiceBtn, isWrong && styles.choiceBtnWrong]}
-                  onPress={() => handleChoice(choice)}
-                  activeOpacity={0.85}
-                  disabled={isWrong}
-                >
-                  <Text style={[styles.choiceBtnText, isWrong && styles.choiceBtnTextWrong]} numberOfLines={2}>
-                    {choice}
-                  </Text>
+          {!!q.media.hint && (
+            <View style={styles.hintArea}>
+              {hintVisible ? (
+                <Animated.View style={[styles.hintBubble, { opacity: hintOpacity }]}>
+                  <Text style={styles.hintText}>{q.media.hint}</Text>
+                </Animated.View>
+              ) : (
+                <TouchableOpacity style={styles.hintButton} onPress={showHint} activeOpacity={0.75}>
+                  <Text style={styles.hintButtonText}>Need a hint?</Text>
                 </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
-        </View>
+              )}
+            </View>
+          )}
+
+          <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
+            <View style={styles.photoClip}>
+              <View style={styles.photoLoading}>
+                <ActivityIndicator size="small" color={themeColors.primary} />
+              </View>
+              {displayedPhoto?.key === photoKey && (
+                <Animated.Image
+                  key={displayedPhoto.key}
+                  source={{ uri: displayedPhoto.uri }}
+                  style={[styles.photo, { opacity: photoFade }]}
+                  resizeMode="cover"
+                  onLoad={() => {
+                    Animated.timing(photoFade, {
+                      toValue: 1,
+                      duration: 220,
+                      useNativeDriver: true,
+                    }).start();
+                  }}
+                />
+              )}
+            </View>
+          </View>
+
+          <View style={styles.choiceGrid}>
+            {q.choices.map((choice) => {
+              const isWrong = wrongTaps.has(choice);
+              const isLastWrong = choice === lastWrong;
+              return (
+                <Animated.View
+                  key={choice}
+                  style={[styles.choiceCell, isLastWrong && { transform: [{ translateX: wrongShake }] }]}
+                >
+                  <TouchableOpacity
+                    style={[styles.choiceBtn, isWrong && styles.choiceBtnWrong]}
+                    onPress={() => handleChoice(choice)}
+                    activeOpacity={0.85}
+                    disabled={isWrong}
+                  >
+                    <Text style={[styles.choiceBtnText, isWrong && styles.choiceBtnTextWrong]} numberOfLines={2}>
+                      {choice}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })}
+          </View>
+        </Animated.View>
 
         <QuizSuccessOverlay visible={showSuccess} message={successMessage} onDismiss={handleSuccessDismiss} />
-      </Animated.View>
+      </View>
     );
   };
 
@@ -1033,43 +1031,110 @@ export default function QuizTab() {
     navigation.navigate('relive' as never);
   };
 
-  const renderSummary = () => (
-    <ScrollView
-      style={styles.phaseScroll}
-      contentContainerStyle={styles.summaryContent}
-      showsVerticalScrollIndicator
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.summaryMessageBlock}>
-        <Text style={styles.summaryTitle}>
-          Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
-        </Text>
-      </View>
+  const renderSummary = () => {
+    const showAdaptiveRetry = aiAdaptiveEnabled || careLevel === 'PREVENTATIVE';
+    const hasAdaptiveMedia = showAdaptiveRetry
+      && buildAdaptiveQuizSet(mediaPool, enabledModes, careLevel, quizDifficulty, aiAdaptiveEnabled).length > 0;
 
-      <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
-        <Text style={styles.photosButtonText}>Go to my photos</Text>
-      </TouchableOpacity>
+    return (
+      <ScrollView
+        style={styles.phaseScroll}
+        contentContainerStyle={[styles.summaryContent, { paddingTop: 40, paddingBottom: 60 }]}
+        showsVerticalScrollIndicator
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ width: '100%', alignItems: 'center', gap: 32 }}>
+          <View style={styles.summaryMessageBlock}>
+            <Text style={styles.summaryTitle}>
+              Wonderful job{patient?.name ? `, ${patient.name}` : ''}. You've seen everyone today!
+            </Text>
+          </View>
 
-      <Text style={styles.summaryPrompt}>Practice again:</Text>
-      <View style={styles.practiceChoiceGrid}>
-        {enabledModes.map((mode) => {
-          const cfg = MODE_CONFIG[mode];
-          const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
-          return (
+          {stats && stats.goal && (
+            <>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 64, marginBottom: 4 }}>
+                  {getEmojiStage(Math.min(100, Math.round((stats.currentAccuracy / stats.goal.targetAccuracy) * 100))).emoji}
+                </Text>
+                <Text style={{ fontFamily: typography.fontFamily.medium, fontSize: 15, color: themeColors.textMuted }}>
+                  {getEmojiStage(Math.min(100, Math.round((stats.currentAccuracy / stats.goal.targetAccuracy) * 100))).label}
+                </Text>
+              </View>
+
+              <View style={styles.patientGoalCard}>
+                <View style={styles.patientGoalHeader}>
+                  <Text style={styles.patientGoalTitle}>Accuracy Goal</Text>
+                  <Text style={styles.patientGoalPercent}>{stats.currentAccuracy}%</Text>
+                </View>
+                <View style={styles.patientGoalTrack}>
+                  <View 
+                    style={[
+                      styles.patientGoalFill, 
+                      { width: `${Math.min(100, stats.currentAccuracy)}%` }
+                    ]} 
+                  />
+                  <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]}>
+                    <View style={styles.patientGoalMarkerLine} />
+                    <View style={styles.patientGoalMarkerPill}>
+                      <Text style={styles.patientGoalMarkerLabel}>{stats.goal.targetAccuracy}%</Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.patientGoalSubtext}>
+                  {stats.currentAccuracy >= stats.goal.targetAccuracy 
+                    ? '🎉 You reached your goal!' 
+                    : `Target: ${stats.goal.targetAccuracy}% accuracy`}
+                </Text>
+              </View>
+            </>
+          )}
+
+          <TouchableOpacity style={styles.photosButton} onPress={goToRelive} activeOpacity={0.85}>
+            <Text style={styles.photosButtonText}>Go to my photos</Text>
+            <Text style={styles.photosButtonHint}>You can also leave a memory for your family there</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.summaryPrompt}>Practice again:</Text>
+          
+          {showAdaptiveRetry && (
             <TouchableOpacity
-              key={mode}
-              style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
-              onPress={() => hasMedia && startSet(mode)}
-              activeOpacity={hasMedia ? 0.75 : 1}
+              style={[styles.adaptivePracticeChoice, !hasAdaptiveMedia && styles.modePillDisabled]}
+              onPress={() => hasAdaptiveMedia && startAdaptiveSet()}
+              activeOpacity={hasAdaptiveMedia ? 0.78 : 1}
             >
-              <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+              <AppIcon
+                iosName="brain.head.profile"
+                androidFallback="AI"
+                size={18}
+                color={hasAdaptiveMedia ? themeColors.neutralLight : '#888888'}
+              />
+              <Text style={[styles.adaptivePracticeChoiceText, !hasAdaptiveMedia && styles.modePillTextDisabled]}>
+                Practice together
+              </Text>
             </TouchableOpacity>
-          );
-        })}
-      </View>
-      {renderLeaveMemoriesSection()}
-    </ScrollView>
-  );
+          )}
+
+          <View style={styles.practiceChoiceGrid}>
+            {enabledModes.map((mode) => {
+              const cfg = MODE_CONFIG[mode];
+              const hasMedia = buildQuizSet(mediaPool, mode, quizDifficulty, 1).length > 0;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.practiceChoice, !hasMedia && styles.modePillDisabled]}
+                  onPress={() => hasMedia && startSet(mode)}
+                  activeOpacity={hasMedia ? 0.75 : 1}
+                >
+                  <Text style={[styles.practiceChoiceText, !hasMedia && styles.modePillTextDisabled]}>{cfg.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+        </View>
+      </ScrollView>
+    );
+  };
 
   const showTopBar = !['quiz', 'intro', 'resume_prompt', 'summary'].includes(phase.type);
   const showFocusModal = phase.type === 'resume_prompt' || phase.type === 'quiz';
@@ -1121,10 +1186,12 @@ export default function QuizTab() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     paddingHorizontal: 24,
   },
   phaseScroll: {
@@ -1133,59 +1200,7 @@ const styles = StyleSheet.create({
   },
   introScrollContent: {
     flexGrow: 1,
-    paddingBottom: 40,
-  },
-  leaveMemoriesSection: {
-    width: '100%',
-    alignSelf: 'stretch',
-    paddingHorizontal: 0,
-    marginTop: 8,
-  },
-  leaveMemoriesSpacer: {
-    width: '100%',
-  },
-  scrollHintCard: {
-    width: '100%',
-    backgroundColor: 'rgba(252, 254, 249, 0.95)',
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.2)',
-    gap: 8,
-    alignItems: 'center',
-  },
-  scrollHintTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 17,
-    color: FOREST_GREEN,
-    textAlign: 'center',
-  },
-  scrollHintBody: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    color: FOREST_GREEN,
-    textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.92,
-  },
-  recentMemoriesHeading: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: FOREST_GREEN,
-    marginBottom: 10,
-    marginTop: 4,
-    width: '100%',
-  },
-  feedListItem: {
-    width: '100%',
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: colors.neutral,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.12)',
+    paddingBottom: 180, // Clear the navigation bar
   },
   topRow: {
     flexDirection: 'row',
@@ -1196,7 +1211,7 @@ const styles = StyleSheet.create({
   greeting: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     flex: 1,
   },
   logoutBtn: {
@@ -1212,14 +1227,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerAvatarText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   centerFill: {
     flex: 1,
@@ -1231,12 +1246,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     paddingHorizontal: 16,
   },
   retryBtn: {
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     borderRadius: 50,
     paddingVertical: 14,
     paddingHorizontal: 36,
@@ -1244,18 +1259,18 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   emptyTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 25,
     maxWidth: 300,
@@ -1271,14 +1286,14 @@ const styles = StyleSheet.create({
   introText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     lineHeight: 40,
     textAlign: 'center',
   },
   startButton: {
     minWidth: 190,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingVertical: 18,
     paddingHorizontal: 54,
     alignItems: 'center',
@@ -1295,11 +1310,11 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 22,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   resumeFill: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -1307,11 +1322,11 @@ const styles = StyleSheet.create({
   resumeCard: {
     width: '100%',
     borderRadius: 24,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 24,
     paddingVertical: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
     alignItems: 'center',
     gap: 24,
     ...Platform.select({
@@ -1328,7 +1343,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 25,
     lineHeight: 34,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   resumeActions: {
@@ -1337,37 +1352,37 @@ const styles = StyleSheet.create({
   },
   resumePrimaryBtn: {
     borderRadius: 999,
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     paddingVertical: 16,
     alignItems: 'center',
   },
   resumePrimaryText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: CREAM,
+    color: themeColors.neutralLight,
   },
   resumeSecondaryBtn: {
     borderRadius: 999,
-    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
     paddingVertical: 15,
     alignItems: 'center',
   },
   resumeSecondaryText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 17,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
   },
   modeSelectContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 180, // Generous padding to clear the floating navigation bar
     alignItems: 'center',
     width: '100%',
   },
   modeSelectTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 28,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 36,
     marginBottom: 36,
@@ -1380,7 +1395,7 @@ const styles = StyleSheet.create({
   modePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: FOREST_GREEN,
+    backgroundColor: themeColors.primary,
     borderRadius: 50,
     paddingVertical: 18,
     paddingHorizontal: 32,
@@ -1393,7 +1408,7 @@ const styles = StyleSheet.create({
   modePillText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: CREAM,
+    color: themeColors.neutralLight,
     flex: 1,
     textAlign: 'center',
   },
@@ -1402,9 +1417,14 @@ const styles = StyleSheet.create({
   },
   quizScreen: {
     flex: 1,
-    backgroundColor: QUIZ_BACKGROUND,
+    backgroundColor: themeColors.neutral,
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  quizContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
   },
   progressDashRow: {
     flexDirection: 'row',
@@ -1418,22 +1438,22 @@ const styles = StyleSheet.create({
     width: 34,
     height: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(30, 77, 48, 0.24)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.24)'),
   },
   progressDashActive: {
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
   },
   questionText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 38,
     marginBottom: 28,
   },
   photoShadow: {
     borderRadius: 30,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     marginBottom: 16,
     ...Platform.select({
       ios: {
@@ -1449,7 +1469,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 30,
     overflow: 'hidden',
-    backgroundColor: 'rgba(30, 77, 48, 0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.08)'),
   },
   photoLoading: {
     ...StyleSheet.absoluteFillObject,
@@ -1470,31 +1490,31 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 8,
-    backgroundColor: 'rgba(252, 254, 249, 0.58)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.58)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
   },
   hintButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textDecorationLine: 'underline',
   },
   hintBubble: {
     marginTop: 10,
     maxWidth: 320,
     borderRadius: 18,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
   },
   hintText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 21,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
   choiceGrid: {
@@ -1512,7 +1532,7 @@ const styles = StyleSheet.create({
   choiceBtn: {
     minHeight: 66,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1533,7 +1553,7 @@ const styles = StyleSheet.create({
   choiceBtnText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 23,
   },
@@ -1543,7 +1563,7 @@ const styles = StyleSheet.create({
   summaryContent: {
     flexGrow: 1,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 180, // Generous padding to clear the floating navigation bar
     alignItems: 'center',
     gap: 24,
     width: '100%',
@@ -1555,14 +1575,14 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 30,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
     lineHeight: 40,
   },
   photosButton: {
     minWidth: 230,
     borderRadius: 999,
-    backgroundColor: CREAM,
+    backgroundColor: themeColors.neutralLight,
     paddingHorizontal: 34,
     paddingVertical: 18,
     alignItems: 'center',
@@ -1579,13 +1599,21 @@ const styles = StyleSheet.create({
   photosButtonText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
+  },
+  photosButtonHint: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    color: themeColors.primary,
+    textAlign: 'center',
+    opacity: 0.65,
+    marginTop: 4,
   },
   summaryPrompt: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     marginTop: 18,
   },
   practiceChoiceGrid: {
@@ -1595,157 +1623,111 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
+  adaptivePracticeChoice: {
+    minWidth: 230,
+    maxWidth: 320,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  adaptivePracticeChoiceText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.neutralLight,
+    textAlign: 'center',
+  },
   practiceChoice: {
     borderRadius: 999,
-    backgroundColor: 'rgba(252, 254, 249, 0.9)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(252, 254, 249, 0.9)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.18)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(30, 77, 48, 0.18)'),
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   practiceChoiceText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: FOREST_GREEN,
+    color: themeColors.primary,
     textAlign: 'center',
   },
-  mediaButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
+  patientGoalCard: {
+    width: '100%',
+    backgroundColor: (isDark ? 'rgba(76,175,80,0.08)' : 'rgba(76,175,80,0.05)'),
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.15)'),
   },
-  mediaBtn: {
-    flex: 1,
+  patientGoalHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.neutral,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(180, 174, 232, 0.2)',
+    marginBottom: 14,
   },
-  mediaBtnText: {
+  patientGoalTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: themeColors.primary,
+  },
+  patientGoalPercent: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
+    color: '#4CAF50',
+  },
+  patientGoalTrack: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(0,0,0,0.06)'),
+    overflow: 'visible',
+    position: 'relative',
+    marginBottom: 38,
+  },
+  patientGoalFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4CAF50',
+  },
+  patientGoalMarker: {
+    position: 'absolute',
+    top: 14,
+    marginLeft: -24,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  patientGoalMarkerLine: {
+    width: 0,
+    height: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: isDark ? 'rgba(245,251,247,0.5)' : 'rgba(0,0,0,0.3)',
+  },
+  patientGoalMarkerPill: {
+    backgroundColor: isDark ? 'rgba(76,175,80,0.2)' : 'rgba(76,175,80,0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? 'rgba(76,175,80,0.4)' : 'rgba(76,175,80,0.3)',
+  },
+  patientGoalMarkerLabel: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 10,
+    color: isDark ? '#A8D5BA' : '#2E7D32',
+  },
+  patientGoalSubtext: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.primary,
-  },
-  recordingBtn: {
-    backgroundColor: '#E74C3C',
-    borderColor: '#E74C3C',
-  },
-  recordingBtnText: {
-    color: '#fff',
-  },
-  mediaPreview: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  previewImage: {
-    width: '100%',
-    height: 150,
-    borderRadius: 12,
-  },
-  mediaPlaceholder: {
-    width: '100%',
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: colors.neutral,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  mediaPlaceholderText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.primary,
-  },
-  removeMediaBtn: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-  },
-  noteInputCard: {
-    width: '100%',
-    backgroundColor: CREAM,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.15)',
-  },
-  sectionTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 17,
-    color: FOREST_GREEN,
-    marginBottom: 10,
-  },
-  textInput: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 16,
-    color: FOREST_GREEN,
-    minHeight: 88,
-    textAlignVertical: 'top',
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(30, 77, 48, 0.2)',
-    padding: 12,
-    marginBottom: 14,
-    backgroundColor: colors.neutral,
-  },
-  saveBtn: {
-    borderRadius: 999,
-    backgroundColor: FOREST_GREEN,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  saveBtnDisabled: {
-    opacity: 0.45,
-  },
-  saveBtnText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    color: CREAM,
-  },
-  feedItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-    gap: 8,
-  },
-  feedItemDate: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  feedImage: {
-    width: '100%',
-    height: 72,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-  feedContent: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: FOREST_GREEN,
-    lineHeight: 16,
-  },
-  mediaIndicator: {
-    backgroundColor: colors.neutral,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  mediaIndicatorText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textMuted,
+    marginTop: 0,
+    textAlign: 'center',
   },
 });
+};

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, TouchableOpacity, Pressable
 } from 'react-native';
@@ -16,11 +17,12 @@ try {
 } catch {
   // Native module unavailable (e.g. running in Expo Go)
 }
-import { colors } from '../src/theme/colors';
+import { lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
 import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
+import { syncCaregiverPushToken } from '../src/services/syncPushToken';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
@@ -41,7 +43,32 @@ interface RestoredState {
   patients: { patientName: string; newPrimaryName: string }[];
 }
 
+const GOOGLE_CLIENT_ID_PATTERN = /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/;
+
+function googleClientId(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed && GOOGLE_CLIENT_ID_PATTERN.test(trimmed) ? trimmed : undefined;
+}
+
+function matchesGoogleStatus(code: unknown, status: unknown) {
+  return status !== undefined && code === status;
+}
+
+function googleSignInErrorMessage(error: any) {
+  const code = error?.code;
+  const message = typeof error?.message === 'string' ? error.message : '';
+  if (matchesGoogleStatus(code, statusCodes.PLAY_SERVICES_NOT_AVAILABLE)) {
+    return 'Google Play Services are not available on this device.';
+  }
+  if (code === 'DEVELOPER_ERROR' || code === '10' || /DEVELOPER_ERROR|ApiException: 10/.test(message)) {
+    return 'Google Sign-In is not configured correctly for this build. Check the Google web client ID and Android SHA fingerprints, then rebuild the app.';
+  }
+  return message ? `Google sign-in failed: ${message}` : 'Google sign-in failed. Please try again.';
+}
+
 export default function LoginScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -77,15 +104,15 @@ export default function LoginScreen() {
       try {
         // On iOS, RNGoogleSignin requires either GoogleService-Info.plist
         // or an explicit iosClientId in configure().
-        const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-        const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-        if (Platform.OS === 'ios' && !iosClientId) {
+        const iosClientId = googleClientId(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID);
+        const webClientId = googleClientId(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+        if (!webClientId || (Platform.OS === 'ios' && !iosClientId)) {
           if (mounted) setGoogleConfigured(false);
           return;
         }
         await GoogleSignin.configure({
           webClientId,
-          iosClientId,
+          ...(iosClientId ? { iosClientId } : {}),
         });
         if (mounted) setGoogleConfigured(true);
       } catch {
@@ -138,6 +165,7 @@ export default function LoginScreen() {
 
       await saveToken(data.accessToken);
       if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+      syncCaregiverPushToken().catch(() => undefined);
 
       router.replace('/dashboard');
     } catch (error: any) {
@@ -152,19 +180,24 @@ export default function LoginScreen() {
   };
 
   const handleGoogleSignIn = async () => {
+    setApiError('');
+    setDeactivated(null);
+
     if (!GoogleSignin || !googleConfigured) {
       showDialog(
         'Google Sign-In Unavailable',
         Platform.OS === 'ios'
-          ? 'Google Sign-In is not configured for iOS yet. Add EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID or include GoogleService-Info.plist in the iOS build.'
-          : 'Google Sign-In is not available in this build yet. Rebuild the app after configuring Google auth.',
+          ? 'Google Sign-In is not configured for this iOS build. Set valid EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID and EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID values, then rebuild the app.'
+          : 'Google Sign-In is not configured for this Android build. Set a valid EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID value, then rebuild the app.',
         [{ label: 'OK', onPress: dismissDialog }],
       );
       return;
     }
 
     try {
-      await GoogleSignin.hasPlayServices();
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      }
       await GoogleSignin.signIn();
       const tokenResponse = await GoogleSignin.getTokens();
       if (tokenResponse.idToken) {
@@ -173,14 +206,12 @@ export default function LoginScreen() {
         setApiError('Could not retrieve Google ID token.');
       }
     } catch (error: any) {
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+      if (matchesGoogleStatus(error.code, statusCodes.SIGN_IN_CANCELLED)) {
         return;
-      } else if (error.code === statusCodes.IN_PROGRESS) {
+      } else if (matchesGoogleStatus(error.code, statusCodes.IN_PROGRESS)) {
         return;
-      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        setApiError('Google Play Services are not available on this device.');
       } else {
-        setApiError('Google sign-in failed. Please try again.');
+        setApiError(googleSignInErrorMessage(error));
       }
     }
   };
@@ -272,6 +303,7 @@ export default function LoginScreen() {
 
       await saveToken(data.accessToken);
       if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+      syncCaregiverPushToken().catch(() => undefined);
 
       router.replace('/dashboard');
     } catch (error: any) {
@@ -298,6 +330,7 @@ export default function LoginScreen() {
       if (res.ok) {
         await saveToken(data.accessToken);
         if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+        syncCaregiverPushToken().catch(() => undefined);
 
         if (data.roleChanged && data.roleChangedPatients?.length > 0) {
           // Show the "Welcome back" screen explaining secondary status
@@ -331,14 +364,14 @@ export default function LoginScreen() {
             <View style={styles.topSpacer} />
 
             <View style={styles.welcomeBackIconWrap}>
-              <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color="#4A7A5A" />
+              <AppIcon iosName="checkmark.circle.fill" androidFallback="✓" size={48} color={themeColors.primary} />
             </View>
 
             <Text style={styles.restoreHeadline}>Welcome back,{'\n'}{restored.firstName}</Text>
 
             <Text style={styles.restoreSubheadline}>
               Your account has been restored. Since you finalized your handover, you are now a{' '}
-              <Text style={{ fontFamily: typography.fontFamily.bold, color: colors.textDark }}>
+              <Text style={{ fontFamily: typography.fontFamily.bold, color: themeColors.textDark }}>
                 Secondary Caregiver
               </Text>
               {' '}for the following patients:
@@ -393,7 +426,7 @@ export default function LoginScreen() {
             <Text style={styles.restoreHeadline}>Account Scheduled{'\n'}for Deletion</Text>
             <Text style={styles.restoreSubheadline}>
               You requested to delete your account on this device. It will be permanently removed on{' '}
-              <Text style={{ fontFamily: typography.fontFamily.bold, color: colors.textDark }}>{deleteDate}</Text>
+              <Text style={{ fontFamily: typography.fontFamily.bold, color: themeColors.textDark }}>{deleteDate}</Text>
               {` (${deactivated.daysLeft} day${deactivated.daysLeft !== 1 ? 's' : ''} remaining).`}
             </Text>
             <Text style={[styles.restoreSubheadline, { marginTop: 8, fontSize: 13 }]}>
@@ -435,6 +468,7 @@ export default function LoginScreen() {
 
           <AdaptiveInput
             label="Email Address"
+            value={email}
             onChangeText={setEmail}
             placeholder="example@email.com"
             keyboardType="email-address"
@@ -443,6 +477,7 @@ export default function LoginScreen() {
 
           <AdaptiveInput
             label="Password"
+            value={password}
             onChangeText={setPassword}
             placeholder="Enter your password"
             secureTextEntry={!showPassword}
@@ -452,7 +487,7 @@ export default function LoginScreen() {
                   iosName={showPassword ? 'eye.slash' : 'eye'}
                   androidFallback={showPassword ? 'Hide' : 'Show'}
                   size={20}
-                  color={colors.textMuted}
+                  color={themeColors.textMuted}
                 />
               ),
               onPress: () => setShowPassword(!showPassword),
@@ -490,7 +525,7 @@ export default function LoginScreen() {
                 activeOpacity={0.8}
                 disabled={isSocialLoading}
               >
-                <MaterialCommunityIcons name="apple" size={24} color="#FFF" />
+                <MaterialCommunityIcons name="apple" size={24} color={isDark ? themeColors.textDark : themeColors.neutralLight} />
                 <Text style={styles.appleButtonText}>Continue with Apple</Text>
               </TouchableOpacity>
             )}
@@ -505,20 +540,16 @@ export default function LoginScreen() {
               disabled={isSocialLoading || !GoogleSignin || !googleConfigured}
               android_ripple={{ color: 'rgba(0,0,0,0.1)', borderless: false }}
             >
-              <MaterialCommunityIcons name="google" size={24} color="#333" />
+              <MaterialCommunityIcons name="google" size={24} color={isDark ? themeColors.textDark : '#333333'} />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </Pressable>
           </View>
 
           <View style={styles.linkRow}>
             <Text style={styles.linkText}>Don't have an account? </Text>
-            <AdaptiveButton
-              title="Sign Up"
-              variant="ghost"
-              onPress={() => router.push('/signup')}
-              style={styles.linkButton}
-              textStyle={styles.linkBoldText}
-            />
+            <TouchableOpacity onPress={() => router.push('/signup')} style={styles.linkButton} activeOpacity={0.7}>
+              <Text style={styles.linkBoldText}>Sign Up</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.bottomSpacer} />
@@ -536,33 +567,39 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   container: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 24,
     flexGrow: 1,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
 
-  topSpacer: { height: SCREEN_HEIGHT * 0.12 },
-  bottomSpacer: { height: SCREEN_HEIGHT * 0.06 },
+  topSpacer: { height: SCREEN_HEIGHT * 0.04 },
+  bottomSpacer: { height: SCREEN_HEIGHT * 0.04 },
 
   headline: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 28,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
     textAlign: 'center',
   },
   subheadline: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: SCREEN_HEIGHT * 0.04,
     textAlign: 'center',
   },
   apiErrorText: {
-    color: '#C0392B',
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -574,19 +611,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textMuted },
-  linkButton: { paddingHorizontal: 0, paddingVertical: 0 },
+  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textMuted },
+  linkButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
   linkBoldText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.secondary,
+    color: themeColors.secondary,
     textTransform: 'none',
     letterSpacing: 0,
   },
   forgotPasswordText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   separatorRow: {
     flexDirection: 'row',
@@ -596,13 +636,13 @@ const styles = StyleSheet.create({
   separatorLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
   },
   separatorText: {
     marginHorizontal: 16,
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   socialButtonsContainer: {
     gap: 12,
@@ -611,30 +651,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: (isDark ? themeColors.neutralLight : '#000000'),
     paddingVertical: 14,
     borderRadius: isIOS ? 20 : 28,
   },
   appleButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: (isDark ? themeColors.textDark : '#FFFFFF'),
     marginLeft: 8,
   },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: (isDark ? themeColors.neutralLight : '#FFFFFF'),
     paddingVertical: 14,
     borderRadius: isIOS ? 20 : 28,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.1)'),
   },
   googleButtonText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 16,
-    color: '#333333',
+    color: (isDark ? themeColors.textDark : '#333333'),
     marginLeft: 8,
   },
 
@@ -643,7 +683,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: 'rgba(230,126,34,0.1)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(230,126,34,0.1)'),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -651,7 +691,7 @@ const styles = StyleSheet.create({
   restoreHeadline: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textDark,
+    color: themeColors.textDark,
     textAlign: 'center',
     marginBottom: 16,
     lineHeight: 32,
@@ -659,14 +699,14 @@ const styles = StyleSheet.create({
   restoreSubheadline: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
   },
   restoreBackText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   // Welcome-back screen
@@ -674,28 +714,30 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: 'rgba(74,122,90,0.1)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(74,122,90,0.1)'),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
   },
   patientRoleCard: {
     width: '100%',
-    backgroundColor: colors.neutralLight,
+    backgroundColor: themeColors.neutralLight,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
   },
   patientRoleName: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   patientRolePrimary: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginTop: 3,
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

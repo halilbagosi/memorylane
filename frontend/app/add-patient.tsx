@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
   TouchableOpacity, Modal, Image, Linking, Animated, Easing,
@@ -8,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { DatePickerModal } from 'react-native-paper-dates';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
@@ -48,6 +49,8 @@ function calculateAge(birthday: Date): number {
 }
 
 export default function AddPatientScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
 
@@ -60,7 +63,6 @@ export default function AddPatientScreen() {
   const [errors, setErrors] = useState<{ name?: string; surname?: string; dateOfBirth?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
-  const [dementiaLevel, setDementiaLevel] = useState<'MILD' | 'MODERATE' | 'SEVERE' | null>(null);
 
   // Backdrop animation for iOS date picker
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -262,7 +264,6 @@ export default function AddPatientScreen() {
           surname: surname.trim(),
           dateOfBirth: toISODate(dateOfBirth),
           ...(avatarUrl ? { avatarUrl } : {}),
-          ...(dementiaLevel ? { dementiaLevel } : {}),
         }),
       });
 
@@ -309,12 +310,12 @@ export default function AddPatientScreen() {
                       {`${name?.[0] ?? ''}${surname?.[0] ?? ''}`.toUpperCase()}
                     </Text>
                   ) : (
-                    <AppIcon iosName="person.crop.circle" androidFallback="P" size={32} color="rgba(255,255,255,0.8)" />
+                    <AppIcon iosName="person.crop.circle" androidFallback="P" size={32} color={themeColors.neutralLight} />
                   )}
                 </View>
               )}
               <View style={styles.avatarEditBadge}>
-                <AppIcon iosName="plus" androidFallback="+" size={11} color="#fff" weight="bold" />
+                <AppIcon iosName="plus" androidFallback="+" size={11} color={themeColors.neutralLight} weight="bold" />
               </View>
             </TouchableOpacity>
             <View style={styles.avatarHint}>
@@ -359,7 +360,7 @@ export default function AddPatientScreen() {
                 iosName="calendar"
                 androidFallback="Cal"
                 size={20}
-                color={dateOfBirth ? colors.secondary : colors.textMuted}
+                color={dateOfBirth ? themeColors.secondary : themeColors.textMuted}
               />
               <Text style={[
                 styles.dateButtonText,
@@ -379,44 +380,6 @@ export default function AddPatientScreen() {
               )}
             </TouchableOpacity>
             {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
-          </View>
-
-          {/* Alzheimer's / Dementia Severity */}
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, !isIOS && styles.androidFieldLabel]}>
-              Alzheimer's / Dementia Severity
-            </Text>
-            <Text style={styles.severityHint}>Optional — helps tailor the experience</Text>
-            <View style={styles.severityRow}>
-              {(['MILD', 'MODERATE', 'SEVERE'] as const).map((level) => {
-                const labels: Record<string, string> = {
-                  MILD: 'Mild',
-                  MODERATE: 'Moderate',
-                  SEVERE: 'Severe',
-                };
-                const selected = dementiaLevel === level;
-                return (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.severityChip,
-                      selected && styles.severityChipSelected,
-                    ]}
-                    onPress={() => setDementiaLevel(selected ? null : level)}
-                    activeOpacity={0.75}
-                  >
-                    <Text
-                      style={[
-                        styles.severityChipText,
-                        selected && styles.severityChipTextSelected,
-                      ]}
-                    >
-                      {labels[level]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {/* Android: M3 date picker modal */}
@@ -475,7 +438,8 @@ export default function AddPatientScreen() {
                         onChange={onIOSDateChange}
                         maximumDate={new Date()}
                         minimumDate={new Date(1900, 0, 1)}
-                        themeVariant="light"
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        textColor={isDark ? themeColors.textLight : themeColors.textDark}
                         style={styles.iosInlinePicker}
                       />
                     </Animated.View>
@@ -508,21 +472,23 @@ export default function AddPatientScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   container: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 40 },
   headline: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
     marginTop: 8,
   },
   subheadline: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 28,
     lineHeight: 22,
   },
@@ -537,7 +503,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
@@ -545,7 +511,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textLight,
+    color: themeColors.textLight,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -555,35 +521,35 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.neutral,
+    borderColor: themeColors.neutral,
   },
   avatarHint: { flex: 1 },
   avatarHintTitle: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 3,
   },
   avatarHintSub: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   formGroup: { marginBottom: 18 },
   label: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 14,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
   },
   androidFieldLabel: {
     fontSize: 13,
     letterSpacing: 0.2,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   dateButton: {
@@ -593,26 +559,26 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   iosDateButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255, 255, 255, 0.5)'),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0, 0, 0, 0.12)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.12)'),
     borderRadius: 14,
   },
   androidDateButton: {
-    backgroundColor: colors.neutralLight,
+    backgroundColor: themeColors.neutralLight,
     borderWidth: 1.5,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
     borderRadius: 16,
   },
-  dateButtonError: { borderColor: '#C0392B' },
+  dateButtonError: { borderColor: (isDark ? '#FFB4A8' : '#C0392B') },
   dateButtonText: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
     flex: 1,
   },
   dateButtonPlaceholder: {
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   ageChip: {
@@ -623,51 +589,17 @@ const styles = StyleSheet.create({
   ageChipText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
-    color: colors.secondary,
-  },
-
-  severityHint: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 10,
-    marginTop: -2,
-  },
-  severityRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  severityChip: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.5)' : colors.neutralLight,
-    borderWidth: isIOS ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: 'rgba(0,0,0,0.10)',
-  },
-  severityChipSelected: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
-  severityChipText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  severityChipTextSelected: {
-    color: '#fff',
+    color: themeColors.secondary,
   },
 
   errorText: {
-    color: '#C0392B',
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     marginTop: 4,
   },
   apiErrorText: {
-    color: '#C0392B',
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -679,7 +611,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   iosPickerContainer: {
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 20,
@@ -691,24 +623,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
+    borderBottomColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.1)'),
   },
   iosPickerCancel: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 16,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
   iosPickerTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.textDark,
+    color: themeColors.textDark,
   },
   iosPickerDone: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 16,
-    color: colors.secondary,
+    color: themeColors.secondary,
   },
   iosInlinePicker: {
     alignSelf: 'center',
   },
 });
+};

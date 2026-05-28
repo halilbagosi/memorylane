@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
   View,
   Text,
@@ -8,13 +9,14 @@ import {
   Dimensions,
   ScrollView,
   Animated,
+  Easing,
   Platform,
   ActivityIndicator,
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { colors } from '../src/theme/colors';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
 import { AdaptiveBadge } from '../src/components/AdaptiveBadge';
@@ -31,17 +33,24 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
 
 export default function WelcomeScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
+  const params = useLocalSearchParams<{ transition?: string }>();
   const insets = useSafeAreaInsets();
   const [checkingSession, setCheckingSession] = useState(true);
+  const isLogoutReturn = params.transition === 'logout';
 
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoSlide = useRef(new Animated.Value(20)).current;
+  const logoOpacity = useRef(new Animated.Value(1)).current;
+  const logoSlide = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
   const headingOpacity = useRef(new Animated.Value(0)).current;
-  const headingSlide = useRef(new Animated.Value(15)).current;
-  const patientCardScale = useRef(new Animated.Value(0.92)).current;
+  const headingSlide = useRef(new Animated.Value(isLogoutReturn ? 8 : 12)).current;
+  const patientCardScale = useRef(new Animated.Value(0.96)).current;
+  const patientCardSlide = useRef(new Animated.Value(isLogoutReturn ? 18 : 26)).current;
   const patientCardOpacity = useRef(new Animated.Value(0)).current;
-  const caregiverCardScale = useRef(new Animated.Value(0.92)).current;
+  const caregiverCardScale = useRef(new Animated.Value(0.96)).current;
+  const caregiverCardSlide = useRef(new Animated.Value(isLogoutReturn ? 20 : 30)).current;
   const caregiverCardOpacity = useRef(new Animated.Value(0)).current;
 
   const orb1Y = useRef(new Animated.Value(0)).current;
@@ -96,22 +105,88 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (checkingSession) return;
-    Animated.stagger(150, [
+    const entranceDelay = isLogoutReturn ? 300 : 900;
+    const entranceStagger = isLogoutReturn ? 80 : 120;
+    const headingDuration = isLogoutReturn ? 340 : 520;
+    const cardDuration = isLogoutReturn ? 380 : 560;
+    const springTension = isLogoutReturn ? 75 : 55;
+    const logoSettle = isLogoutReturn
+      ? Animated.sequence([
+          Animated.timing(logoScale, {
+            toValue: 1.015,
+            duration: 140,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.spring(logoScale, {
+            toValue: 1,
+            friction: 7,
+            tension: 85,
+            useNativeDriver: true,
+          }),
+        ])
+      : Animated.delay(0);
+
+    Animated.sequence([
+      Animated.delay(entranceDelay),
       Animated.parallel([
-        Animated.timing(logoOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(logoSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(headingOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(headingSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.spring(patientCardScale, { toValue: 1, friction: 6, useNativeDriver: true }),
-        Animated.timing(patientCardOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.spring(caregiverCardScale, { toValue: 1, friction: 6, useNativeDriver: true }),
-        Animated.timing(caregiverCardOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        logoSettle,
+        Animated.stagger(entranceStagger, [
+          Animated.parallel([
+            Animated.timing(headingOpacity, {
+              toValue: 1,
+              duration: headingDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(headingSlide, {
+              toValue: 0,
+              duration: headingDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(patientCardOpacity, {
+              toValue: 1,
+              duration: cardDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.spring(patientCardScale, {
+              toValue: 1,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+            Animated.spring(patientCardSlide, {
+              toValue: 0,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(caregiverCardOpacity, {
+              toValue: 1,
+              duration: cardDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.spring(caregiverCardScale, {
+              toValue: 1,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+            Animated.spring(caregiverCardSlide, {
+              toValue: 0,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
       ]),
     ]).start();
 
@@ -126,19 +201,19 @@ export default function WelcomeScreen() {
     floatOrb(orb1Y, 3200, 12);
     floatOrb(orb2Y, 4000, 8);
     floatOrb(orb3Y, 3600, 10);
-  }, [checkingSession]);
+  }, [caregiverCardOpacity, caregiverCardScale, caregiverCardSlide, checkingSession, headingOpacity, headingSlide, isLogoutReturn, logoScale, patientCardOpacity, patientCardScale, patientCardSlide]);
 
   if (checkingSession) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.neutral }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themeColors.neutral }}>
+        <ActivityIndicator size="large" color={themeColors.primary} />
       </View>
     );
   }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.neutral} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={themeColors.neutral} />
 
       <Animated.View style={[styles.orb, styles.orb1, { transform: [{ translateY: orb1Y }] }]} />
       <Animated.View style={[styles.orb, styles.orb2, { transform: [{ translateY: orb2Y }] }]} />
@@ -150,8 +225,8 @@ export default function WelcomeScreen() {
         bounces={false}
       >
         {/* Logo */}
-        <Animated.View style={[styles.logoSection, { opacity: logoOpacity, transform: [{ translateY: logoSlide }] }]}>
-          <Image source={require('../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        <Animated.View style={[styles.logoSection, { opacity: logoOpacity, transform: [{ translateY: logoSlide }, { scale: logoScale }] }]}>
+          <Image source={require('../assets/logoS.png')} style={styles.logoImage} resizeMode="contain" />
           <View style={styles.logoTextRow}>
             <Text style={styles.logoTextBold}>Memory</Text>
             <Text style={styles.logoTextLight}>Lane</Text>
@@ -169,22 +244,22 @@ export default function WelcomeScreen() {
         {/* Role Cards */}
         <View style={styles.cardsContainer}>
           {/* Patient Card */}
-          <Animated.View style={{ opacity: patientCardOpacity, transform: [{ scale: patientCardScale }] }}>
+          <Animated.View style={{ opacity: patientCardOpacity, transform: [{ translateY: patientCardSlide }, { scale: patientCardScale }] }}>
             <TouchableOpacity
               onPress={() => router.push('/join-space')}
               activeOpacity={isIOS ? 0.7 : 0.88}
             >
               <AdaptiveCard
                 style={styles.cardPadding}
-                backgroundColor={colors.patientCardBg}
+                backgroundColor={themeColors.patientCardBg}
               >
                 <View style={styles.cardTopRow}>
-                  <View style={[styles.iconBubble, { backgroundColor: 'rgba(180, 140, 100, 0.15)' }]}>
-                    <AppIcon iosName="person.fill" androidFallback="P" size={22} color="#8B7355" />
+                  <View style={[styles.iconBubble, { backgroundColor: (isDark ? 'rgba(240, 201, 135, 0.15)' : 'rgba(180, 140, 100, 0.15)') }]}>
+                    <AppIcon iosName="person.fill" androidFallback="P" size={22} color={isDark ? 'rgba(240, 201, 135, 0.15)' : 'rgba(180, 140, 100, 0.15)'} />
                   </View>
                   <AdaptiveBadge
                     label="Daily Quiz"
-                    backgroundColor="rgba(180, 140, 100, 0.18)"
+                    backgroundColor={isDark ? 'rgba(240, 201, 135, 0.18)' : 'rgba(180, 140, 100, 0.18)'}
                   />
                 </View>
 
@@ -194,9 +269,9 @@ export default function WelcomeScreen() {
                 </Text>
 
                 <View style={styles.ctaRow}>
-                  <Text style={[styles.ctaText, { color: '#8B7355' }]}>Get Started</Text>
-                  <View style={[styles.ctaArrow, { backgroundColor: '#8B7355' }]}>
-                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color="#FFFFFF" weight="bold" />
+                  <Text style={[styles.ctaText, { color: (isDark ? '#F0C987' : '#8B7355') }]}>Get Started</Text>
+                  <View style={[styles.ctaArrow, { backgroundColor: (isDark ? '#F0C987' : '#8B7355') }]}>
+                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color={isDark ? '#17231D' : '#FFFFFF'} weight="bold" />
                   </View>
                 </View>
               </AdaptiveCard>
@@ -204,22 +279,22 @@ export default function WelcomeScreen() {
           </Animated.View>
 
           {/* Caregiver Card */}
-          <Animated.View style={{ opacity: caregiverCardOpacity, transform: [{ scale: caregiverCardScale }] }}>
+          <Animated.View style={{ opacity: caregiverCardOpacity, transform: [{ translateY: caregiverCardSlide }, { scale: caregiverCardScale }] }}>
             <TouchableOpacity
               onPress={() => router.push('/login')}
               activeOpacity={isIOS ? 0.7 : 0.88}
             >
               <AdaptiveCard
                 style={styles.cardPadding}
-                backgroundColor={colors.caregiverCardBg}
+                backgroundColor={themeColors.caregiverCardBg}
               >
                 <View style={styles.cardTopRow}>
-                  <View style={[styles.iconBubble, { backgroundColor: 'rgba(45, 79, 62, 0.12)' }]}>
-                    <AppIcon iosName="heart.text.clipboard" androidFallback="C" size={22} color={colors.secondary} />
+                  <View style={[styles.iconBubble, { backgroundColor: (isDark ? 'rgba(155, 231, 180, 0.12)' : 'rgba(45, 79, 62, 0.12)') }]}>
+                    <AppIcon iosName="heart.text.clipboard" androidFallback="C" size={22} color={themeColors.secondary} />
                   </View>
                   <AdaptiveBadge
                     label="Dashboard"
-                    backgroundColor="rgba(45, 79, 62, 0.12)"
+                    backgroundColor={(isDark ? 'rgba(155, 231, 180, 0.12)' : 'rgba(45, 79, 62, 0.12)')}
                   />
                 </View>
 
@@ -229,9 +304,9 @@ export default function WelcomeScreen() {
                 </Text>
 
                 <View style={styles.ctaRow}>
-                  <Text style={[styles.ctaText, { color: colors.secondary }]}>Enter Dashboard</Text>
-                  <View style={[styles.ctaArrow, { backgroundColor: colors.secondary }]}>
-                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color="#FFFFFF" weight="bold" />
+                  <Text style={[styles.ctaText, { color: themeColors.secondary }]}>Enter Dashboard</Text>
+                  <View style={[styles.ctaArrow, { backgroundColor: themeColors.secondary }]}>
+                    <AppIcon iosName="arrow.right" androidFallback="→" size={18} color={isDark ? '#17231D' : '#FFFFFF'} weight="bold" />
                   </View>
                 </View>
               </AdaptiveCard>
@@ -243,10 +318,12 @@ export default function WelcomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral,
+    backgroundColor: themeColors.neutral,
     overflow: 'hidden',
   },
   scrollContent: {
@@ -263,21 +340,21 @@ const styles = StyleSheet.create({
   orb1: {
     width: 180,
     height: 180,
-    backgroundColor: '#DCCFBB',
+    backgroundColor: (isDark ? 'rgba(240, 201, 135, 0.12)' : '#DCCFBB'),
     top: -40,
     right: -60,
   },
   orb2: {
     width: 120,
     height: 120,
-    backgroundColor: '#C8D9CF',
+    backgroundColor: (isDark ? 'rgba(121, 219, 161, 0.12)' : '#C8D9CF'),
     top: SCREEN_HEIGHT * 0.45,
     left: -50,
   },
   orb3: {
     width: 100,
     height: 100,
-    backgroundColor: '#E0D4C4',
+    backgroundColor: (isDark ? 'rgba(201, 195, 255, 0.10)' : '#E0D4C4'),
     bottom: 60,
     right: -30,
   },
@@ -300,12 +377,14 @@ const styles = StyleSheet.create({
   logoTextBold: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.secondary,
+    lineHeight: 24,
+    color: themeColors.secondary,
   },
   logoTextLight: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 20,
-    color: colors.secondary,
+    lineHeight: 24,
+    color: themeColors.secondary,
   },
 
   headingSection: {
@@ -316,7 +395,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 28,
     lineHeight: 36,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -324,7 +403,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     textAlign: 'center',
   },
 
@@ -354,14 +433,14 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
   },
   cardDescription: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 18,
   },
 
@@ -382,3 +461,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component

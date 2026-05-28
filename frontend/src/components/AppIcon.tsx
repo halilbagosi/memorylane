@@ -1,8 +1,9 @@
 import React from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { colors, lightColors, darkColors } from '../theme/colors';
 
 type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -11,6 +12,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'person.2.fill': 'account-group',
   'chart.bar': 'chart-bar',
   'chart.bar.fill': 'chart-bar',
+  'star.fill': 'star',
+  'star': 'star-outline',
   'questionmark.circle': 'help-circle-outline',
   'questionmark.circle.fill': 'help-circle',
   'photo.on.rectangle.angled': 'image-multiple-outline',
@@ -18,7 +21,10 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'person.fill': 'account',
   'person': 'account-outline',
   'person.crop.circle': 'account-circle-outline',
+  'person.crop.circle.badge.plus': 'account-plus-outline',
+  'person.crop.circle.badge.checkmark': 'account-check-outline',
   'heart.text.clipboard': 'clipboard-pulse-outline',
+  'heart.fill': 'heart',
   'plus': 'plus',
   'arrow.right': 'arrow-right',
   'arrow.left': 'arrow-left',
@@ -26,11 +32,14 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'qrcode.viewfinder': 'qrcode-scan',
   'person.2.slash': 'account-off-outline',
   'trash': 'trash-can-outline',
+  'trash.fill': 'trash-can',
   'xmark.circle.fill': 'close-circle',
+  'xmark': 'close',
   'eye': 'eye-outline',
   'eye.slash': 'eye-off-outline',
   'calendar': 'calendar-month',
   'keyboard': 'keyboard-outline',
+  'clock': 'clock-outline',
   'camera.fill': 'camera',
   'checkmark.circle.fill': 'check-circle',
   'checkmark': 'check',
@@ -38,6 +47,14 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'chevron.right': 'chevron-right',
   'pencil': 'pencil-outline',
   'envelope': 'email-outline',
+  'envelope.fill': 'email',
+  'message': 'message-outline',
+  'message.fill': 'message',
+  'bubble.left': 'message-text-outline',
+  'bubble.left.fill': 'message-text',
+  'square.and.pencil': 'note-edit-outline',
+  'paperplane': 'send-outline',
+  'paperplane.fill': 'send',
   'envelope.badge.fill': 'email-check',
   'lock': 'lock-outline',
   'lock.fill': 'lock',
@@ -55,11 +72,50 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'tray': 'tray-arrow-down',
   'tray.fill': 'tray-full',
   'info.circle.fill': 'information',
+  'arrow.down.circle.fill': 'arrow-down-circle',
+  'video.fill': 'video',
+  'mic.fill': 'microphone',
+  'stop.fill': 'stop',
+  'play.fill': 'play',
+  'pause.fill': 'pause',
+  'note.text': 'note-text-outline',
+  'photo.fill': 'image',
+  'doc.fill': 'file-document',
+  'waveform': 'waveform',
+  'exclamationmark.circle': 'alert-circle-outline',
+  'exclamationmark.triangle.fill': 'alert',
   'brain.head.profile': 'brain',
   'sparkles': 'auto-fix',
   'gauge.with.dots.needle.50percent': 'speedometer-medium',
   'flame.fill': 'fire',
   'face.smiling': 'emoticon-happy-outline',
+  'face.smiling.fill': 'emoticon-happy',
+  'mappin.and.ellipse': 'map-marker-radius-outline',
+  'location.fill': 'crosshairs-gps',
+  'location.slash': 'map-marker-off-outline',
+  'map': 'map-outline',
+  'globe': 'earth',
+  'arrow.up.right': 'open-in-new',
+  'moon.stars.fill': 'weather-night',
+  'sun.max.fill': 'white-balance-sunny',
+  'moon.fill': 'weather-night',
+  'gear': 'cog',
+  'chevron.up': 'chevron-up',
+  'chevron.down': 'chevron-down',
+  'person.badge.minus': 'account-remove-outline',
+  'minus.circle.fill': 'minus-circle',
+  'checkmark.circle': 'check-circle-outline',
+  'checkmark.seal.fill': 'check-decagram',
+  'scope': 'target',
+  'flag.fill': 'flag',
+  'bookmark': 'bookmark-outline',
+  'bookmark.fill': 'bookmark',
+  'newspaper.fill': 'newspaper-variant',
+  'link': 'link-variant',
+  'paperclip': 'paperclip',
+  'photo': 'image-outline',
+  'creditcard.fill': 'credit-card',
+  'checkmark.shield.fill': 'shield-check',
 };
 
 interface AppIconProps {
@@ -79,29 +135,37 @@ export function AppIcon({
   iosName,
   androidFallback,
   size = 22,
-  color = colors.textDark,
+  color,
   weight = 'medium',
   style,
 }: AppIconProps) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const resolvedColor = color ?? themeColors.textDark;
+
   if (supportsSymbols) {
     return (
       <SymbolView
         name={iosName}
         size={size}
-        tintColor={color}
+        tintColor={resolvedColor}
         weight={weight}
         style={[{ width: size, height: size }, style]}
       />
     );
   }
 
-  const materialName = SF_TO_MATERIAL[iosName as string];
+  const fallbackMaterialName =
+    androidFallback in MaterialCommunityIcons.glyphMap
+      ? (androidFallback as MaterialIconName)
+      : undefined;
+  const materialName = SF_TO_MATERIAL[iosName as string] ?? fallbackMaterialName;
   if (materialName) {
     return (
       <MaterialCommunityIcons
         name={materialName}
         size={size}
-        color={color}
+        color={resolvedColor}
         style={style}
       />
     );
@@ -112,15 +176,19 @@ export function AppIcon({
       <MaterialCommunityIcons
         name="help-circle-outline"
         size={size}
-        color={color}
+        color={resolvedColor}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
   androidContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
 });
+};
+// Styles are created per-render via `getStyles(isDark)` in `AppIcon`.

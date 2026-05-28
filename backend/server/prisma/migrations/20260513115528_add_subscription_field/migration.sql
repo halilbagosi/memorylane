@@ -8,10 +8,10 @@
 
 */
 -- AlterTable
-ALTER TABLE "caregivers" ADD COLUMN     "is_subscribed" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "caregivers" ADD COLUMN IF NOT EXISTS "is_subscribed" BOOLEAN NOT NULL DEFAULT false;
 
--- AlterTable
-ALTER TABLE "media" DROP COLUMN "legacy_correct_name",
-DROP COLUMN "legacy_decoy_1",
-DROP COLUMN "legacy_decoy_2",
-DROP COLUMN "legacy_relationship";
+-- AlterTable (idempotent: legacy columns may already be absent)
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_correct_name";
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_decoy_1";
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_decoy_2";
+ALTER TABLE "media" DROP COLUMN IF EXISTS "legacy_relationship";

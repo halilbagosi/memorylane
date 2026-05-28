@@ -36,7 +36,8 @@ describe('SignedUrlService', () => {
   it('rejects a tampered signature', () => {
     const { token } = service.issue('media-1', 'put', 60);
     const [payload, sig] = token.split('.');
-    const tampered = `${payload}.${sig.slice(0, -1)}A`;
+    const replacement = sig.endsWith('A') ? 'B' : 'A';
+    const tampered = `${payload}.${sig.slice(0, -1)}${replacement}`;
     expect(() => service.verify(tampered, 'put')).toThrow(UnauthorizedException);
   });
 

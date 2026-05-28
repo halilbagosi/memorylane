@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from 'react';
+import { useTheme } from '../src/theme/ThemeProvider';
 import {
-  View, Text, StyleSheet, Platform, Switch,
+  View, Text, StyleSheet, Platform, KeyboardAvoidingView,
   ScrollView, TouchableOpacity, Image, Linking,
 } from 'react-native';
 import * as Device from 'expo-device';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../src/theme/colors';
+import { colors, lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { API_BASE_URL } from '../src/config/api';
 import { useRouter } from 'expo-router';
 import { saveToken, saveCaregiverInfo } from '../src/utils/auth';
+import { syncCaregiverPushToken } from '../src/services/syncPushToken';
 import { AdaptiveButton } from '../src/components/AdaptiveButton';
 import { AdaptiveInput } from '../src/components/AdaptiveInput';
 import { AppIcon } from '../src/components/AppIcon';
@@ -48,6 +50,8 @@ function evaluatePassword(pw: string): PasswordStrength {
 }
 
 export default function SignupScreen() {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
   const router = useRouter();
 
   const [avatarBase64, setAvatarBase64] = useState<string | null>(null);
@@ -56,8 +60,6 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
@@ -161,7 +163,6 @@ export default function SignupScreen() {
           surname: surname.trim(),
           email,
           password,
-          isSubscribed,
           ...(avatarUrl ? { avatarUrl } : {}),
           deviceLabel: Device.modelName ?? undefined,
         }),
@@ -176,6 +177,7 @@ export default function SignupScreen() {
 
       if (data.accessToken) await saveToken(data.accessToken);
       if (data.caregiver) await saveCaregiverInfo(data.caregiver);
+      syncCaregiverPushToken().catch(() => undefined);
 
       router.replace('/dashboard');
     } catch (error: any) {
@@ -190,6 +192,7 @@ export default function SignupScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <KeyboardAvoidingView behavior={isIOS ? 'padding' : 'height'} style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -254,7 +257,7 @@ export default function SignupScreen() {
                   iosName={showPassword ? 'eye.slash' : 'eye'}
                   androidFallback={showPassword ? 'Hide' : 'Show'}
                   size={20}
-                  color={colors.textMuted}
+                  color={themeColors.textMuted}
                 />
               ),
               onPress: () => setShowPassword(!showPassword),
@@ -291,18 +294,15 @@ export default function SignupScreen() {
           {/* Subscription toggle */}
           <View style={styles.subscriptionCard}>
             <View style={styles.subscriptionInfo}>
-              <Text style={styles.subscriptionTitle}>⭐ Premium Plan</Text>
+              <Text style={styles.subscriptionTitle}>Premium Plan</Text>
               <Text style={styles.subscriptionDesc}>
-                Unlock unlimited patients, caregivers, video/audio uploads, and AI-powered features.
+                Create your account first, then upgrade from Account settings to unlock unlimited patients,
+                caregivers, video/audio uploads, and AI-powered features.
               </Text>
             </View>
-            <Switch
-              value={isSubscribed}
-              onValueChange={setIsSubscribed}
-              trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-              thumbColor={isSubscribed ? colors.secondary : isIOS ? '#fff' : '#f4f4f4'}
-              ios_backgroundColor="rgba(0,0,0,0.08)"
-            />
+            <View style={styles.subscriptionBadge}>
+              <Text style={styles.subscriptionBadgeText}>After signup</Text>
+            </View>
           </View>
 
           {apiError ? <Text style={styles.apiErrorText}>{apiError}</Text> : null}
@@ -317,15 +317,12 @@ export default function SignupScreen() {
 
           <View style={styles.linkRow}>
             <Text style={styles.linkText}>Already have an account? </Text>
-            <AdaptiveButton
-              title="Log In"
-              variant="ghost"
-              onPress={() => router.push('/login')}
-              style={styles.linkButton}
-              textStyle={styles.linkBoldText}
-            />
+            <TouchableOpacity onPress={() => router.push('/login')} style={styles.linkButton} activeOpacity={0.7}>
+              <Text style={styles.linkBoldText}>Log In</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
+      </KeyboardAvoidingView>
 
       <M3Dialog
         visible={dialog.visible}
@@ -338,22 +335,32 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral },
+const getStyles = (isDark: boolean) => {
+  const themeColors = isDark ? darkColors : lightColors;
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: themeColors.neutral },
   container: { flex: 1 },
-  scrollContent: { padding: 24, paddingBottom: 40 },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 96,
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+  },
 
   headline: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 26,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 6,
     marginTop: 8,
   },
   subheadline: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 15,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     marginBottom: 28,
   },
 
@@ -369,14 +376,14 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.primary,
+    backgroundColor: themeColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarInitials: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 24,
-    color: colors.textLight,
+    color: themeColors.textLight,
     letterSpacing: 1,
   },
   avatarEditBadge: {
@@ -386,23 +393,23 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.secondary,
+    backgroundColor: themeColors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.neutral,
+    borderColor: themeColors.neutral,
   },
   avatarHint: { flex: 1 },
   avatarHintTitle: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 3,
   },
   avatarHintSub: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 13,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
   },
 
   strengthContainer: {
@@ -423,7 +430,7 @@ const styles = StyleSheet.create({
   },
 
   apiErrorText: {
-    color: '#C0392B',
+    color: (isDark ? '#FFB4A8' : '#C0392B'),
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     textAlign: 'center',
@@ -435,12 +442,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: colors.textMuted },
-  linkButton: { paddingHorizontal: 0, paddingVertical: 0 },
+  linkText: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textMuted },
+  linkButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
   linkBoldText: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
-    color: colors.secondary,
+    color: themeColors.secondary,
     textTransform: 'none',
     letterSpacing: 0,
   },
@@ -452,24 +462,37 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 18,
     borderRadius: 16,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.5)' : '#FFFFFF',
+    backgroundColor: Platform.OS === 'ios' ? (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.5)') : (isDark ? '#17231D' : '#FFFFFF'),
     borderWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1.5,
-    borderColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.08)',
+    borderColor: Platform.OS === 'ios' ? (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.1)') : (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
     gap: 12,
   },
   subscriptionInfo: {
     flex: 1,
   },
+  subscriptionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3,87,58,0.08)'),
+  },
+  subscriptionBadgeText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    color: themeColors.secondary,
+  },
   subscriptionTitle: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
-    color: colors.textDark,
+    color: themeColors.textDark,
     marginBottom: 3,
   },
   subscriptionDesc: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: themeColors.textMuted,
     lineHeight: 17,
   },
 });
+};
+// styles are computed at render time via `useTheme()` inside the component
