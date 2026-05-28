@@ -1,7 +1,7 @@
 import { colors, lightColors, darkColors } from '../../src/theme/colors';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, TouchableOpacity, Modal, Linking, Easing } from 'react-native';
+import { Alert, Animated, Platform, View, Text, StyleSheet, ScrollView, Pressable, LayoutAnimation, UIManager, Modal, Linking, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useRouter } from 'expo-router';
@@ -14,6 +14,7 @@ import { AdaptiveCard } from '../../src/components/AdaptiveCard';
 import { M3BottomSheet } from '../../src/components/M3BottomSheet';
 import { API_BASE_URL } from '../../src/config/api';
 import { clearAuth, getCaregiverInfo, getToken } from '../../src/utils/auth';
+import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 type FilterKey = 'day' | 'week' | 'month' | 'year' | 'custom';
 
@@ -93,6 +94,23 @@ type InsightPost = {
   tags: string[];
   saved?: boolean;
 };
+
+function AnimatedPressable({
+  style,
+  disabled,
+  children,
+  ...props
+}: React.ComponentProps<typeof Pressable>) {
+  return (
+    <Pressable
+      {...props}
+      disabled={disabled}
+      style={style}
+    >
+      {children}
+    </Pressable>
+  );
+}
 
 const FILTERS: FilterOption[] = [
   { key: 'day', label: 'Day' },
@@ -227,8 +245,10 @@ function toISODate(date: Date) {
 }
 
 function fromISODate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return startOfDay(TODAY);
   const [year, month, day] = value.split('-').map(Number);
-  return new Date(year, month - 1, day);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? startOfDay(TODAY) : date;
 }
 
 function startOfDay(date: Date) {
@@ -293,10 +313,12 @@ function getFilterScopeLabel(
   }
 
   if (filter === 'day') {
-    return formatLongDate(fromISODate(dateValue));
+    const value = keepDateValueInOptions(filter, dateValue, dateOptions);
+    return formatLongDate(fromISODate(value));
   }
 
-  const option = dateOptions[filter].find((item) => item.value === dateValue) ?? dateOptions[filter][0];
+  const value = keepDateValueInOptions(filter, dateValue, dateOptions);
+  const option = dateOptions[filter].find((item) => item.value === value) ?? dateOptions[filter][0];
   return option?.label ?? '';
 }
 
@@ -369,6 +391,7 @@ function buildDateOptions(start: Date, end: Date): Record<Exclude<FilterKey, 'cu
 const DEFAULT_DATE_OPTIONS = buildDateOptions(DEFAULT_FILTER_START, TODAY);
 const DEFAULT_CUSTOM_FROM = toISODate(DEFAULT_FILTER_START);
 const DEFAULT_CUSTOM_TO = toISODate(TODAY);
+const QUIZ_SESSION_GAP_MS = 10 * 60 * 1000;
 
 function summarize(quizzes: QuizReport[]) {
   const attempts = quizzes.reduce((sum, quiz) => sum + quiz.attempts, 0);
@@ -386,6 +409,121 @@ function thresholdStage(percent: number) {
   if (percent < 60) return 3;
   if (percent < 80) return 4;
   return 5;
+}
+
+function formatQuizSessionName(label: string, takenAt: string) {
+  const date = new Date(takenAt);
+  if (Number.isNaN(date.getTime())) return `${label} quiz`;
+  const formatted = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+  return `${label} quiz - ${formatted}`;
+}
+
+function durationStringToMs(value: string) {
+  const parts = value.split(':').map(Number);
+  if (parts.length !== 2 || parts.some((part) => Number.isNaN(part))) return 0;
+  return ((parts[0] * 60) + parts[1]) * 1000;
+}
+
+function formatDurationMs(ms: number) {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function getQuizAverageTimeMs(quiz: QuizReport) {
+  if (typeof quiz.averageTimeMs === 'number') return quiz.averageTimeMs;
+  if (quiz.questionOutcomes.length === 0) return 0;
+  return Math.round(
+    quiz.questionOutcomes.reduce((sum, outcome) => sum + durationStringToMs(outcome.duration), 0)
+    / quiz.questionOutcomes.length
+  );
+}
+
+function getQuizQuestionSignature(quiz: QuizReport) {
+  return [
+    quiz.mode,
+    ...quiz.questionOutcomes
+      .map((outcome) => outcome.prompt.trim().toLowerCase())
+      .sort(),
+  ].join('|');
+}
+
+function formatOutcomeStatus(status: QuestionOutcome['status']) {
+  if (status === 'Correct') return '✓';
+  if (status === 'Wrong') return 'X';
+  return '-';
+}
+
+function buildSessionQuiz(type: QuizTypeReport, outcomes: QuestionOutcome[], index: number): QuizReport {
+  const sortedOutcomes = [...outcomes].sort(
+    (a, b) => new Date(a.takenAt).getTime() - new Date(b.takenAt).getTime()
+  );
+  const firstTakenAt = sortedOutcomes[0]?.takenAt ?? new Date().toISOString();
+  const pointsEarned = sortedOutcomes.filter((outcome) => outcome.status === 'Correct').length;
+  const pointsTotal = sortedOutcomes.length;
+  const averageTimeMs = pointsTotal > 0
+    ? Math.round(sortedOutcomes.reduce((sum, outcome) => sum + durationStringToMs(outcome.duration), 0) / pointsTotal)
+    : 0;
+
+  return {
+    id: `${type.id}:session:${firstTakenAt}:${index}`,
+    mode: type.mode,
+    mediaPublicId: '',
+    name: formatQuizSessionName(type.label, firstTakenAt),
+    attempts: 1,
+    averagePercent: pointsTotal > 0 ? Math.round((pointsEarned / pointsTotal) * 100) : 0,
+    pointsEarned,
+    pointsTotal,
+    completed: pointsTotal > 0 ? 1 : 0,
+    averageTimeMs,
+    createdAt: firstTakenAt,
+    questionOutcomes: sortedOutcomes,
+  };
+}
+
+function normalizeQuizTypeSessions(type: QuizTypeReport): QuizTypeReport {
+  const alreadySessionBased = type.quizzes.length === 0 || type.quizzes.every((quiz) => !quiz.mediaPublicId);
+  if (alreadySessionBased) return type;
+
+  const outcomes = type.quizzes
+    .flatMap((quiz) => quiz.questionOutcomes)
+    .filter((outcome) => !Number.isNaN(new Date(outcome.takenAt).getTime()))
+    .sort((a, b) => new Date(a.takenAt).getTime() - new Date(b.takenAt).getTime());
+
+  const sessionGroups: QuestionOutcome[][] = [];
+  for (const outcome of outcomes) {
+    const currentGroup = sessionGroups[sessionGroups.length - 1];
+    const currentTime = new Date(outcome.takenAt).getTime();
+    const previousTime = currentGroup?.length
+      ? new Date(currentGroup[currentGroup.length - 1].takenAt).getTime()
+      : null;
+
+    if (!currentGroup || previousTime === null || currentTime - previousTime > QUIZ_SESSION_GAP_MS) {
+      sessionGroups.push([outcome]);
+    } else {
+      currentGroup.push(outcome);
+    }
+  }
+
+  return {
+    ...type,
+    quizzes: sessionGroups
+      .map((group, index) => buildSessionQuiz(type, group, index))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+  };
+}
+
+function normalizeProgressResponse(data: ProgressResponse): ProgressResponse {
+  return {
+    ...data,
+    quizTypes: (data.quizTypes ?? []).map(normalizeQuizTypeSessions),
+  };
 }
 
 function formatTakenAt(value: string) {
@@ -459,8 +597,8 @@ function applyTimeFilterToQuiz(quiz: QuizReport, filter: AppliedFilter | null, m
 
   return {
     ...quiz,
-    attempts: pointsTotal,
-    completed: pointsTotal,
+    attempts: pointsTotal > 0 ? quiz.attempts : 0,
+    completed: pointsTotal > 0 ? quiz.completed : 0,
     pointsEarned,
     pointsTotal,
     averagePercent: pointsTotal > 0 ? Math.round((pointsEarned / pointsTotal) * 100) : 0,
@@ -508,7 +646,7 @@ function buildPdfHtml({
 }) {
   const tableHeader = selectedQuiz
     ? '<tr><th>Question</th><th>Result</th><th>Tries</th><th>Time</th><th>Taken</th></tr>'
-    : '<tr><th>Quiz</th><th>Score</th><th>Points</th><th>Threshold</th><th>Completed/Attempts</th></tr>';
+    : '<tr><th>Quiz session</th><th>Score</th><th>Questions</th><th>Threshold</th><th>Completed</th></tr>';
   const rowItems: string[] = selectedQuiz
     ? selectedQuiz.questionOutcomes.map((outcome) => `
       <tr>
@@ -525,7 +663,7 @@ function buildPdfHtml({
         <td>${quiz.averagePercent}%</td>
         <td>${quiz.pointsEarned}/${quiz.pointsTotal}</td>
         <td>${thresholdStage(quiz.averagePercent)}/5</td>
-        <td>${quiz.completed}/${quiz.attempts}</td>
+        <td>${quiz.completed}</td>
       </tr>
     `);
   const firstPageRowCount = selectedQuiz ? 8 : 6;
@@ -596,12 +734,12 @@ function buildPdfHtml({
             <div class="metric"><div class="metric-label">Score</div><div class="metric-value">${summary.averagePercent}%</div></div>
             <div class="metric"><div class="metric-label">Points</div><div class="metric-value">${summary.pointsEarned}/${summary.pointsTotal}</div></div>
             <div class="metric"><div class="metric-label">Threshold</div><div class="metric-value">${thresholdStage(summary.averagePercent)}/5</div></div>
-            <div class="metric"><div class="metric-label">Attempts</div><div class="metric-value">${summary.completed}/${summary.attempts}</div></div>
+            <div class="metric"><div class="metric-label">Sessions</div><div class="metric-value">${summary.completed}</div></div>
           </div>
 
           ${selectedQuiz ? '' : `<h2>Score comparison</h2>${chartRows}`}
 
-          <h2>${selectedQuiz ? 'Question feedback' : 'Quiz report'}</h2>
+          <h2>${selectedQuiz ? 'Question feedback' : 'Quiz sessions'}</h2>
           <table>
             <thead>${tableHeader}</thead>
             <tbody>${tableChunks[0]?.join('') ?? ''}</tbody>
@@ -609,7 +747,7 @@ function buildPdfHtml({
         </section>
         ${tableChunks.slice(1).map((chunk, index) => `
           <section class="pdf-page continued-page ${index < tableChunks.slice(1).length - 1 ? 'page-break' : ''}">
-            <div class="continued-title">${selectedQuiz ? 'Question feedback' : 'Quiz report'} continued</div>
+            <div class="continued-title">${selectedQuiz ? 'Question feedback' : 'Quiz sessions'} continued</div>
             <table>
               <thead>${tableHeader}</thead>
               <tbody>${chunk.join('')}</tbody>
@@ -687,20 +825,26 @@ function buildInsightPdfHtml(post: InsightPost) {
 
 function keepDateValueInOptions(filter: FilterKey, dateValue: string, dateOptions: Record<Exclude<FilterKey, 'custom'>, DateOption[]>) {
   if (filter === 'custom') return dateValue;
-  const options = dateOptions[filter];
-  return options.some((option) => option.value === dateValue) ? dateValue : options[0]?.value ?? dateValue;
+  const options = dateOptions[filter] ?? [];
+  const fallback = options[0]?.value ?? toISODate(TODAY);
+  return options.some((option) => option.value === dateValue) ? dateValue : fallback;
 }
 
 function clampISODate(value: string, min: string, max: string) {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
+  const fallback = /^\d{4}-\d{2}-\d{2}$/.test(min) ? min : toISODate(TODAY);
+  const safeValue = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback;
+  const safeMin = /^\d{4}-\d{2}-\d{2}$/.test(min) ? min : fallback;
+  const safeMax = /^\d{4}-\d{2}-\d{2}$/.test(max) ? max : toISODate(TODAY);
+  if (safeValue < safeMin) return safeMin;
+  if (safeValue > safeMax) return safeMax;
+  return safeValue;
 }
 
 export default function AnalyticsTab() {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const router = useRouter();
+  const progressScrollRef = useRef<ScrollView | null>(null);
   const [draftFilter, setDraftFilter] = useState<FilterKey>('day');
   const [draftDateValue, setDraftDateValue] = useState(DEFAULT_DATE_OPTIONS.day[0].value);
   const [draftCustomFrom, setDraftCustomFrom] = useState(DEFAULT_CUSTOM_FROM);
@@ -732,6 +876,22 @@ export default function AnalyticsTab() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   };
 
+  const transition = (update: () => void) => {
+    animate();
+    update();
+  };
+
+  const scrollProgressToTop = () => {
+    requestAnimationFrame(() => {
+      progressScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
+  };
+
+  const transitionToTop = (update: () => void) => {
+    transition(update);
+    scrollProgressToTop();
+  };
+
   const allQuizzes = useMemo(
     () => quizTypes.flatMap((type) => type.quizzes),
     [quizTypes]
@@ -740,9 +900,22 @@ export default function AnalyticsTab() {
   const isOverallSelected = selectedTypeId === 'overall';
   const detailQuizzes = isOverallSelected ? allQuizzes : selectedType?.quizzes ?? [];
   const visibleDetailQuizzes = useMemo(
-    () => detailQuizzes.map((quiz) => applyTimeFilterToQuiz(quiz, appliedFilter, patientFilterStart)),
+    () => detailQuizzes
+      .map((quiz) => applyTimeFilterToQuiz(quiz, appliedFilter, patientFilterStart))
+      .filter((quiz) => quiz.pointsTotal > 0),
     [detailQuizzes, appliedFilter, patientFilterStart]
   );
+  const visibleDetailQuizTypes = useMemo(() => {
+    const sourceTypes = isOverallSelected ? quizTypes : selectedType ? [selectedType] : [];
+    return sourceTypes
+      .map((type) => ({
+        ...type,
+        quizzes: type.quizzes
+          .map((quiz) => applyTimeFilterToQuiz(quiz, appliedFilter, patientFilterStart))
+          .filter((quiz) => quiz.pointsTotal > 0),
+      }))
+      .filter((type) => type.quizzes.length > 0);
+  }, [appliedFilter, isOverallSelected, patientFilterStart, quizTypes, selectedType]);
   const detailSummary = summarize(visibleDetailQuizzes);
   const detailTitle = isOverallSelected ? 'All quiz types' : selectedType?.description ?? '';
   const detailEyebrow = isOverallSelected ? 'Overall' : `${selectedType?.label} overall`;
@@ -750,7 +923,13 @@ export default function AnalyticsTab() {
   const draftDate = draftDateOptions.find((option) => option.value === draftDateValue) ?? draftDateOptions[0];
   const draftDateLabel = getFilterScopeLabel(draftFilter, draftDateValue, draftCustomFrom, draftCustomTo, filterDateOptions);
   const selectedQuiz = visibleDetailQuizzes.find((quiz) => quiz.id === selectedQuizId) ?? null;
+  const showDetailBreadcrumb = Boolean(detailTitle && detailTitle !== 'All quiz types');
   const selectedQuizSummary = selectedQuiz ? summarize([selectedQuiz]) : null;
+  const selectedQuizHistory = useMemo(() => {
+    if (!selectedQuiz) return [];
+    const signature = getQuizQuestionSignature(selectedQuiz);
+    return visibleDetailQuizzes.filter((quiz) => getQuizQuestionSignature(quiz) === signature);
+  }, [selectedQuiz, visibleDetailQuizzes]);
   const selectedPatient = useMemo(
     () => patients.find((p) => p.id === selectedPatientId) ?? null,
     [patients, selectedPatientId]
@@ -887,7 +1066,7 @@ export default function AnalyticsTab() {
 
         if (!res.ok) throw new Error('Could not load quiz progress.');
 
-        const data = await res.json() as ProgressResponse;
+        const data = normalizeProgressResponse(await res.json() as ProgressResponse);
         if (!cancelled) {
           setPatientFilterStart(parseFilterStartDate(data.registeredAt));
           setQuizTypes(data.quizTypes ?? []);
@@ -955,6 +1134,7 @@ export default function AnalyticsTab() {
     ? `${FILTERS.find((filter) => filter.key === appliedFilter.filter)?.label ?? 'Day'}: ${getFilterScopeLabel(appliedFilter.filter, appliedFilter.dateValue, appliedFilter.customFrom, appliedFilter.customTo, filterDateOptions)}`
     : null;
   const openFilter = () => {
+    animate();
     if (appliedFilter) {
       setDraftFilter(appliedFilter.filter);
       setDraftDateValue(appliedFilter.dateValue);
@@ -964,6 +1144,7 @@ export default function AnalyticsTab() {
     setFilterOpen(true);
   };
   const clearFilter = () => {
+    animate();
     setAppliedFilter(null);
     setDraftFilter('day');
     setDraftDateValue(filterDateOptions.day[0]?.value ?? toISODate(TODAY));
@@ -983,7 +1164,7 @@ export default function AnalyticsTab() {
       const pdf = await Print.printToFileAsync({
         html: buildPdfHtml({
           title,
-          eyebrow: selectedQuiz ? 'Individual quiz' : detailEyebrow,
+          eyebrow: selectedQuiz ? 'Quiz session' : detailEyebrow,
           filterLabel: activeFilterLabel ?? 'No time filter',
           summary,
           quizzes: selectedQuiz ? [selectedQuiz] : visibleDetailQuizzes,
@@ -1015,6 +1196,7 @@ export default function AnalyticsTab() {
 
   const toggleInsightSave = async (post: InsightPost) => {
     const nextSaved = !post.saved;
+    animate();
     setInsightPosts((current) => current.map((item) => item.id === post.id ? { ...item, saved: nextSaved } : item));
     try {
       const token = await getToken();
@@ -1060,26 +1242,47 @@ export default function AnalyticsTab() {
       </View>
 
       <ScrollView
+        ref={progressScrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         {selectedTypeId ? (
           <>
-            <Pressable
+            <AnimatedPressable
               style={styles.backButton}
               onPress={() => {
                 if (selectedQuizId) {
-                  setSelectedQuizId(null);
+                  transitionToTop(() => setSelectedQuizId(null));
                 } else {
-                  setSelectedTypeId(null);
-                  setFilterOpen(false);
+                  transitionToTop(() => {
+                    setSelectedTypeId(null);
+                    setFilterOpen(false);
+                  });
                 }
               }}
             >
               <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={themeColors.secondary} />
-              <Text style={styles.backButtonText}>{selectedQuizId ? detailTitle : 'All quiz types'}</Text>
-            </Pressable>
+              <Text style={styles.backButtonText} numberOfLines={2}>
+                <Text style={showDetailBreadcrumb || selectedQuiz ? styles.breadcrumbMuted : styles.breadcrumbCurrent}>
+                  All quiz types
+                </Text>
+                {showDetailBreadcrumb && (
+                  <>
+                    <Text style={styles.breadcrumbDivider}> / </Text>
+                    <Text style={selectedQuiz ? styles.breadcrumbMuted : styles.breadcrumbCurrent}>
+                      {detailTitle}
+                    </Text>
+                  </>
+                )}
+                {selectedQuiz && (
+                  <>
+                    <Text style={styles.breadcrumbDivider}> / </Text>
+                    <Text style={styles.breadcrumbCurrent}>{selectedQuiz.name}</Text>
+                  </>
+                )}
+              </Text>
+            </AnimatedPressable>
 
             <ActionRow
               onOpenFilter={openFilter}
@@ -1092,12 +1295,16 @@ export default function AnalyticsTab() {
             {selectedQuiz ? (
               <>
                 <ReportPanel
-                  eyebrow="Individual quiz"
+                  eyebrow="Quiz session"
                   title={selectedQuiz.name}
                   summary={selectedQuizSummary!}
                   quizCount={1}
                 />
                 <QuizAttemptDetails quiz={selectedQuiz} />
+                <QuizSessionHistory
+                  quizzes={selectedQuizHistory}
+                  selectedQuizId={selectedQuiz.id}
+                />
               </>
             ) : (
               <>
@@ -1108,12 +1315,21 @@ export default function AnalyticsTab() {
                   quizCount={visibleDetailQuizzes.length}
                 />
 
+                <QuizProgressLineCharts
+                  quizTypes={visibleDetailQuizTypes}
+                  selectedFilter={appliedFilter?.filter ?? 'year'}
+                />
                 <ReportCharts quizzes={visibleDetailQuizzes} selectedFilter={appliedFilter?.filter ?? 'year'} />
 
-                <Text style={styles.sectionTitle}>Individual quizzes</Text>
+                <SectionHeader
+                  icon="clock.fill"
+                  fallback="T"
+                  title="Quiz history"
+                  helper={`${visibleDetailQuizzes.length} times taken`}
+                />
                 {visibleDetailQuizzes.length > 0 ? (
                   visibleDetailQuizzes.map((quiz) => (
-                    <QuizRow key={quiz.id} quiz={quiz} onPress={() => setSelectedQuizId(quiz.id)} />
+                    <QuizRow key={quiz.id} quiz={quiz} onPress={() => transitionToTop(() => setSelectedQuizId(quiz.id))} />
                   ))
                 ) : (
                   <Text style={styles.emptyText}>No quiz answers found for this selection.</Text>
@@ -1134,13 +1350,12 @@ export default function AnalyticsTab() {
                 <Text style={styles.emptyText}>Loading patients...</Text>
               ) : patientOptions.length > 0 ? (
                 <View style={styles.dropdownContainer}>
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={[styles.patientSelector, isPatientDropdownOpen && styles.patientSelectorOpen]}
                     onPress={() => {
                       animate();
                       setIsPatientDropdownOpen(!isPatientDropdownOpen);
                     }}
-                    activeOpacity={0.75}
                   >
                     <View style={styles.patientSelectorLeft}>
                       <View style={styles.patientInitialCircle}>
@@ -1165,17 +1380,16 @@ export default function AnalyticsTab() {
                       size={14}
                       color={themeColors.textMuted}
                     />
-                  </TouchableOpacity>
+                  </AnimatedPressable>
 
                   {/* Animated Expanding List */}
                   {isPatientDropdownOpen && (
                     <View style={styles.dropdownList}>
                       {patients.map((patient) => (
-                        <TouchableOpacity
+                        <AnimatedPressable
                           key={patient.id}
                           style={styles.dropdownItem}
                           onPress={() => selectPatient(patient.id)}
-                          activeOpacity={0.7}
                         >
                           <View style={styles.patientInitialCircleSmall}>
                             <Text style={styles.patientInitialTextSmall}>
@@ -1188,7 +1402,7 @@ export default function AnalyticsTab() {
                           {selectedPatientId === patient.id && (
                             <AppIcon iosName="checkmark" androidFallback="✓" size={14} color={themeColors.secondary} />
                           )}
-                        </TouchableOpacity>
+                        </AnimatedPressable>
                       ))}
                     </View>
                   )}
@@ -1212,7 +1426,7 @@ export default function AnalyticsTab() {
                   label="Overall"
                   description="All active quiz types"
                   quizCount={allQuizzes.length}
-                  onPress={() => setSelectedTypeId('overall')}
+                  onPress={() => transitionToTop(() => setSelectedTypeId('overall'))}
                 />
                 {quizTypes.map((type) => (
                   <TypeRow
@@ -1220,7 +1434,7 @@ export default function AnalyticsTab() {
                     label={type.label}
                     description={type.description}
                     quizCount={type.quizzes.length}
-                    onPress={() => setSelectedTypeId(type.id)}
+                    onPress={() => transitionToTop(() => setSelectedTypeId(type.id))}
                   />
                 ))}
               </>
@@ -1233,18 +1447,18 @@ export default function AnalyticsTab() {
             <View style={styles.insightsDivider} />
             <View style={styles.insightsTitleRow}>
               <Text style={styles.insightsTitle}>Insights</Text>
-              <Pressable
+              <AnimatedPressable
                 style={styles.bookmarkButton}
-                onPress={() => setSavedInsightsVisible(true)}
+                onPress={() => transition(() => setSavedInsightsVisible(true))}
               >
                 <AppIcon iosName="bookmark.fill" androidFallback="B" size={18} color={themeColors.secondary} />
-              </Pressable>
+              </AnimatedPressable>
             </View>
             {insightPosts.map((post) => (
               <InsightRow
                 key={post.id}
                 post={post}
-                onPress={() => setSelectedInsightId(post.id)}
+                onPress={() => transitionToTop(() => setSelectedInsightId(post.id))}
               />
             ))}
           </>
@@ -1254,7 +1468,6 @@ export default function AnalyticsTab() {
       <InsightDetailModal
         post={selectedInsight}
         onClose={() => setSelectedInsightId(null)}
-        onBackToProgress={() => setSelectedInsightId(null)}
         onOpenLink={(url) => Linking.openURL(url)}
         onExport={exportInsightPost}
         onToggleSave={toggleInsightSave}
@@ -1265,8 +1478,10 @@ export default function AnalyticsTab() {
         posts={savedInsights}
         onClose={() => setSavedInsightsVisible(false)}
         onOpenPost={(post) => {
-          setSavedInsightsVisible(false);
-          setSelectedInsightId(post.id);
+          transitionToTop(() => {
+            setSavedInsightsVisible(false);
+            setSelectedInsightId(post.id);
+          });
         }}
       />
 
@@ -1342,13 +1557,19 @@ function SelectDropdown({
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const [open, setOpen] = useState(false);
+  const animate = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  };
 
   return (
     <View style={[styles.selectWrap, open && styles.selectWrapOpen]}>
-      <Pressable
+      <AnimatedPressable
         style={[styles.selectButton, disabled && styles.selectDisabled]}
         onPress={() => {
-          if (!disabled) setOpen((current) => !current);
+          if (!disabled) {
+            animate();
+            setOpen((current) => !current);
+          }
         }}
       >
         {icon === 'calendar' && (
@@ -1358,7 +1579,7 @@ function SelectDropdown({
           {label}
         </Text>
         <Text style={styles.selectChevron}>v</Text>
-      </Pressable>
+      </AnimatedPressable>
 
       {open && !disabled && (
         <View style={styles.selectMenu}>
@@ -1366,10 +1587,11 @@ function SelectDropdown({
             {options.map((option) => {
               const active = option.value === value;
               return (
-                <Pressable
+                <AnimatedPressable
                   key={option.value}
                   style={[styles.selectOption, active && styles.selectOptionActive]}
                   onPress={() => {
+                    animate();
                     onSelect(option.value);
                     setOpen(false);
                   }}
@@ -1377,7 +1599,7 @@ function SelectDropdown({
                   <Text style={[styles.selectOptionText, active && styles.selectOptionTextActive]}>
                     {option.label}
                   </Text>
-                </Pressable>
+                </AnimatedPressable>
               );
             })}
           </ScrollView>
@@ -1398,11 +1620,11 @@ function CalendarField({
   const styles = getStyles(isDark);
   return (
     <View style={styles.selectWrap}>
-      <Pressable style={styles.selectButton} onPress={onPress}>
+      <AnimatedPressable style={styles.selectButton} onPress={onPress}>
         <AppIcon iosName="calendar" androidFallback="C" size={16} color={themeColors.secondary} />
         <Text style={styles.selectText} numberOfLines={1}>{label}</Text>
         <Text style={styles.selectChevron}>v</Text>
-      </Pressable>
+      </AnimatedPressable>
     </View>
   );
 }
@@ -1450,7 +1672,7 @@ function ActionRow({
   const styles = getStyles(isDark);
   return (
     <View style={styles.actionRow}>
-      <Pressable
+      <AnimatedPressable
         style={[styles.actionButton, styles.progressActionButton, styles.filterActionButton, activeFilterLabel && styles.filterActionButtonActive]}
         onPress={onOpenFilter}
       >
@@ -1459,7 +1681,7 @@ function ActionRow({
           {activeFilterLabel ?? 'Filter time'}
         </Text>
         {activeFilterLabel && (
-          <Pressable
+          <AnimatedPressable
             style={styles.clearFilterButton}
             onPress={(event) => {
               event.stopPropagation();
@@ -1467,17 +1689,17 @@ function ActionRow({
             }}
           >
             <Text style={styles.clearFilterText}>X</Text>
-          </Pressable>
+          </AnimatedPressable>
         )}
-      </Pressable>
-      <Pressable
+      </AnimatedPressable>
+      <AnimatedPressable
         style={[styles.actionButton, styles.progressActionButton, styles.exportButton, exporting && styles.actionDisabled]}
         onPress={onExport}
         disabled={exporting}
       >
         <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={isDark ? themeColors.neutral : themeColors.textLight} />
         <Text style={styles.exportButtonText} numberOfLines={1}>{exporting ? 'Creating PDF...' : 'Export as PDF'}</Text>
-      </Pressable>
+      </AnimatedPressable>
     </View>
   );
 }
@@ -1486,7 +1708,7 @@ function InsightRow({ post, onPress }: { post: InsightPost; onPress: () => void 
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   return (
-    <Pressable style={({ pressed }) => [styles.row, pressed && styles.rowPressed]} onPress={onPress}>
+    <AnimatedPressable style={({ pressed }) => [styles.row, pressed && styles.rowPressed]} onPress={onPress}>
       <View style={styles.rowIconWrap}>
         <AppIcon iosName="newspaper.fill" androidFallback="I" size={16} color={themeColors.secondary} />
       </View>
@@ -1499,21 +1721,19 @@ function InsightRow({ post, onPress }: { post: InsightPost; onPress: () => void 
         <Text style={styles.rowMeta}>{formatInsightDate(post.publishedAt)} · {formatReadingTime(post.readingMinutes)}</Text>
       </View>
       <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
 function InsightDetailModal({
   post,
   onClose,
-  onBackToProgress,
   onOpenLink,
   onExport,
   onToggleSave,
 }: {
   post: InsightPost | null;
   onClose: () => void;
-  onBackToProgress: () => void;
   onOpenLink: (url: string) => void;
   onExport: (post: InsightPost) => void;
   onToggleSave: (post: InsightPost) => void;
@@ -1524,8 +1744,8 @@ function InsightDetailModal({
   const [tagsOpen, setTagsOpen] = useState(true);
   const [introOpen, setIntroOpen] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(true);
+  const sheetScrollRef = useRef<ScrollView | null>(null);
   const entrance = useRef(new Animated.Value(0)).current;
-  const flare = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!post) return;
@@ -1533,6 +1753,9 @@ function InsightDetailModal({
     setTagsOpen(true);
     setIntroOpen(true);
     setSummaryOpen(true);
+    requestAnimationFrame(() => {
+      sheetScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
     entrance.setValue(0);
     Animated.spring(entrance, {
       toValue: 1,
@@ -1541,19 +1764,6 @@ function InsightDetailModal({
       useNativeDriver: true,
     }).start();
   }, [entrance, post?.id]);
-
-  useEffect(() => {
-    if (!post) return;
-    flare.setValue(0);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(flare, { toValue: 1, duration: 1300, useNativeDriver: true }),
-        Animated.timing(flare, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [flare, post?.id]);
 
   if (!post) return null;
 
@@ -1574,32 +1784,10 @@ function InsightDetailModal({
       },
     ],
   };
-  const flareAnimatedStyle: any = {
-    opacity: flare.interpolate({
-      inputRange: [0, 0.35, 0.7, 1],
-      outputRange: [0, 0.55, 0.22, 0],
-    }),
-    transform: [
-      {
-        translateX: flare.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-120, 120],
-        }),
-      },
-      { rotate: '-18deg' },
-    ],
-  };
-
   return (
     <M3BottomSheet visible={!!post} onClose={onClose}>
       <Animated.View style={[styles.insightSheetContent, modalAnimatedStyle]}>
-        <View style={styles.modalHeader}>
-          <Pressable style={styles.insightHeaderButton} onPress={onBackToProgress}>
-            <AppIcon iosName="chevron.left" androidFallback="<" size={18} color={themeColors.secondary} />
-            <Text style={styles.insightHeaderBackText}>Back</Text>
-          </Pressable>
-        </View>
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView ref={sheetScrollRef} showsVerticalScrollIndicator={false}>
             <View style={styles.insightDetailTitleRow}>
               <Text style={styles.insightDetailTitle}>{post.title}</Text>
               {isNewInsight(post) && <Text style={styles.newBadge}>New</Text>}
@@ -1619,7 +1807,10 @@ function InsightDetailModal({
             <InsightSectionToggle
               title="Tags"
               open={tagsOpen}
-              onPress={() => setTagsOpen((open) => !open)}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setTagsOpen((open) => !open);
+              }}
             />
             <AnimatedInsightSection open={tagsOpen}>
               <View style={styles.tagsWrap}>
@@ -1632,7 +1823,10 @@ function InsightDetailModal({
             <InsightSectionToggle
               title="Introduction"
               open={introOpen}
-              onPress={() => setIntroOpen((open) => !open)}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setIntroOpen((open) => !open);
+              }}
             />
             <AnimatedInsightSection open={introOpen}>
               <Text style={styles.insightBody}>{post.introduction}</Text>
@@ -1641,20 +1835,27 @@ function InsightDetailModal({
             <InsightSectionToggle
               title="Summary"
               open={summaryOpen}
-              onPress={() => setSummaryOpen((open) => !open)}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setSummaryOpen((open) => !open);
+              }}
             />
             <AnimatedInsightSection open={summaryOpen}>
               <Text style={styles.insightBody}>{post.summary}</Text>
             </AnimatedInsightSection>
 
-            <Pressable style={styles.articleLinkButton} onPress={() => onOpenLink(post.articleUrl)}>
-              <Animated.View pointerEvents="none" style={[styles.articleLinkFlare, flareAnimatedStyle]} />
-              <AppIcon iosName="sparkles" androidFallback="*" size={15} color={themeColors.secondary} />
+            <AnimatedPressable style={styles.articleLinkButton} onPress={() => onOpenLink(post.articleUrl)}>
               <AppIcon iosName="link" androidFallback="L" size={16} color={themeColors.secondary} />
               <Text style={styles.articleLinkText}>Open full article</Text>
-            </Pressable>
+            </AnimatedPressable>
 
-            <Pressable style={styles.resourcesToggle} onPress={() => setResourcesOpen((open) => !open)}>
+            <AnimatedPressable
+              style={styles.resourcesToggle}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setResourcesOpen((open) => !open);
+              }}
+            >
               <Text style={styles.resourcesToggleText}>Resources</Text>
               <AppIcon
                 iosName={resourcesOpen ? 'chevron.up' : 'chevron.down'}
@@ -1662,25 +1863,25 @@ function InsightDetailModal({
                 size={16}
                 color={themeColors.secondary}
               />
-            </Pressable>
+            </AnimatedPressable>
 
             <AnimatedInsightSection open={resourcesOpen}>
-              <Pressable style={styles.resourcesPanel} onPress={() => onOpenLink(post.articleUrl)}>
+              <AnimatedPressable style={styles.resourcesPanel} onPress={() => onOpenLink(post.articleUrl)}>
                 <Text style={styles.insightBody}>{post.source}</Text>
                 <Text style={styles.insightBody}>{post.institution}</Text>
                 <Text style={styles.resourceLinkText}>{post.articleUrl}</Text>
-              </Pressable>
+              </AnimatedPressable>
             </AnimatedInsightSection>
 
             <View style={styles.insightActions}>
-              <Pressable style={[styles.actionButton, styles.exportButton, styles.insightActionButton]} onPress={() => onExport(post)}>
+              <AnimatedPressable style={[styles.actionButton, styles.exportButton, styles.insightActionButton]} onPress={() => onExport(post)}>
                 <AppIcon iosName="doc.on.doc" androidFallback="PDF" size={16} color={isDark ? themeColors.neutral : themeColors.textLight} />
                 <Text style={styles.exportButtonText}>Export as PDF</Text>
-              </Pressable>
-              <Pressable style={[styles.actionButton, styles.insightActionButton]} onPress={() => onToggleSave(post)}>
+              </AnimatedPressable>
+              <AnimatedPressable style={[styles.actionButton, styles.insightActionButton]} onPress={() => onToggleSave(post)}>
                 <AppIcon iosName={post.saved ? 'bookmark.fill' : 'bookmark'} androidFallback="B" size={16} color={themeColors.secondary} />
                 <Text style={styles.actionButtonText}>Save</Text>
-              </Pressable>
+              </AnimatedPressable>
             </View>
         </ScrollView>
       </Animated.View>
@@ -1700,7 +1901,7 @@ function InsightSectionToggle({
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   return (
-    <Pressable style={styles.insightSectionToggle} onPress={onPress}>
+    <AnimatedPressable style={styles.insightSectionToggle} onPress={onPress}>
       <Text style={styles.insightSectionLabel}>{title}</Text>
       <AppIcon
         iosName={open ? 'chevron.up' : 'chevron.down'}
@@ -1708,7 +1909,7 @@ function InsightSectionToggle({
         size={16}
         color={themeColors.secondary}
       />
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -1767,17 +1968,26 @@ function SavedInsightsModal({
 }) {
   const { isDark } = useTheme();
   const styles = getStyles(isDark);
+  const savedScrollRef = useRef<ScrollView | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    requestAnimationFrame(() => {
+      savedScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
+  }, [visible]);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.savedInsightsCard}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Saved Posts</Text>
-            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+            <AnimatedPressable style={styles.modalCloseButton} onPress={onClose}>
               <Text style={styles.modalCloseText}>X</Text>
-            </Pressable>
+            </AnimatedPressable>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView ref={savedScrollRef} showsVerticalScrollIndicator={false}>
             {posts.length > 0 ? posts.map((post) => (
               <InsightRow key={post.id} post={post} onPress={() => onOpenPost(post)} />
             )) : (
@@ -1840,9 +2050,9 @@ function FilterModal({
       <Animated.View style={[styles.filterModalCard, { transform: [{ scale }] }]}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>Filter time</Text>
-          <Pressable style={styles.modalCloseButton} onPress={onClose}>
+          <AnimatedPressable style={styles.modalCloseButton} onPress={onClose}>
             <Text style={styles.modalCloseText}>X</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
 
         <Text style={styles.filterLabel}>Filter time:</Text>
@@ -1881,12 +2091,12 @@ function FilterModal({
         </View>
 
         <View style={styles.modalActions}>
-          <Pressable style={[styles.modalButton, styles.modalCancelButton]} onPress={onClose}>
+          <AnimatedPressable style={[styles.modalButton, styles.modalCancelButton]} onPress={onClose}>
             <Text style={styles.modalCancelText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={[styles.modalButton, styles.modalApplyButton]} onPress={onApply}>
+          </AnimatedPressable>
+          <AnimatedPressable style={[styles.modalButton, styles.modalApplyButton]} onPress={onApply}>
             <Text style={styles.modalApplyText}>Apply filter</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       </Animated.View>
     </Animated.View>
@@ -1916,10 +2126,10 @@ function ReportPanel({
         <Metric label="Score" value={`${summary.averagePercent}%`} />
         <Metric label="Points" value={`${summary.pointsEarned}/${summary.pointsTotal}`} />
         <Metric label="Threshold" value={`${thresholdStage(summary.averagePercent)}/5`} />
-        <Metric label="Quizzes" value={String(quizCount)} />
+        <Metric label="Sessions" value={String(quizCount)} />
       </View>
       <Text style={styles.reportNote}>
-        {summary.completed} completed attempts from {summary.attempts} total attempts.
+        {summary.completed} completed quiz sessions with {summary.pointsTotal} recorded questions.
       </Text>
     </AdaptiveCard>
   );
@@ -1939,7 +2149,7 @@ function TypeRow({
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   return (
-    <Pressable
+    <AnimatedPressable
       style={({ pressed }) => [
         styles.row,
         onPress && pressed ? styles.rowPressed : undefined,
@@ -1953,24 +2163,26 @@ function TypeRow({
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{label}</Text>
         <Text style={styles.rowSubtitle}>{description}</Text>
-        <Text style={styles.rowMeta}>{quizCount} quizzes</Text>
+        <Text style={styles.rowMeta}>{quizCount} quiz sessions</Text>
       </View>
       {onPress && (
         <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
-function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) {
+function QuizRow({ quiz, onPress, selected = false }: { quiz: QuizReport; onPress?: () => void; selected?: boolean }) {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const summary = summarize([quiz]);
+  const averageTime = formatDurationMs(getQuizAverageTimeMs(quiz));
 
   return (
-    <Pressable
+    <AnimatedPressable
       style={({ pressed }) => [
         styles.row,
+        selected ? styles.rowSelected : undefined,
         onPress && pressed ? styles.rowPressed : undefined,
       ]}
       onPress={onPress}
@@ -1981,8 +2193,8 @@ function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) 
       </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle}>{quiz.name}</Text>
-        <Text style={styles.rowSubtitle}>{quiz.completed} completed attempts</Text>
-        <Text style={styles.rowMeta}>{quiz.attempts} total attempts</Text>
+        <Text style={styles.rowSubtitle}>Taken {formatTakenAt(quiz.createdAt)}</Text>
+        <Text style={styles.rowMeta}>{quiz.pointsTotal} questions · Avg {averageTime}</Text>
       </View>
       <View style={styles.rowScore}>
         <Text style={styles.percent}>{summary.averagePercent}%</Text>
@@ -1992,7 +2204,33 @@ function QuizRow({ quiz, onPress }: { quiz: QuizReport; onPress?: () => void }) 
       {onPress && (
         <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
       )}
-    </Pressable>
+    </AnimatedPressable>
+  );
+}
+
+function QuizSessionHistory({
+  quizzes,
+  selectedQuizId,
+}: {
+  quizzes: QuizReport[];
+  selectedQuizId: string;
+}) {
+  return (
+    <View>
+      <SectionHeader
+        icon="clock.fill"
+        fallback="T"
+        title="Quiz history"
+        helper={`${quizzes.length} times taken`}
+      />
+      {quizzes.map((quiz) => (
+        <QuizRow
+          key={quiz.id}
+          quiz={quiz}
+          selected={quiz.id === selectedQuizId}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -2003,6 +2241,14 @@ function QuizAttemptDetails({ quiz }: { quiz: QuizReport }) {
 
   return (
     <View>
+      <AdaptiveCard style={styles.sessionSummaryCard}>
+        <View style={styles.questionMetaGrid}>
+          <Metric label="Taken" value={formatTakenAt(quiz.createdAt)} />
+          <Metric label="Score" value={`${quiz.pointsEarned}/${quiz.pointsTotal}`} />
+          <Metric label="Progress" value={`${quiz.averagePercent}%`} />
+          <Metric label="Avg time" value={formatDurationMs(getQuizAverageTimeMs(quiz))} />
+        </View>
+      </AdaptiveCard>
       <SectionHeader
         icon="checkmark.circle.fill"
         fallback="✓"
@@ -2019,7 +2265,7 @@ function QuizAttemptDetails({ quiz }: { quiz: QuizReport }) {
               outcome.status === 'Wrong' ? styles.statusWrong : undefined,
               outcome.status === 'Skipped' ? styles.statusSkipped : undefined,
             ]}>
-              {outcome.status}
+              {formatOutcomeStatus(outcome.status)}
             </Text>
           </View>
           <View style={styles.questionMetaGrid}>
@@ -2035,6 +2281,130 @@ function QuizAttemptDetails({ quiz }: { quiz: QuizReport }) {
   );
 }
 
+function QuizProgressLineCharts({
+  quizTypes,
+}: {
+  quizTypes: QuizTypeReport[];
+  selectedFilter: FilterKey;
+}) {
+  const { isDark, colors: themeColors } = useTheme();
+  const styles = getStyles(isDark);
+  const chartWidth = 292;
+  const chartHeight = 150;
+  const paddingLeft = 34;
+  const paddingRight = 12;
+  const paddingTop = 14;
+  const paddingBottom = 28;
+  const plotWidth = chartWidth - paddingLeft - paddingRight;
+  const plotHeight = chartHeight - paddingTop - paddingBottom;
+
+  if (quizTypes.length === 0) return null;
+
+  return (
+    <View style={styles.lineChartsSection}>
+      <AdaptiveCard style={styles.lineChartPanel}>
+        <View style={styles.chartHeader}>
+          <Text style={styles.chartTitle}>Score progress over time</Text>
+        </View>
+        <View style={styles.lineChartDivider} />
+        {quizTypes.map((type, typeIndex) => {
+          const points = [...type.quizzes]
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+            .map((quiz, index, arr) => {
+              const x = paddingLeft + (arr.length <= 1 ? plotWidth / 2 : (index / (arr.length - 1)) * plotWidth);
+              const y = paddingTop + ((100 - quiz.averagePercent) / 100) * plotHeight;
+              return { quiz, x, y, index };
+            });
+          const linePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+          const first = points[0]?.quiz;
+          const last = points[points.length - 1]?.quiz;
+
+          return (
+            <View key={type.id} style={[styles.lineChartFacet, typeIndex > 0 ? styles.lineChartFacetDivider : undefined]}>
+              <View style={styles.lineChartHeader}>
+                <View style={styles.rowMain}>
+                  <Text style={styles.lineChartTitle}>{type.label}</Text>
+                  <Text style={styles.lineChartSubtitle}>
+                    {points.length} attempts{first && last ? ` · ${formatShortDate(new Date(first.createdAt))} to ${formatShortDate(new Date(last.createdAt))}` : ''}
+                  </Text>
+                </View>
+                {last && (
+                  <View style={styles.lineChartScorePill}>
+                    <Text style={styles.lineChartScoreText}>{last.averagePercent}%</Text>
+                  </View>
+                )}
+              </View>
+              <Svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                {[0, 50, 100].map((value) => {
+                  const y = paddingTop + ((100 - value) / 100) * plotHeight;
+                  return (
+                    <React.Fragment key={value}>
+                      <Line
+                        x1={paddingLeft}
+                        x2={chartWidth - paddingRight}
+                        y1={y}
+                        y2={y}
+                        stroke={isDark ? 'rgba(235,247,239,0.12)' : 'rgba(3,87,58,0.12)'}
+                        strokeWidth={1}
+                      />
+                      <SvgText
+                        x={paddingLeft - 8}
+                        y={y + 4}
+                        fontSize={10}
+                        fontWeight="700"
+                        fill={themeColors.textMuted}
+                        textAnchor="end"
+                      >
+                        {value}
+                      </SvgText>
+                    </React.Fragment>
+                  );
+                })}
+                {points.length > 1 && (
+                  <Polyline
+                    points={linePoints}
+                    fill="none"
+                    stroke={themeColors.primary}
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {points.map((point) => (
+                  <React.Fragment key={point.quiz.id}>
+                    <Circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={5}
+                      fill={themeColors.primary}
+                      stroke={themeColors.neutral}
+                      strokeWidth={2}
+                    />
+                    <SvgText
+                      x={point.x}
+                      y={chartHeight - 8}
+                      fontSize={10}
+                      fontWeight="700"
+                      fill={themeColors.textMuted}
+                      textAnchor="middle"
+                    >
+                      {point.index + 1}
+                    </SvgText>
+                  </React.Fragment>
+                ))}
+              </Svg>
+              <View style={styles.lineChartFooter}>
+                <Text style={styles.lineChartFooterText}>Attempt order</Text>
+                <Text style={styles.lineChartFooterText}>Score %</Text>
+              </View>
+            </View>
+          );
+        })}
+      </AdaptiveCard>
+    </View>
+  );
+}
+
 function ReportCharts({
   quizzes,
   selectedFilter,
@@ -2044,13 +2414,12 @@ function ReportCharts({
 }) {
   const { isDark } = useTheme();
   const styles = getStyles(isDark);
-  const maxAttempts = Math.max(...quizzes.map((quiz) => quiz.attempts), 1);
+  const maxQuestions = Math.max(...quizzes.map((quiz) => quiz.pointsTotal), 1);
   const stageCounts = [1, 2, 3, 4, 5].map((stage) => ({
     stage,
     count: quizzes.filter((quiz) => thresholdStage(quiz.averagePercent) === stage).length,
   }));
   const maxStageCount = Math.max(...stageCounts.map((item) => item.count), 1);
-  const selectedLabel = FILTERS.find((filter) => filter.key === selectedFilter)?.label ?? 'Week';
   const animationKey = `${selectedFilter}-${quizzes.map((quiz) => `${quiz.id}:${quiz.averagePercent}:${quiz.attempts}:${quiz.completed}`).join('|')}`;
 
   return (
@@ -2058,8 +2427,8 @@ function ReportCharts({
       <AdaptiveCard style={styles.chartPanel}>
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle}>Quiz score comparison</Text>
-          <Text style={styles.chartRange}>{selectedLabel}</Text>
         </View>
+        <View style={styles.chartDivider} />
         {quizzes.map((quiz, index) => (
           <AnimatedChartRow key={quiz.id} animationKey={animationKey} index={index}>
             <View style={styles.barLabelWrap}>
@@ -2082,8 +2451,8 @@ function ReportCharts({
       <AdaptiveCard style={styles.chartPanel}>
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle}>Report distribution</Text>
-          <Text style={styles.chartRange}>1/5 - 5/5</Text>
         </View>
+        <View style={styles.chartDivider} />
         <View style={styles.stageChart}>
           {stageCounts.map((item) => (
             <View key={item.stage} style={styles.stageColumn}>
@@ -2104,9 +2473,9 @@ function ReportCharts({
 
       <AdaptiveCard style={styles.chartPanel}>
         <View style={styles.chartHeader}>
-          <Text style={styles.chartTitle}>Attempts by quiz</Text>
-          <Text style={styles.chartRange}>{quizzes.reduce((sum, quiz) => sum + quiz.attempts, 0)} total</Text>
+          <Text style={styles.chartTitle}>Questions by session</Text>
         </View>
+        <View style={styles.chartDivider} />
         {quizzes.map((quiz, index) => (
           <AnimatedChartRow key={`${quiz.id}-attempts`} animationKey={animationKey} index={index + quizzes.length}>
             <View style={styles.barLabelWrap}>
@@ -2115,13 +2484,13 @@ function ReportCharts({
             </View>
             <View style={styles.barTrack}>
               <AnimatedChartBar
-                percent={Math.max((quiz.attempts / maxAttempts) * 100, quiz.attempts > 0 ? 6 : 0)}
+                percent={Math.max((quiz.pointsTotal / maxQuestions) * 100, quiz.pointsTotal > 0 ? 6 : 0)}
                 style={styles.attemptBar}
                 delay={index * 55}
                 animationKey={animationKey}
               />
             </View>
-            <Text style={styles.barValue}>{quiz.attempts}</Text>
+            <Text style={styles.barValue}>{quiz.pointsTotal}</Text>
           </AnimatedChartRow>
         ))}
       </AdaptiveCard>
@@ -2623,13 +2992,27 @@ const getStyles = (isDark: boolean) => {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     minHeight: 36,
     paddingRight: 12,
     marginBottom: 8,
   },
   backButtonText: {
+    flexShrink: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 14,
+    color: themeColors.secondary,
+  },
+  breadcrumbMuted: {
+    fontFamily: typography.fontFamily.medium,
+    color: themeColors.textMuted,
+  },
+  breadcrumbDivider: {
+    fontFamily: typography.fontFamily.medium,
+    color: themeColors.textMuted,
+  },
+  breadcrumbCurrent: {
+    fontFamily: typography.fontFamily.bold,
     color: themeColors.secondary,
   },
   reportPanel: {
@@ -2709,9 +3092,77 @@ const getStyles = (isDark: boolean) => {
   chartsSection: {
     marginBottom: 18,
   },
+  lineChartsSection: {
+    marginBottom: 0,
+  },
   chartPanel: {
     padding: 14,
     marginBottom: 12,
+  },
+  lineChartPanel: {
+    padding: 14,
+    marginBottom: 12,
+  },
+  lineChartDivider: {
+    height: 1,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.14)' : 'rgba(0,0,0,0.10)'),
+    marginBottom: 14,
+  },
+  chartDivider: {
+    height: 1,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.14)' : 'rgba(0,0,0,0.10)'),
+    marginTop: -2,
+    marginBottom: 14,
+  },
+  lineChartFacet: {
+    paddingTop: 2,
+  },
+  lineChartFacetDivider: {
+    borderTopWidth: 1,
+    borderTopColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    paddingTop: 14,
+    marginTop: 14,
+  },
+  lineChartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  lineChartTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 14,
+    color: themeColors.textDark,
+  },
+  lineChartSubtitle: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    color: themeColors.textMuted,
+    marginTop: 2,
+  },
+  lineChartScorePill: {
+    minWidth: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: (isDark ? 'rgba(155, 231, 180, 0.14)' : 'rgba(45,79,62,0.08)'),
+  },
+  lineChartScoreText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
+    color: themeColors.secondary,
+  },
+  lineChartFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -4,
+  },
+  lineChartFooterText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    color: themeColors.textMuted,
   },
   chartHeader: {
     flexDirection: 'row',
@@ -2824,6 +3275,10 @@ const getStyles = (isDark: boolean) => {
   },
   rowPressed: {
     opacity: 0.75,
+  },
+  rowSelected: {
+    borderColor: (isDark ? 'rgba(155, 231, 180, 0.34)' : 'rgba(3, 87, 58, 0.26)'),
+    backgroundColor: (isDark ? 'rgba(155, 231, 180, 0.10)' : 'rgba(45,79,62,0.08)'),
   },
   rowMain: {
     flex: 1,
@@ -2946,18 +3401,6 @@ const getStyles = (isDark: boolean) => {
     color: themeColors.textDark,
     paddingRight: 8,
   },
-  insightHeaderButton: {
-    minHeight: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 12,
-  },
-  insightHeaderBackText: {
-    marginLeft: 4,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 14,
-    color: themeColors.secondary,
-  },
   insightMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -3002,26 +3445,17 @@ const getStyles = (isDark: boolean) => {
     color: themeColors.textMuted,
   },
   articleLinkButton: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'stretch',
     marginTop: 14,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    borderRadius: isIOS ? 14 : 16,
     borderWidth: 1,
-    borderColor: (isDark ? 'rgba(155, 231, 180, 0.28)' : 'rgba(3, 87, 58, 0.16)'),
-    backgroundColor: (isDark ? 'rgba(155, 231, 180, 0.08)' : 'rgba(45,79,62,0.06)'),
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  articleLinkFlare: {
-    position: 'absolute',
-    top: -18,
-    bottom: -18,
-    width: 42,
-    backgroundColor: (isDark ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.72)'),
+    borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.08)'),
+    backgroundColor: themeColors.glassCardBg,
   },
   articleLinkText: {
     marginLeft: 8,
@@ -3081,6 +3515,10 @@ const getStyles = (isDark: boolean) => {
     flex: 1,
     marginHorizontal: 4,
   },
+  sessionSummaryCard: {
+    padding: 14,
+    marginBottom: 14,
+  },
   questionCard: {
     padding: 14,
     marginBottom: 10,
@@ -3098,14 +3536,14 @@ const getStyles = (isDark: boolean) => {
     paddingRight: 10,
   },
   questionStatus: {
-    minWidth: 72,
+    width: 30,
+    height: 30,
     textAlign: 'center',
     fontFamily: typography.fontFamily.bold,
-    fontSize: 12,
-    borderRadius: 8,
+    fontSize: 16,
+    lineHeight: 30,
+    borderRadius: 15,
     overflow: 'hidden',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
   },
   statusCorrect: {
     color: '#1E6F43',

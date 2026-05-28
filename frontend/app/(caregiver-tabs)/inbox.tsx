@@ -428,7 +428,7 @@ export default function InboxTab() {
       ) : !hasContent ? (
         <View style={styles.centered}>
           <View style={styles.emptyIcon}>
-            <AppIcon iosName="tray" androidFallback="—" size={28} color={themeColors.textMuted} />
+            <AppIcon iosName="checkmark.circle" androidFallback="✓" size={34} color={themeColors.secondary} />
           </View>
           <Text style={styles.emptyTitle}>All caught up</Text>
           <Text style={styles.emptyDesc}>No pending requests or notifications.</Text>
@@ -782,10 +782,10 @@ const getStyles = (isDark: boolean) => {
     paddingBottom: 60,
   },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: themeColors.neutralLight,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(45,79,62,0.1)'),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
