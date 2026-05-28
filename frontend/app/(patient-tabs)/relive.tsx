@@ -1140,30 +1140,30 @@ const getStyles = (isDark: boolean) => {
   },
   previewKindLabel: {
     fontFamily: typography.fontFamily.medium,
-    fontSize: 14,
+    fontSize: 18,
     color: themeColors.textMuted,
   },
   previewMeta: {
     padding: 18,
-    gap: 6,
+    gap: 8,
   },
   previewYear: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
+    fontSize: 28,
     color: themeColors.neutralLight,
   },
   previewCategory: {
     fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
+    fontSize: 16,
     color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.65)'),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   previewNote: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: 15,
+    fontSize: 20,
     color: (isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255,255,255,0.95)'),
-    lineHeight: 22,
+    lineHeight: 30,
     marginTop: 2,
   },
   previewCounter: {

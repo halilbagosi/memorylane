@@ -1156,9 +1156,6 @@ export default function AccountScreen() {
                 <Text style={styles.paymentSheetTitle}>Secure Payment</Text>
                 <Text style={styles.paymentSheetSubtitle}>MemoryLane Premium membership</Text>
               </View>
-              <View style={styles.paymentAmountPill}>
-                <Text style={styles.paymentAmountText}>EUR 9.99</Text>
-              </View>
             </View>
 
             <Text style={styles.paymentSectionLabel}>CARD DETAILS</Text>

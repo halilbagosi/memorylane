@@ -6,6 +6,8 @@ import {
   FlatList,
   Image,
   InteractionManager,
+  InputAccessoryView,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -17,6 +19,8 @@ import {
   TouchableOpacity,
   Pressable,
   View,
+  Animated,
+  Easing,
   LayoutAnimation,
   UIManager,
 } from 'react-native';
@@ -48,6 +52,7 @@ import {
 } from '../services/media';
 
 const isIOS = Platform.OS === 'ios';
+const FS_EDIT_DONE_ID = 'fs-edit-done';
 
 const capFirst = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -55,7 +60,7 @@ if (!isIOS && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const GRID_GUTTER = 8;
 const GRID_PADDING = 16;
 const QUIZ_COLUMNS = 3;
@@ -69,7 +74,6 @@ const TILE_SIZE_MEMORY =
   (SCREEN_WIDTH - MEMORY_GRID_PADDING * 2 - MEMORY_GRID_GAP * (MEMORY_COLUMNS - 1)) / MEMORY_COLUMNS;
 const TILE_SIZE = TILE_SIZE_QUIZ;
 
-type MediaKindFilter = 'ALL' | 'PHOTO' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
 interface MediaTileVM extends MediaListItem {
   signedUrl?: string;
@@ -132,7 +136,6 @@ export function MemoryLibrarySheetContent({
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [libraryTab, setLibraryTab] = useState<MediaCollection>('QUIZ');
-  const [kindFilter, setKindFilter] = useState<MediaKindFilter>('ALL');
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -248,7 +251,6 @@ export function MemoryLibrarySheetContent({
     setEditMode(false);
     setSelected(new Set());
     setLibraryTab('QUIZ');
-    setKindFilter('ALL');
     loadMedia().finally(() => setLoading(false));
   }, [patientId]);
 
@@ -380,7 +382,7 @@ export function MemoryLibrarySheetContent({
   );
 
   const filteredItems = useMemo(() => {
-    const base = displayItems.filter((m) => m.collection === libraryTab && (kindFilter === 'ALL' || m.kind === kindFilter));
+    const base = displayItems.filter((m) => m.collection === libraryTab);
     if (libraryTab === 'MEMORY') {
       return [...base].sort((a, b) => {
         const yearA = a.eventYear ?? new Date(a.createdAt).getFullYear();
@@ -390,7 +392,7 @@ export function MemoryLibrarySheetContent({
       });
     }
     return base;
-  }, [displayItems, kindFilter, libraryTab]);
+  }, [displayItems, libraryTab]);
   const quizReadyPhotoCount = useMemo(
     () => displayItems.filter((item) => item.collection === 'QUIZ' && item.kind === 'PHOTO' && item.status === 'READY').length,
     [displayItems],
@@ -741,7 +743,7 @@ export function MemoryLibrarySheetContent({
     setMemoryIsApproximate(false);
   };
 
-  const openMetadataEdit = (item: MediaTileVM) => {
+  const populateEditFields = (item: MediaTileVM) => {
     setEditFirstName(item.firstName ?? '');
     setEditRelationship(item.relationshipType ?? '');
     setEditBirthYear(item.birthYear !== null ? String(item.birthYear) : '');
@@ -750,12 +752,24 @@ export function MemoryLibrarySheetContent({
     setEditNote(item.note ?? '');
     setEditYear(item.eventYear !== null ? String(item.eventYear) : '');
     setEditIsApproximate(item.isApproximateYear ?? false);
+  };
+
+  // For non-photo items: close the detail sheet, then open the standalone edit modal
+  const openMetadataEdit = (item: MediaTileVM) => {
+    populateEditFields(item);
     setPreviewItem(null);
     setTimeout(() => setEditingMedia(item), 180);
   };
 
-  const saveMetadataEdit = async () => {
-    if (!editingMedia) return;
+  // For photo/video items: populate fields and mark editingMedia so saveMetadataEdit works;
+  // MemoryFullscreenPreviewModal tracks isEditing internally — no second modal opened
+  const onStartEditPhoto = (item: MediaTileVM) => {
+    populateEditFields(item);
+    setEditingMedia(item);
+  };
+
+  const saveMetadataEdit = async (): Promise<boolean> => {
+    if (!editingMedia) return false;
     setSavingEdit(true);
     try {
       if (editingMedia.collection === 'QUIZ') {
@@ -765,11 +779,11 @@ export function MemoryLibrarySheetContent({
         const currentYear = new Date().getFullYear();
         if (!firstName || !relationshipType || Number.isNaN(birthYear)) {
           showMlDialog('Missing Details', 'Name, relationship, and birth year are required.', [{ label: 'OK', onPress: dismissMlDialog }]);
-          return;
+          return false;
         }
         if (birthYear < 1900 || birthYear > currentYear) {
           showMlDialog('Invalid Birth Year', `Please enter a birth year between 1900 and ${currentYear}.`, [{ label: 'OK', onPress: dismissMlDialog }]);
-          return;
+          return false;
         }
         await updateMediaMetadata(editingMedia.publicId, {
           collection: 'QUIZ',
@@ -783,12 +797,12 @@ export function MemoryLibrarySheetContent({
         const note = editNote.trim();
         if (!note) {
           showMlDialog('Missing Note', 'Descriptive note is required.', [{ label: 'OK', onPress: dismissMlDialog }]);
-          return;
+          return false;
         }
         const yearNum = editYear.trim() ? parseInt(editYear.trim(), 10) : undefined;
         if (editYear.trim() && (isNaN(yearNum!) || yearNum! < 1900 || yearNum! > 2100)) {
           showMlDialog('Invalid Year', 'Please enter a year between 1900 and 2100.', [{ label: 'OK', onPress: dismissMlDialog }]);
-          return;
+          return false;
         }
         await updateMediaMetadata(editingMedia.publicId, {
           collection: 'MEMORY',
@@ -798,24 +812,22 @@ export function MemoryLibrarySheetContent({
         });
       }
       await loadMedia();
-      setPreviewItem((prev) =>
-        prev?.publicId === editingMedia.publicId
-          ? {
-              ...prev,
-              firstName: editFirstName.trim() || prev.firstName,
-              relationshipType: editRelationship.trim() || prev.relationshipType,
-              birthYear: editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : prev.birthYear,
-              hint: editHint.trim() || prev.hint,
-              nickname: editNickname.trim() || prev.nickname,
-              note: editNote.trim() || prev.note,
-              eventYear: editYear.trim() ? parseInt(editYear.trim(), 10) : prev.eventYear,
-              isApproximateYear: editIsApproximate,
-            }
-          : prev,
-      );
+      setPreviewItem({
+        ...editingMedia,
+        firstName: editFirstName.trim() || editingMedia.firstName,
+        relationshipType: editRelationship.trim() || editingMedia.relationshipType,
+        birthYear: editBirthYear.trim() ? parseInt(editBirthYear.trim(), 10) : editingMedia.birthYear,
+        hint: editHint.trim() || editingMedia.hint,
+        nickname: editNickname.trim() || editingMedia.nickname,
+        note: editNote.trim() || editingMedia.note,
+        eventYear: editYear.trim() ? parseInt(editYear.trim(), 10) : editingMedia.eventYear,
+        isApproximateYear: editIsApproximate,
+      });
       setEditingMedia(null);
+      return true;
     } catch (e: any) {
       showMlDialog('Update Failed', e?.message ?? 'Could not update media details.', [{ label: 'OK', onPress: dismissMlDialog }]);
+      return false;
     } finally {
       setSavingEdit(false);
     }
@@ -890,14 +902,14 @@ export function MemoryLibrarySheetContent({
           <View style={styles.filterChips}>
             <TouchableOpacity 
               style={[styles.filterChip, libraryTab === 'QUIZ' && styles.filterChipActive]}
-              onPress={() => { animate(); setLibraryTab('QUIZ'); setKindFilter('ALL'); setEditMode(false); }}
+              onPress={() => { animate(); setLibraryTab('QUIZ'); setEditMode(false); }}
               activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, libraryTab === 'QUIZ' && styles.filterChipTextActive]}>Quiz Media</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.filterChip, libraryTab === 'MEMORY' && styles.filterChipActive]}
-              onPress={() => { animate(); setLibraryTab('MEMORY'); setKindFilter('ALL'); setEditMode(false); }}
+              onPress={() => { animate(); setLibraryTab('MEMORY'); setEditMode(false); }}
               activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, libraryTab === 'MEMORY' && styles.filterChipTextActive]}>Memories</Text>
@@ -920,17 +932,6 @@ export function MemoryLibrarySheetContent({
             </TouchableOpacity>
           )}
         </View>
-
-        {/* Secondary Media Kind Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.secondaryFilterContent} style={styles.secondaryFilterRow}>
-          {(['ALL', 'PHOTO', ...(libraryTab === 'MEMORY' ? ['VIDEO', 'AUDIO', 'DOCUMENT'] : ['AUDIO'])] as MediaKindFilter[]).map((f) => (
-            <TouchableOpacity key={f} style={[styles.chip, kindFilter === f && styles.chipActive]} onPress={() => setKindFilter(f)} activeOpacity={0.7}>
-              <Text style={[styles.chipText, kindFilter === f && styles.chipTextActive]}>
-                {f === 'ALL' ? 'All' : f === 'PHOTO' ? 'Photos' : f === 'VIDEO' ? 'Videos' : f === 'AUDIO' ? 'Audio' : 'Files'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
 
         {(uploading || verifyingQuizPhoto) && (
           <View style={styles.uploadBanner}>
@@ -1148,8 +1149,26 @@ export function MemoryLibrarySheetContent({
       </Modal>
 
       <MediaDetailsModal item={previewItem?.kind !== 'PHOTO' && previewItem?.kind !== 'VIDEO' ? previewItem : null} onClose={() => setPreviewItem(null)} onEdit={openMetadataEdit} />
-      <MemoryFullscreenPreviewModal item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null} onClose={() => setPreviewItem(null)} onEdit={openMetadataEdit} />
-      <EditMetadataModal item={editingMedia} firstName={editFirstName} relationship={editRelationship} birthYear={editBirthYear} hint={editHint} nickname={editNickname} note={editNote} year={editYear} isApproximate={editIsApproximate} saving={savingEdit} onChangeFirstName={(t: string) => setEditFirstName(capFirst(t))} onChangeRelationship={(t: string) => setEditRelationship(capFirst(t))} onChangeBirthYear={setEditBirthYear} onChangeHint={(t: string) => setEditHint(capFirst(t))} onChangeNickname={(t: string) => setEditNickname(capFirst(t))} onChangeNote={(t: string) => setEditNote(capFirst(t))} onChangeYear={setEditYear} onToggleApproximate={() => setEditIsApproximate((v) => !v)} onClose={() => setEditingMedia(null)} onSave={saveMetadataEdit} />
+      <MemoryFullscreenPreviewModal
+        item={previewItem?.kind === 'PHOTO' || previewItem?.kind === 'VIDEO' ? previewItem : null}
+        onClose={() => setPreviewItem(null)}
+        editProps={{
+          onStartEdit: onStartEditPhoto,
+          onSave: saveMetadataEdit,
+          firstName: editFirstName, relationship: editRelationship, birthYear: editBirthYear,
+          hint: editHint, nickname: editNickname, note: editNote, year: editYear,
+          isApproximate: editIsApproximate, saving: savingEdit,
+          onChangeFirstName: (t: string) => setEditFirstName(capFirst(t)),
+          onChangeRelationship: (t: string) => setEditRelationship(capFirst(t)),
+          onChangeBirthYear: setEditBirthYear,
+          onChangeHint: (t: string) => setEditHint(capFirst(t)),
+          onChangeNickname: (t: string) => setEditNickname(capFirst(t)),
+          onChangeNote: (t: string) => setEditNote(capFirst(t)),
+          onChangeYear: setEditYear,
+          onToggleApproximate: () => setEditIsApproximate((v) => !v),
+        }}
+      />
+      <EditMetadataModal item={editingMedia?.kind !== 'PHOTO' && editingMedia?.kind !== 'VIDEO' ? editingMedia : null} firstName={editFirstName} relationship={editRelationship} birthYear={editBirthYear} hint={editHint} nickname={editNickname} note={editNote} year={editYear} isApproximate={editIsApproximate} saving={savingEdit} onChangeFirstName={(t: string) => setEditFirstName(capFirst(t))} onChangeRelationship={(t: string) => setEditRelationship(capFirst(t))} onChangeBirthYear={setEditBirthYear} onChangeHint={(t: string) => setEditHint(capFirst(t))} onChangeNickname={(t: string) => setEditNickname(capFirst(t))} onChangeNote={(t: string) => setEditNote(capFirst(t))} onChangeYear={setEditYear} onToggleApproximate={() => setEditIsApproximate((v) => !v)} onClose={() => { setPreviewItem(editingMedia); setEditingMedia(null); }} onSave={saveMetadataEdit} />
       <M3Dialog visible={mlDialog.visible} title={mlDialog.title} body={mlDialog.body} actions={mlDialog.actions} onDismiss={dismissMlDialog} />
     </View>
   );
@@ -1246,11 +1265,45 @@ function MediaDetailsModal({ item, onClose, onEdit }: { item: MediaTileVM | null
   );
 }
 
-function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTileVM | null; onClose: () => void; onEdit: (item: MediaTileVM) => void; }) {
+type FsEditProps = {
+  onStartEdit: (item: MediaTileVM) => void;
+  onSave: () => Promise<boolean>;
+  firstName: string; relationship: string; birthYear: string;
+  hint: string; nickname: string; note: string; year: string;
+  isApproximate: boolean; saving: boolean;
+  onChangeFirstName: (t: string) => void;
+  onChangeRelationship: (t: string) => void;
+  onChangeBirthYear: (t: string) => void;
+  onChangeHint: (t: string) => void;
+  onChangeNickname: (t: string) => void;
+  onChangeNote: (t: string) => void;
+  onChangeYear: (t: string) => void;
+  onToggleApproximate: () => void;
+};
+
+function MemoryFullscreenPreviewModal({ item, onClose, editProps }: {
+  item: MediaTileVM | null;
+  onClose: () => void;
+  editProps: FsEditProps;
+}) {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
 
-  useEffect(() => { if (item) { setImageLoading(true); setImageFailed(false); } }, [item?.publicId, item?.signedUrl]);
+  useEffect(() => {
+    if (item) { setImageLoading(true); setImageFailed(false); setIsEditing(false); slideAnim.setValue(SCREEN_WIDTH); }
+  }, [item?.publicId, item?.signedUrl]);
+
+  useEffect(() => {
+    Animated.timing(slideAnim, {
+      toValue: isEditing ? 0 : SCREEN_WIDTH,
+      duration: isEditing ? 320 : 260,
+      easing: isEditing ? Easing.out(Easing.ease) : Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [isEditing]);
+
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
 
@@ -1259,9 +1312,15 @@ function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTi
   const isVideo = item.kind === 'VIDEO';
   const yearLabel = item.eventYear != null ? item.isApproximateYear ? `~${item.eventYear}` : String(item.eventYear) : null;
 
+  const startEdit = () => { editProps.onStartEdit(item); setIsEditing(true); };
+  const cancelEdit = () => { Keyboard.dismiss(); setIsEditing(false); };
+  const handleSave = async () => { Keyboard.dismiss(); const ok = await editProps.onSave(); if (ok) setIsEditing(false); };
+
   return (
-    <Modal visible animationType="fade" onRequestClose={onClose}>
+    <Modal visible animationType="fade" onRequestClose={isEditing ? cancelEdit : onClose}>
       <View style={styles.fsPreviewScreen}>
+
+        {/* ── Photo view ── */}
         {(isPhoto || isVideo) && item.signedUrl && !imageFailed ? (
           <><ZoomableImage uri={item.signedUrl} onLoad={() => setImageLoading(false)} onError={() => { setImageLoading(false); setImageFailed(true); }} />{imageLoading && <View style={styles.fsPreviewLoadingOverlay}><ActivityIndicator size="large" color={themeColors.neutralLight} /></View>}</>
         ) : (
@@ -1270,25 +1329,90 @@ function MemoryFullscreenPreviewModal({ item, onClose, onEdit }: { item: MediaTi
             <Text style={styles.fsPreviewKindLabel}>{imageFailed ? 'Could not load image' : item.kind.charAt(0) + item.kind.slice(1).toLowerCase()}</Text>
           </View>
         )}
-        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close"><AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={themeColors.textDark} /></TouchableOpacity>
+        <TouchableOpacity style={styles.fsPreviewBackBtn} onPress={onClose} accessibilityLabel="Close">
+          <AppIcon iosName="chevron.left" androidFallback="‹" size={28} color={themeColors.textDark} />
+        </TouchableOpacity>
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.72)']} style={styles.fsPreviewDetails}>
           {item.collection === 'QUIZ' ? (
-            <>
-              {!!item.firstName && <Text style={styles.fsPreviewName}>{item.firstName}</Text>}
-              {!!item.relationshipType && <Text style={styles.fsPreviewRelationship}>{item.relationshipType}</Text>}
-              {!!item.birthYear && <Text style={styles.fsPreviewRelationship}>Born {item.birthYear}</Text>}
-              {!!item.nickname && <Text style={styles.fsPreviewRelationship}>Nickname: {item.nickname}</Text>}
-              {!!item.hint && <Text style={styles.fsPreviewRelationship}>Hint: {item.hint}</Text>}
-            </>
+            <>{!!item.firstName && <Text style={styles.fsPreviewName}>{item.firstName}</Text>}{!!item.relationshipType && <Text style={styles.fsPreviewRelationship}>{item.relationshipType}</Text>}{!!item.birthYear && <Text style={styles.fsPreviewRelationship}>Born {item.birthYear}</Text>}{!!item.nickname && <Text style={styles.fsPreviewRelationship}>Nickname: {item.nickname}</Text>}{!!item.hint && <Text style={styles.fsPreviewRelationship}>Hint: {item.hint}</Text>}</>
           ) : (
-            <>
-              {!!yearLabel && <Text style={styles.fsPreviewYear}>{yearLabel}</Text>}
-              {!!(item as any).memoryCategory && <Text style={styles.fsPreviewCategory}>{(item as any).memoryCategory}</Text>}
-              {!!item.note && <Text style={styles.fsPreviewNote}>{item.note}</Text>}
-            </>
+            <>{!!yearLabel && <Text style={styles.fsPreviewYear}>{yearLabel}</Text>}{!!(item as any).memoryCategory && <Text style={styles.fsPreviewCategory}>{(item as any).memoryCategory}</Text>}{!!item.note && <Text style={styles.fsPreviewNote}>{item.note}</Text>}</>
           )}
-          <TouchableOpacity style={styles.fsPreviewEditBtn} onPress={() => onEdit(item)}><Text style={styles.fsPreviewEditText}>Edit Details</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.fsPreviewEditBtn} onPress={startEdit}>
+            <Text style={styles.fsPreviewEditText}>Edit Details</Text>
+          </TouchableOpacity>
         </LinearGradient>
+
+        {/* ── Edit screen — slides in from the right ── */}
+        <Animated.View style={[styles.fsEditScreen, { transform: [{ translateX: slideAnim }] }]}>
+          {/* Nav header */}
+          <View style={styles.fsEditNavBar}>
+            <TouchableOpacity onPress={cancelEdit} style={styles.fsEditNavBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <AppIcon iosName="chevron.left" androidFallback="‹" size={isIOS ? 22 : 24} color={themeColors.secondary} weight={isIOS ? 'semibold' : 'medium'} />
+              {isIOS && <Text style={styles.fsEditNavBackText}>Back</Text>}
+            </TouchableOpacity>
+            <Text style={styles.fsEditNavTitle}>Edit Details</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={isIOS ? 'padding' : 'height'}>
+            <ScrollView contentContainerStyle={styles.fsEditContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+              {/* Thumbnail */}
+              {(isPhoto || isVideo) && item.signedUrl && !imageFailed && (
+                <Image source={{ uri: item.signedUrl }} style={styles.fsEditThumb} resizeMode="cover" />
+              )}
+
+              {/* Fields */}
+              {item.collection === 'QUIZ' ? (
+                <>
+                  <Text style={styles.fsEditLabel}>Name</Text>
+                  <TextInput style={styles.fsEditInput} value={editProps.firstName} onChangeText={editProps.onChangeFirstName} placeholder="Name" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" returnKeyType="next" inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                  <Text style={[styles.fsEditLabel, styles.fsEditLabelGap]}>Relationship</Text>
+                  <TextInput style={styles.fsEditInput} value={editProps.relationship} onChangeText={editProps.onChangeRelationship} placeholder="Relationship with patient" placeholderTextColor={themeColors.textMuted} autoCapitalize="sentences" returnKeyType="next" inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                  <Text style={[styles.fsEditLabel, styles.fsEditLabelGap]}>Birth Year</Text>
+                  <TextInput style={styles.fsEditInput} value={editProps.birthYear} onChangeText={editProps.onChangeBirthYear} placeholder="e.g. 1952" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                  <Text style={[styles.fsEditLabel, styles.fsEditLabelGap]}>Hint (optional)</Text>
+                  <TextInput style={[styles.fsEditInput, { minHeight: 56 }]} value={editProps.hint} onChangeText={editProps.onChangeHint} placeholder="A memory hint for the patient" placeholderTextColor={themeColors.textMuted} multiline autoCapitalize="sentences" inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                  <Text style={[styles.fsEditLabel, styles.fsEditLabelGap]}>Nickname (optional)</Text>
+                  <TextInput style={styles.fsEditInput} value={editProps.nickname} onChangeText={editProps.onChangeNickname} placeholder="Personal nickname" placeholderTextColor={themeColors.textMuted} autoCapitalize="words" inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.fsEditLabel}>Note</Text>
+                  <TextInput style={[styles.fsEditInput, { minHeight: 80 }]} value={editProps.note} onChangeText={editProps.onChangeNote} placeholder="Describe this memory" placeholderTextColor={themeColors.textMuted} multiline autoCapitalize="sentences" inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                  <Text style={[styles.fsEditLabel, styles.fsEditLabelGap]}>Year (optional)</Text>
+                  <TextInput style={styles.fsEditInput} value={editProps.year} onChangeText={editProps.onChangeYear} placeholder="e.g. 1985" placeholderTextColor={themeColors.textMuted} keyboardType="number-pad" maxLength={4} inputAccessoryViewID={isIOS ? FS_EDIT_DONE_ID : undefined} />
+                  <TouchableOpacity style={styles.fsEditApproxRow} onPress={editProps.onToggleApproximate} activeOpacity={0.7}>
+                    <View style={[styles.fsEditCheckbox, editProps.isApproximate && styles.fsEditCheckboxActive]}>
+                      {editProps.isApproximate && <Text style={styles.fsEditCheckmark}>✓</Text>}
+                    </View>
+                    <Text style={styles.fsEditApproxLabel}>Approximate year</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* Actions */}
+              <TouchableOpacity style={[styles.fsEditSaveBtn, editProps.saving && { opacity: 0.6 }]} onPress={handleSave} disabled={editProps.saving}>
+                <Text style={styles.fsEditSaveText}>{editProps.saving ? 'Saving…' : 'Save Changes'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.fsEditCancelBtn} onPress={cancelEdit} disabled={editProps.saving}>
+                <Text style={styles.fsEditCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </Animated.View>
+
+        {isIOS && (
+          <InputAccessoryView nativeID={FS_EDIT_DONE_ID}>
+            <View style={styles.fsEditDoneBar}>
+              <TouchableOpacity onPress={() => Keyboard.dismiss()} hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}>
+                <Text style={styles.fsEditDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </InputAccessoryView>
+        )}
       </View>
     </Modal>
   );
@@ -1464,5 +1588,26 @@ const getStyles = (isDark: boolean) => {
   fsPreviewNote: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.9)'), lineHeight: 22, marginTop: 2 },
   fsPreviewEditBtn: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.05)' : 'rgba(255,255,255,0.18)') },
   fsPreviewEditText: { fontFamily: typography.fontFamily.medium, fontSize: 13, color: themeColors.neutralLight },
+  fsEditScreen: { ...StyleSheet.absoluteFillObject, backgroundColor: themeColors.neutral },
+  fsEditNavBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: isIOS ? 56 : 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') },
+  fsEditNavBack: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 60 },
+  fsEditNavBackText: { fontFamily: typography.fontFamily.regular, fontSize: 17, color: themeColors.secondary },
+  fsEditNavTitle: { fontFamily: typography.fontFamily.semiBold, fontSize: 17, color: themeColors.textDark },
+  fsEditContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: isIOS ? 40 : 24, gap: 4 },
+  fsEditThumb: { width: '100%', height: 180, borderRadius: 12, marginBottom: 24, backgroundColor: '#000' },
+  fsEditLabel: { fontFamily: typography.fontFamily.medium, fontSize: 12, color: themeColors.textMuted, marginBottom: 6 },
+  fsEditLabelGap: { marginTop: 20 },
+  fsEditInput: { fontFamily: typography.fontFamily.regular, fontSize: 15, color: themeColors.textDark, borderWidth: 1, borderColor: (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'), borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)') },
+  fsEditApproxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
+  fsEditCheckbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: (isDark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.18)'), alignItems: 'center', justifyContent: 'center' },
+  fsEditCheckboxActive: { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary },
+  fsEditCheckmark: { color: '#fff', fontSize: 12, fontFamily: typography.fontFamily.bold },
+  fsEditApproxLabel: { fontFamily: typography.fontFamily.regular, fontSize: 14, color: themeColors.textDark },
+  fsEditSaveBtn: { marginTop: 28, paddingVertical: 14, borderRadius: 12, backgroundColor: themeColors.secondary, alignItems: 'center' },
+  fsEditSaveText: { fontFamily: typography.fontFamily.bold, fontSize: 16, color: '#fff' },
+  fsEditCancelBtn: { marginTop: 12, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  fsEditCancelText: { fontFamily: typography.fontFamily.medium, fontSize: 15, color: themeColors.textMuted },
+  fsEditDoneBar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: (isDark ? '#1c1c1e' : '#f2f2f7'), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') },
+  fsEditDoneText: { fontFamily: typography.fontFamily.semiBold, fontSize: 17, color: themeColors.secondary },
 });
 };

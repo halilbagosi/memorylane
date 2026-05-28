@@ -1031,6 +1031,8 @@ function PatientDetailContent({
   const [showTimePicker, setShowTimePicker] = React.useState(false);
   const [codeCopied, setCodeCopied] = React.useState(false);
   const codeCopiedOpacity = React.useRef(new Animated.Value(0)).current;
+  const detailScrollRef = React.useRef<ScrollView>(null);
+  const detailScrollOffset = React.useRef(0);
 
   const copyJoinCode = async () => {
     if (!patient) return;
@@ -1052,6 +1054,15 @@ function PatientDetailContent({
 
   React.useEffect(() => { switchView(initialView ?? 'detail'); }, [patient?.id]);
   React.useEffect(() => { setReminderTimes((patient?.quizReminderTimes ?? []).slice().sort()); }, [patient?.id, patient?.quizReminderTimes]);
+
+  React.useEffect(() => {
+    if (view === 'detail' && detailScrollOffset.current > 0) {
+      const saved = detailScrollOffset.current;
+      requestAnimationFrame(() => {
+        detailScrollRef.current?.scrollTo({ y: saved, animated: false });
+      });
+    }
+  }, [view]);
 
   if (!patient) return null;
 
@@ -1446,7 +1457,14 @@ function PatientDetailContent({
 
   /* ── Main detail view ── */
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sheetContainer} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={detailScrollRef}
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.sheetContainer}
+      showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={(e) => { detailScrollOffset.current = e.nativeEvent.contentOffset.y; }}
+    >
 
       {/* Edit Name Modal */}
       <Modal visible={editModalVisible} transparent animationType="fade" onRequestClose={() => setEditModalVisible(false)}>
