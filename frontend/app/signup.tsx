@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTheme } from '../src/theme/ThemeProvider';
 import {
-  View, Text, StyleSheet, Platform, Switch, KeyboardAvoidingView,
+  View, Text, StyleSheet, Platform, KeyboardAvoidingView,
   ScrollView, TouchableOpacity, Image, Linking,
 } from 'react-native';
 import * as Device from 'expo-device';
@@ -60,8 +60,6 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
@@ -165,7 +163,6 @@ export default function SignupScreen() {
           surname: surname.trim(),
           email,
           password,
-          isSubscribed,
           ...(avatarUrl ? { avatarUrl } : {}),
           deviceLabel: Device.modelName ?? undefined,
         }),
@@ -299,16 +296,13 @@ export default function SignupScreen() {
             <View style={styles.subscriptionInfo}>
               <Text style={styles.subscriptionTitle}>Premium Plan</Text>
               <Text style={styles.subscriptionDesc}>
-                Unlock unlimited patients, caregivers, video/audio uploads, and AI-powered features.
+                Create your account first, then upgrade from Account settings to unlock unlimited patients,
+                caregivers, video/audio uploads, and AI-powered features.
               </Text>
             </View>
-            <Switch
-              value={isSubscribed}
-              onValueChange={setIsSubscribed}
-              trackColor={{ false: isIOS ? 'rgba(0,0,0,0.08)' : '#ccc', true: 'rgba(3,87,58,0.35)' }}
-              thumbColor={isSubscribed ? themeColors.secondary : isIOS ? '#fff' : '#f4f4f4'}
-              ios_backgroundColor="rgba(0,0,0,0.08)"
-            />
+            <View style={styles.subscriptionBadge}>
+              <Text style={styles.subscriptionBadgeText}>After signup</Text>
+            </View>
           </View>
 
           {apiError ? <Text style={styles.apiErrorText}>{apiError}</Text> : null}
@@ -475,6 +469,17 @@ const getStyles = (isDark: boolean) => {
   },
   subscriptionInfo: {
     flex: 1,
+  },
+  subscriptionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(3,87,58,0.08)'),
+  },
+  subscriptionBadgeText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    color: themeColors.secondary,
   },
   subscriptionTitle: {
     fontFamily: typography.fontFamily.bold,

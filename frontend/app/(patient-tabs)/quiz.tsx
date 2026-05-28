@@ -633,14 +633,6 @@ export default function QuizTab() {
       };
       if (await applyQuizAvailabilityPhase(latest, p.id)) return;
 
-      if (latest.aiAdaptiveEnabled || latest.careLevel === 'PREVENTATIVE') {
-        startAdaptiveSet();
-        return;
-      }
-      if (latest.quizModes.length > 1) {
-        setPhase({ type: 'mode_select' });
-        return;
-      }
       const preferredMode = latest.quizModes.includes('NAME') ? 'NAME' : latest.quizModes[0];
       if (preferredMode) startSet(preferredMode);
     } catch (err: any) {

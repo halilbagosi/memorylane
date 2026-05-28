@@ -7,7 +7,6 @@ import {
   Dimensions,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -40,9 +39,12 @@ import { getPatientTimeline, type TimelineItem, type MediaKind } from '../../src
 import { listPatientMessages, sendPatientMessage, type PatientMessage } from '../../src/services/messages';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const isIOS = Platform.OS === 'ios';
 const GRID_COLUMNS = 3;
-const GRID_GAP = 2;
-const TILE_SIZE = (SCREEN_WIDTH - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+const GRID_GAP = 8;
+const GRID_PADDING = 16;
+const TILE_SIZE =
+  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
 const VOICE_QUALITY: RecordingOptions = {
   ...RecordingPresets.HIGH_QUALITY,
@@ -509,9 +511,11 @@ function LeaveMemorySection({
 
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<{ uri: string; kind: MediaKind; type: string } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const isPressingRef = useRef(false);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recorder = useAudioRecorder(VOICE_QUALITY);
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [messages, setMessages] = useState<PatientMessage[]>([]);
@@ -531,6 +535,18 @@ function LeaveMemorySection({
       setMessagesLoading(false);
     }
   }, [patient]);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  const showSuccessMessage = useCallback(() => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    setSuccessVisible(true);
+    successTimerRef.current = setTimeout(() => setSuccessVisible(false), 3200);
+  }, []);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
@@ -600,6 +616,7 @@ function LeaveMemorySection({
       loadMessages().catch(() => undefined);
       onMemorySaved?.();
       handleClose();
+      showSuccessMessage();
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to save. Please try again.');
     } finally {
@@ -632,11 +649,15 @@ function LeaveMemorySection({
       </TouchableOpacity>
 
       {/* Compose modal — centered card */}
+      {successVisible && (
+        <View style={styles.lmSuccessNotice}>
+          <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={15} color="#1E6F43" />
+          <Text style={styles.lmSuccessNoticeText}>Your note was sent to your family.</Text>
+        </View>
+      )}
+
       <Modal visible={isOpen} animationType="fade" transparent onRequestClose={handleClose}>
-        <KeyboardAvoidingView
-          style={styles.lmOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.lmOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={handleClose} activeOpacity={1} />
           <View style={styles.lmCard}>
             {/* Header */}
@@ -725,7 +746,7 @@ function LeaveMemorySection({
               )}
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <Modal visible={messagesOpen} animationType="fade" transparent onRequestClose={() => setMessagesOpen(false)}>
@@ -891,21 +912,39 @@ const getStyles = (isDark: boolean) => {
   },
 
   // Filter chips
-  filterRow: { flexGrow: 0, marginBottom: 12, paddingHorizontal: 24 },
-  filterContent: { gap: 8, paddingRight: 32 },
+  filterRow: {
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 46,
+    marginBottom: 18,
+    paddingHorizontal: 24,
+  },
+  filterContent: {
+    gap: 10,
+    paddingRight: 32,
+    minHeight: 46,
+    alignItems: 'center',
+  },
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
+    height: 34,
+    minWidth: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 0,
     borderRadius: 20,
     backgroundColor: themeColors.neutralLight,
     borderWidth: 1,
     borderColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.06)'),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipActive: { backgroundColor: themeColors.primary, borderColor: themeColors.primary },
   chipText: {
     fontFamily: typography.fontFamily.medium,
-    fontSize: 13,
+    fontSize: 12,
+    lineHeight: 16,
     color: themeColors.textMuted,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   chipTextActive: { color: themeColors.neutralLight },
 
@@ -959,6 +998,7 @@ const getStyles = (isDark: boolean) => {
 
   // List
   listContent: {
+    paddingHorizontal: GRID_PADDING,
     paddingBottom: 180, // Clear the navigation bar
     paddingTop: 4,
   },
@@ -987,8 +1027,9 @@ const getStyles = (isDark: boolean) => {
   gridTile: {
     width: TILE_SIZE,
     aspectRatio: 1,
+    borderRadius: isIOS ? 10 : 14,
     overflow: 'hidden',
-    backgroundColor: themeColors.neutralLight,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)'),
   },
   gridTileSpacer: {
     width: TILE_SIZE,
@@ -1001,7 +1042,7 @@ const getStyles = (isDark: boolean) => {
   },
   tileLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: themeColors.neutralLight,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.04)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1014,12 +1055,12 @@ const getStyles = (isDark: boolean) => {
   },
   videoBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.5)'),
+    bottom: 5,
+    right: 5,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.12)' : 'rgba(0,0,0,0.45)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1188,6 +1229,26 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.regular,
     fontSize: 14,
     color: themeColors.textMuted,
+  },
+  lmSuccessNotice: {
+    marginHorizontal: 24,
+    marginTop: -2,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: (isDark ? 'rgba(121,219,161,0.12)' : 'rgba(30,111,67,0.10)'),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: (isDark ? 'rgba(121,219,161,0.28)' : 'rgba(30,111,67,0.18)'),
+  },
+  lmSuccessNoticeText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    color: (isDark ? '#79DBA1' : '#1E6F43'),
   },
   lmOverlay: {
     flex: 1,
