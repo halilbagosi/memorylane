@@ -469,7 +469,7 @@ export default function AccountScreen() {
               });
               if (isCurrent) {
                 await clearAuth();
-                navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+                navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index', params: { transition: 'logout' } }] }));
               } else {
                 setSessions(prev => prev.filter(s => s.id !== sessionId));
               }
@@ -519,7 +519,7 @@ export default function AccountScreen() {
             }
           } catch { /* ignore */ }
           await clearAuth();
-          navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+          navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index', params: { transition: 'logout' } }] }));
         },
       },
     ]);
@@ -533,7 +533,7 @@ export default function AccountScreen() {
     logoutTimerRef.current = setTimeout(async () => {
       dismissDialog();
       await clearAuth();
-      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }));
+      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'index', params: { transition: 'logout' } }] }));
     }, 2500);
   };
 

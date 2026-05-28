@@ -9,12 +9,13 @@ import {
   Dimensions,
   ScrollView,
   Animated,
+  Easing,
   Platform,
   ActivityIndicator,
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { lightColors, darkColors } from '../src/theme/colors';
 import { typography } from '../src/theme/typography';
 import { AdaptiveCard } from '../src/components/AdaptiveCard';
@@ -35,16 +36,21 @@ export default function WelcomeScreen() {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
   const router = useRouter();
+  const params = useLocalSearchParams<{ transition?: string }>();
   const insets = useSafeAreaInsets();
   const [checkingSession, setCheckingSession] = useState(true);
+  const isLogoutReturn = params.transition === 'logout';
 
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoSlide = useRef(new Animated.Value(20)).current;
+  const logoOpacity = useRef(new Animated.Value(1)).current;
+  const logoSlide = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
   const headingOpacity = useRef(new Animated.Value(0)).current;
-  const headingSlide = useRef(new Animated.Value(15)).current;
-  const patientCardScale = useRef(new Animated.Value(0.92)).current;
+  const headingSlide = useRef(new Animated.Value(isLogoutReturn ? 8 : 12)).current;
+  const patientCardScale = useRef(new Animated.Value(0.96)).current;
+  const patientCardSlide = useRef(new Animated.Value(isLogoutReturn ? 18 : 26)).current;
   const patientCardOpacity = useRef(new Animated.Value(0)).current;
-  const caregiverCardScale = useRef(new Animated.Value(0.92)).current;
+  const caregiverCardScale = useRef(new Animated.Value(0.96)).current;
+  const caregiverCardSlide = useRef(new Animated.Value(isLogoutReturn ? 20 : 30)).current;
   const caregiverCardOpacity = useRef(new Animated.Value(0)).current;
 
   const orb1Y = useRef(new Animated.Value(0)).current;
@@ -99,22 +105,88 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (checkingSession) return;
-    Animated.stagger(150, [
+    const entranceDelay = isLogoutReturn ? 300 : 900;
+    const entranceStagger = isLogoutReturn ? 80 : 120;
+    const headingDuration = isLogoutReturn ? 340 : 520;
+    const cardDuration = isLogoutReturn ? 380 : 560;
+    const springTension = isLogoutReturn ? 75 : 55;
+    const logoSettle = isLogoutReturn
+      ? Animated.sequence([
+          Animated.timing(logoScale, {
+            toValue: 1.015,
+            duration: 140,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.spring(logoScale, {
+            toValue: 1,
+            friction: 7,
+            tension: 85,
+            useNativeDriver: true,
+          }),
+        ])
+      : Animated.delay(0);
+
+    Animated.sequence([
+      Animated.delay(entranceDelay),
       Animated.parallel([
-        Animated.timing(logoOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(logoSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(headingOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(headingSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.spring(patientCardScale, { toValue: 1, friction: 6, useNativeDriver: true }),
-        Animated.timing(patientCardOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.spring(caregiverCardScale, { toValue: 1, friction: 6, useNativeDriver: true }),
-        Animated.timing(caregiverCardOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        logoSettle,
+        Animated.stagger(entranceStagger, [
+          Animated.parallel([
+            Animated.timing(headingOpacity, {
+              toValue: 1,
+              duration: headingDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(headingSlide, {
+              toValue: 0,
+              duration: headingDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(patientCardOpacity, {
+              toValue: 1,
+              duration: cardDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.spring(patientCardScale, {
+              toValue: 1,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+            Animated.spring(patientCardSlide, {
+              toValue: 0,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(caregiverCardOpacity, {
+              toValue: 1,
+              duration: cardDuration,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.spring(caregiverCardScale, {
+              toValue: 1,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+            Animated.spring(caregiverCardSlide, {
+              toValue: 0,
+              friction: 8,
+              tension: springTension,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
       ]),
     ]).start();
 
@@ -129,7 +201,7 @@ export default function WelcomeScreen() {
     floatOrb(orb1Y, 3200, 12);
     floatOrb(orb2Y, 4000, 8);
     floatOrb(orb3Y, 3600, 10);
-  }, [checkingSession]);
+  }, [caregiverCardOpacity, caregiverCardScale, caregiverCardSlide, checkingSession, headingOpacity, headingSlide, isLogoutReturn, logoScale, patientCardOpacity, patientCardScale, patientCardSlide]);
 
   if (checkingSession) {
     return (
@@ -153,7 +225,7 @@ export default function WelcomeScreen() {
         bounces={false}
       >
         {/* Logo */}
-        <Animated.View style={[styles.logoSection, { opacity: logoOpacity, transform: [{ translateY: logoSlide }] }]}>
+        <Animated.View style={[styles.logoSection, { opacity: logoOpacity, transform: [{ translateY: logoSlide }, { scale: logoScale }] }]}>
           <Image source={require('../assets/logoS.png')} style={styles.logoImage} resizeMode="contain" />
           <View style={styles.logoTextRow}>
             <Text style={styles.logoTextBold}>Memory</Text>
@@ -172,7 +244,7 @@ export default function WelcomeScreen() {
         {/* Role Cards */}
         <View style={styles.cardsContainer}>
           {/* Patient Card */}
-          <Animated.View style={{ opacity: patientCardOpacity, transform: [{ scale: patientCardScale }] }}>
+          <Animated.View style={{ opacity: patientCardOpacity, transform: [{ translateY: patientCardSlide }, { scale: patientCardScale }] }}>
             <TouchableOpacity
               onPress={() => router.push('/join-space')}
               activeOpacity={isIOS ? 0.7 : 0.88}
@@ -207,7 +279,7 @@ export default function WelcomeScreen() {
           </Animated.View>
 
           {/* Caregiver Card */}
-          <Animated.View style={{ opacity: caregiverCardOpacity, transform: [{ scale: caregiverCardScale }] }}>
+          <Animated.View style={{ opacity: caregiverCardOpacity, transform: [{ translateY: caregiverCardSlide }, { scale: caregiverCardScale }] }}>
             <TouchableOpacity
               onPress={() => router.push('/login')}
               activeOpacity={isIOS ? 0.7 : 0.88}
@@ -305,11 +377,13 @@ const getStyles = (isDark: boolean) => {
   logoTextBold: {
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
+    lineHeight: 24,
     color: themeColors.secondary,
   },
   logoTextLight: {
     fontFamily: typography.fontFamily.regular,
     fontSize: 20,
+    lineHeight: 24,
     color: themeColors.secondary,
   },
 

@@ -47,6 +47,14 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'chevron.right': 'chevron-right',
   'pencil': 'pencil-outline',
   'envelope': 'email-outline',
+  'envelope.fill': 'email',
+  'message': 'message-outline',
+  'message.fill': 'message',
+  'bubble.left': 'message-text-outline',
+  'bubble.left.fill': 'message-text',
+  'square.and.pencil': 'note-edit-outline',
+  'paperplane': 'send-outline',
+  'paperplane.fill': 'send',
   'envelope.badge.fill': 'email-check',
   'lock': 'lock-outline',
   'lock.fill': 'lock',
@@ -106,6 +114,8 @@ const SF_TO_MATERIAL: Record<string, MaterialIconName> = {
   'link': 'link-variant',
   'paperclip': 'paperclip',
   'photo': 'image-outline',
+  'creditcard.fill': 'credit-card',
+  'checkmark.shield.fill': 'shield-check',
 };
 
 interface AppIconProps {
@@ -145,7 +155,11 @@ export function AppIcon({
     );
   }
 
-  const materialName = SF_TO_MATERIAL[iosName as string];
+  const fallbackMaterialName =
+    androidFallback in MaterialCommunityIcons.glyphMap
+      ? (androidFallback as MaterialIconName)
+      : undefined;
+  const materialName = SF_TO_MATERIAL[iosName as string] ?? fallbackMaterialName;
   if (materialName) {
     return (
       <MaterialCommunityIcons

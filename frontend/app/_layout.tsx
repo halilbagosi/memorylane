@@ -46,7 +46,7 @@ function RootLayoutContent() {
   const currentTextColor = themeColors.textDark;
 
   return (
-    <SafeAreaProvider>
+    <>
       {isAndroid && (
         <StatusBar
           barStyle={isDark ? "light-content" : "dark-content"}
@@ -106,7 +106,7 @@ function RootLayoutContent() {
           <Stack.Screen name="patient-goals" options={{ title: 'Stats & Goals', headerShown: true, gestureEnabled: true, ...(isIOS ? { fullScreenGestureEnabled: true } : {}) }} />
         </Stack>
       </PaperProvider>
-    </SafeAreaProvider>
+    </>
   );
 }
 
@@ -121,14 +121,16 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      {(fontsLoaded || fontError) && <RootLayoutContent />}
-      {!isSplashAnimationComplete && (
-        <AnimatedSplashScreen
-          onAnimationComplete={() => setSplashAnimationComplete(true)}
-          fontsLoaded={fontsLoaded}
-          fontError={fontError}
-        />
-      )}
+      <SafeAreaProvider>
+        {(fontsLoaded || fontError) && <RootLayoutContent />}
+        {!isSplashAnimationComplete && (
+          <AnimatedSplashScreen
+            onAnimationComplete={() => setSplashAnimationComplete(true)}
+            fontsLoaded={fontsLoaded}
+            fontError={fontError}
+          />
+        )}
+      </SafeAreaProvider>
     </ThemeProvider>
   );
 }

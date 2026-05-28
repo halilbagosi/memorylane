@@ -679,7 +679,7 @@ export default function PatientsTab() {
                             onPress={() => { setPatientInitialView('messages'); setSelectedPatient(patient); }}
                             activeOpacity={0.75}
                           >
-                            <AppIcon iosName="envelope.fill" androidFallback="M" size={14} color={themeColors.neutralLight} />
+                            <AppIcon iosName="envelope.fill" androidFallback="email" size={14} color={themeColors.neutralLight} />
                             <Text style={styles.messageBadgeText}>{patient.unreadMessageCount}</Text>
                           </TouchableOpacity>
                         )}
@@ -775,7 +775,7 @@ export default function PatientsTab() {
                             onPress={() => { setPatientInitialView('messages'); setSelectedPatient(patient); }}
                             activeOpacity={0.75}
                           >
-                            <AppIcon iosName="envelope.fill" androidFallback="M" size={14} color={themeColors.neutralLight} />
+                            <AppIcon iosName="envelope.fill" androidFallback="email" size={14} color={themeColors.neutralLight} />
                             <Text style={styles.messageBadgeText}>{patient.unreadMessageCount}</Text>
                           </TouchableOpacity>
                         )}
@@ -1588,7 +1588,7 @@ function PatientDetailContent({
 
         <TouchableOpacity style={styles.actionRow} onPress={() => switchView('messages')}>
           <View style={[styles.actionRowIcon, { backgroundColor: 'rgba(180, 174, 232, 0.2)' }]}>
-            <AppIcon iosName="envelope.fill" androidFallback="M" size={18} color={themeColors.primary} />
+            <AppIcon iosName="envelope.fill" androidFallback="email" size={18} color={themeColors.primary} />
           </View>
           <Text style={styles.actionRowLabel}>Messages</Text>
           {(patient.unreadMessageCount ?? 0) > 0 && (
@@ -1776,7 +1776,7 @@ function PatientMessagesContent({
       ) : messages.length === 0 ? (
         <View style={styles.messagesCenter}>
           <View style={styles.emptyIcon}>
-            <AppIcon iosName="envelope" androidFallback="M" size={28} color={themeColors.primary} />
+            <AppIcon iosName="envelope" androidFallback="email-outline" size={28} color={themeColors.primary} />
           </View>
           <Text style={styles.emptyTitle}>No messages yet</Text>
           <Text style={styles.emptyDesc}>Notes left from the patient device will appear here.</Text>
@@ -1793,7 +1793,7 @@ function PatientMessagesContent({
                 activeOpacity={0.75}
               >
                 <View style={[styles.messageIcon, unread && styles.messageIconUnread]}>
-                  <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback="M" size={17} color={unread ? themeColors.neutralLight : themeColors.primary} />
+                  <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback={message.attachment ? 'paperclip' : 'note-text-outline'} size={17} color={unread ? themeColors.neutralLight : themeColors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.messageRowHeader}>
@@ -1815,7 +1815,7 @@ function PatientMessagesContent({
             style={{ position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 }}
             onPress={() => setFullscreenPhoto(null)}
           >
-            <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={32} color="rgba(255,255,255,0.85)" />
+            <AppIcon iosName="xmark.circle.fill" androidFallback="close-circle" size={32} color="rgba(255,255,255,0.85)" />
           </TouchableOpacity>
           {fullscreenPhoto && (
             <Image source={{ uri: fullscreenPhoto }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
@@ -1829,13 +1829,13 @@ function PatientMessagesContent({
             <View style={styles.messageModalHeader}>
               <Text style={styles.modalTitle}>Message from {patient.name}</Text>
               <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedMessage(null)}>
-                <AppIcon iosName="xmark" androidFallback="X" size={14} color={themeColors.textMuted} />
+                <AppIcon iosName="xmark" androidFallback="close" size={14} color={themeColors.textMuted} />
               </TouchableOpacity>
             </View>
             {selectedMessage?.attachment?.kind === 'PHOTO' && (
               msgPhotoError ? (
                 <View style={styles.messageAttachmentFallback}>
-                  <AppIcon iosName="photo" androidFallback="P" size={28} color={themeColors.primary} />
+                  <AppIcon iosName="photo" androidFallback="image-outline" size={28} color={themeColors.primary} />
                   <Text style={styles.messageAttachmentText}>Photo unavailable</Text>
                 </View>
               ) : (
@@ -1856,7 +1856,7 @@ function PatientMessagesContent({
                 <View style={styles.messageAttachmentFallback}>
                   <AppIcon
                     iosName={selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'}
-                    androidFallback="A"
+                    androidFallback={selectedMessage.attachment.kind === 'VIDEO' ? 'video' : 'file-document'}
                     size={28}
                     color={themeColors.primary}
                   />

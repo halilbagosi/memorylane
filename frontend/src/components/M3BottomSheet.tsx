@@ -76,8 +76,8 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
           // Snap back to open position
           Animated.spring(dragOffset, {
             toValue: 0,
-            friction: 10,
-            tension: 65,
+            friction: 8,
+            tension: 85,
             useNativeDriver: true,
           }).start();
         }
@@ -86,8 +86,8 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
         // If gesture is interrupted, snap back
         Animated.spring(dragOffset, {
           toValue: 0,
-          friction: 10,
-          tension: 65,
+          friction: 8,
+          tension: 85,
           useNativeDriver: true,
         }).start();
       },
@@ -105,8 +105,8 @@ export function M3BottomSheet({ visible, onClose, children }: M3BottomSheetProps
         }),
         Animated.spring(sheetTranslate, {
           toValue: 0,
-          friction: 10,
-          tension: 65,
+          friction: 8,
+          tension: 85,
           useNativeDriver: true,
         }),
       ]).start();

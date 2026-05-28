@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import { Tabs, useNavigation, useRouter } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { CommonActions } from '@react-navigation/native';
-import { colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/ThemeProvider';
 import { AppIcon } from '../../src/components/AppIcon';
 import { M3TabBar } from '../../src/components/M3TabBar';
 import { getPatientInfo, savePatientInfo, deletePatientInfo } from '../../src/utils/auth';
@@ -22,8 +22,9 @@ const POLL_INTERVAL_MS = 15000;
 const LOCATION_INTERVAL_MS = 60000;
 
 function IOSTabLayout() {
+  const { colors: themeColors } = useTheme();
   return (
-    <NativeTabs tintColor={colors.primary}>
+    <NativeTabs tintColor={themeColors.secondary}>
       <NativeTabs.Trigger name="quiz">
         <Icon sf={{ default: 'brain.head.profile', selected: 'brain.head.profile' }} />
         <Label>Quiz</Label>
@@ -37,12 +38,13 @@ function IOSTabLayout() {
 }
 
 function AndroidTabLayout() {
+  const { colors: themeColors } = useTheme();
   return (
     <Tabs
-      tabBar={(props) => <M3TabBar {...props} accentColor={colors.primary} />}
+      tabBar={(props) => <M3TabBar {...props} accentColor={themeColors.secondary} />}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: colors.neutral },
+        sceneStyle: { backgroundColor: themeColors.neutral },
       }}
     >
       <Tabs.Screen

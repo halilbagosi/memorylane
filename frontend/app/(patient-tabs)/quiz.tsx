@@ -774,7 +774,7 @@ export default function QuizTab() {
           dismissDialog();
           await deletePatientInfo();
           navigation.dispatch(
-            CommonActions.reset({ index: 0, routes: [{ name: 'index' }] })
+            CommonActions.reset({ index: 0, routes: [{ name: 'index', params: { transition: 'logout' } }] })
           ); // <-- Note: I closed the parentheses here for you!
         }
       }
@@ -939,90 +939,91 @@ export default function QuizTab() {
     const photoKey = `${q.media.publicId}-${q.imageUrl}`;
 
     return (
-      <Animated.View
+      <View
         style={[
           styles.quizScreen,
           {
             paddingTop: insets.top + 18,
             paddingBottom: insets.bottom + 22,
-            opacity: questionFade,
           },
         ]}
       >
-        <View style={styles.progressDashRow}>
-          {questions.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.progressDash, index <= questionIndex && styles.progressDashActive]}
-            />
-          ))}
-        </View>
-
-        <Text style={styles.questionText}>{q.questionText}</Text>
-
-        {!!q.media.hint && (
-          <View style={styles.hintArea}>
-            {hintVisible ? (
-              <Animated.View style={[styles.hintBubble, { opacity: hintOpacity }]}>
-                <Text style={styles.hintText}>{q.media.hint}</Text>
-              </Animated.View>
-            ) : (
-              <TouchableOpacity style={styles.hintButton} onPress={showHint} activeOpacity={0.75}>
-                <Text style={styles.hintButtonText}>Need a hint?</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
-          <View style={styles.photoClip}>
-            <View style={styles.photoLoading}>
-              <ActivityIndicator size="small" color={themeColors.primary} />
-            </View>
-            {displayedPhoto?.key === photoKey && (
-              <Animated.Image
-                key={displayedPhoto.key}
-                source={{ uri: displayedPhoto.uri }}
-                style={[styles.photo, { opacity: photoFade }]}
-                resizeMode="cover"
-                onLoad={() => {
-                  Animated.timing(photoFade, {
-                    toValue: 1,
-                    duration: 220,
-                    useNativeDriver: true,
-                  }).start();
-                }}
+        <Animated.View style={[styles.quizContent, { opacity: questionFade }]}>
+          <View style={styles.progressDashRow}>
+            {questions.map((_, index) => (
+              <View
+                key={index}
+                style={[styles.progressDash, index <= questionIndex && styles.progressDashActive]}
               />
-            )}
+            ))}
           </View>
-        </View>
 
-        <View style={styles.choiceGrid}>
-          {q.choices.map((choice) => {
-            const isWrong = wrongTaps.has(choice);
-            const isLastWrong = choice === lastWrong;
-            return (
-              <Animated.View
-                key={choice}
-                style={[styles.choiceCell, isLastWrong && { transform: [{ translateX: wrongShake }] }]}
-              >
-                <TouchableOpacity
-                  style={[styles.choiceBtn, isWrong && styles.choiceBtnWrong]}
-                  onPress={() => handleChoice(choice)}
-                  activeOpacity={0.85}
-                  disabled={isWrong}
-                >
-                  <Text style={[styles.choiceBtnText, isWrong && styles.choiceBtnTextWrong]} numberOfLines={2}>
-                    {choice}
-                  </Text>
+          <Text style={styles.questionText}>{q.questionText}</Text>
+
+          {!!q.media.hint && (
+            <View style={styles.hintArea}>
+              {hintVisible ? (
+                <Animated.View style={[styles.hintBubble, { opacity: hintOpacity }]}>
+                  <Text style={styles.hintText}>{q.media.hint}</Text>
+                </Animated.View>
+              ) : (
+                <TouchableOpacity style={styles.hintButton} onPress={showHint} activeOpacity={0.75}>
+                  <Text style={styles.hintButtonText}>Need a hint?</Text>
                 </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
-        </View>
+              )}
+            </View>
+          )}
+
+          <View style={[styles.photoShadow, { width: photoSize, height: photoSize }]}>
+            <View style={styles.photoClip}>
+              <View style={styles.photoLoading}>
+                <ActivityIndicator size="small" color={themeColors.primary} />
+              </View>
+              {displayedPhoto?.key === photoKey && (
+                <Animated.Image
+                  key={displayedPhoto.key}
+                  source={{ uri: displayedPhoto.uri }}
+                  style={[styles.photo, { opacity: photoFade }]}
+                  resizeMode="cover"
+                  onLoad={() => {
+                    Animated.timing(photoFade, {
+                      toValue: 1,
+                      duration: 220,
+                      useNativeDriver: true,
+                    }).start();
+                  }}
+                />
+              )}
+            </View>
+          </View>
+
+          <View style={styles.choiceGrid}>
+            {q.choices.map((choice) => {
+              const isWrong = wrongTaps.has(choice);
+              const isLastWrong = choice === lastWrong;
+              return (
+                <Animated.View
+                  key={choice}
+                  style={[styles.choiceCell, isLastWrong && { transform: [{ translateX: wrongShake }] }]}
+                >
+                  <TouchableOpacity
+                    style={[styles.choiceBtn, isWrong && styles.choiceBtnWrong]}
+                    onPress={() => handleChoice(choice)}
+                    activeOpacity={0.85}
+                    disabled={isWrong}
+                  >
+                    <Text style={[styles.choiceBtnText, isWrong && styles.choiceBtnTextWrong]} numberOfLines={2}>
+                      {choice}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })}
+          </View>
+        </Animated.View>
 
         <QuizSuccessOverlay visible={showSuccess} message={successMessage} onDismiss={handleSuccessDismiss} />
-      </Animated.View>
+      </View>
     );
   };
 
@@ -1075,7 +1076,7 @@ export default function QuizTab() {
                   <View style={[styles.patientGoalMarker, { left: `${Math.min(100, stats.goal.targetAccuracy)}%` }]}>
                     <View style={styles.patientGoalMarkerLine} />
                     <View style={styles.patientGoalMarkerPill}>
-                      <Text style={styles.patientGoalMarkerLabel}>🎯 {stats.goal.targetAccuracy}%</Text>
+                      <Text style={styles.patientGoalMarkerLabel}>{stats.goal.targetAccuracy}%</Text>
                     </View>
                   </View>
                 </View>
@@ -1420,6 +1421,11 @@ const getStyles = (isDark: boolean) => {
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+  quizContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+  },
   progressDashRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1679,6 +1685,7 @@ const getStyles = (isDark: boolean) => {
     backgroundColor: (isDark ? 'rgba(235, 247, 239, 0.08)' : 'rgba(0,0,0,0.06)'),
     overflow: 'visible',
     position: 'relative',
+    marginBottom: 38,
   },
   patientGoalFill: {
     position: 'absolute',
@@ -1719,7 +1726,7 @@ const getStyles = (isDark: boolean) => {
     fontFamily: typography.fontFamily.medium,
     fontSize: 13,
     color: themeColors.textMuted,
-    marginTop: 18,
+    marginTop: 0,
     textAlign: 'center',
   },
 });

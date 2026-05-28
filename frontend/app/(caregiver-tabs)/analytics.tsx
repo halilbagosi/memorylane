@@ -872,8 +872,11 @@ export default function AnalyticsTab() {
     [patientFilterStart]
   );
 
+  // --- Smooth layout animation config ---
+  const smoothLayoutConfig = LayoutAnimation.Presets.easeInEaseOut;
+
   const animate = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    LayoutAnimation.configureNext(smoothLayoutConfig);
   };
 
   const transition = (update: () => void) => {
@@ -887,9 +890,31 @@ export default function AnalyticsTab() {
     });
   };
 
+  // --- Detail view entrance animation ---
+  const detailOpacity = useRef(new Animated.Value(0)).current;
+  const detailTranslateY = useRef(new Animated.Value(24)).current;
+
   const transitionToTop = (update: () => void) => {
-    transition(update);
+    // Reset entrance anim values before the state update
+    detailOpacity.setValue(0);
+    detailTranslateY.setValue(24);
+    update();
     scrollProgressToTop();
+    // Run fade+slide entrance for the detail view
+    Animated.parallel([
+      Animated.spring(detailOpacity, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 9,
+      }),
+      Animated.spring(detailTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 9,
+      }),
+    ]).start();
   };
 
   const allQuizzes = useMemo(
@@ -1248,7 +1273,7 @@ export default function AnalyticsTab() {
         showsVerticalScrollIndicator={false}
       >
         {selectedTypeId ? (
-          <>
+          <Animated.View style={{ opacity: detailOpacity, transform: [{ translateY: detailTranslateY }] }}>
             <AnimatedPressable
               style={styles.backButton}
               onPress={() => {
@@ -1336,7 +1361,7 @@ export default function AnalyticsTab() {
                 )}
               </>
             )}
-          </>
+          </Animated.View>
         ) : (
           <>
             <AdaptiveCard style={styles.patientPanel}>
@@ -1427,14 +1452,16 @@ export default function AnalyticsTab() {
                   description="All active quiz types"
                   quizCount={allQuizzes.length}
                   onPress={() => transitionToTop(() => setSelectedTypeId('overall'))}
+                  index={0}
                 />
-                {quizTypes.map((type) => (
+                {quizTypes.map((type, idx) => (
                   <TypeRow
                     key={type.id}
                     label={type.label}
                     description={type.description}
                     quizCount={type.quizzes.length}
                     onPress={() => transitionToTop(() => setSelectedTypeId(type.id))}
+                    index={idx + 1}
                   />
                 ))}
               </>
@@ -1454,10 +1481,11 @@ export default function AnalyticsTab() {
                 <AppIcon iosName="bookmark.fill" androidFallback="B" size={18} color={themeColors.secondary} />
               </AnimatedPressable>
             </View>
-            {insightPosts.map((post) => (
+            {insightPosts.map((post, idx) => (
               <InsightRow
                 key={post.id}
                 post={post}
+                index={idx}
                 onPress={() => transitionToTop(() => setSelectedInsightId(post.id))}
               />
             ))}
@@ -1704,24 +1732,82 @@ function ActionRow({
   );
 }
 
-function InsightRow({ post, onPress }: { post: InsightPost; onPress: () => void }) {
+function InsightRow({ post, onPress, index = 0 }: { post: InsightPost; onPress: () => void; index?: number }) {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const entranceAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(18)).current;
+
+  useEffect(() => {
+    const delay = index * 70;
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.spring(entranceAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }),
+      ]).start();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [entranceAnim, slideAnim, index]);
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      tension: 120,
+      friction: 8,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 6,
+    }).start();
+  };
+
   return (
-    <AnimatedPressable style={({ pressed }) => [styles.row, pressed && styles.rowPressed]} onPress={onPress}>
-      <View style={styles.rowIconWrap}>
-        <AppIcon iosName="newspaper.fill" androidFallback="I" size={16} color={themeColors.secondary} />
-      </View>
-      <View style={styles.rowMain}>
-        <View style={styles.insightRowTitleLine}>
-          <Text style={[styles.rowTitle, styles.insightRowTitle]} numberOfLines={2}>{post.title}</Text>
-          {isNewInsight(post) && <Text style={styles.newBadge}>New</Text>}
+    <Animated.View
+      style={{
+        opacity: entranceAnim,
+        transform: [
+          { translateY: slideAnim },
+          { scale: scaleAnim },
+        ],
+      }}
+    >
+      <AnimatedPressable
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <View style={styles.rowIconWrap}>
+          <AppIcon iosName="newspaper.fill" androidFallback="I" size={16} color={themeColors.secondary} />
         </View>
-        <Text style={styles.rowSubtitle} numberOfLines={2}>{post.introduction}</Text>
-        <Text style={styles.rowMeta}>{formatInsightDate(post.publishedAt)} · {formatReadingTime(post.readingMinutes)}</Text>
-      </View>
-      <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
-    </AnimatedPressable>
+        <View style={styles.rowMain}>
+          <View style={styles.insightRowTitleLine}>
+            <Text style={[styles.rowTitle, styles.insightRowTitle]} numberOfLines={2}>{post.title}</Text>
+            {isNewInsight(post) && <Text style={styles.newBadge}>New</Text>}
+          </View>
+          <Text style={styles.rowSubtitle} numberOfLines={2}>{post.introduction}</Text>
+          <Text style={styles.rowMeta}>{formatInsightDate(post.publishedAt)} · {formatReadingTime(post.readingMinutes)}</Text>
+        </View>
+        <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
+      </AnimatedPressable>
+    </Animated.View>
   );
 }
 
@@ -1759,8 +1845,8 @@ function InsightDetailModal({
     entrance.setValue(0);
     Animated.spring(entrance, {
       toValue: 1,
-      friction: 9,
-      tension: 110,
+      friction: 8,
+      tension: 90,
       useNativeDriver: true,
     }).start();
   }, [entrance, post?.id]);
@@ -1988,8 +2074,8 @@ function SavedInsightsModal({
             </AnimatedPressable>
           </View>
           <ScrollView ref={savedScrollRef} showsVerticalScrollIndicator={false}>
-            {posts.length > 0 ? posts.map((post) => (
-              <InsightRow key={post.id} post={post} onPress={() => onOpenPost(post)} />
+            {posts.length > 0 ? posts.map((post, idx) => (
+              <InsightRow key={post.id} post={post} index={idx} onPress={() => onOpenPost(post)} />
             )) : (
               <Text style={styles.emptyText}>No saved posts yet.</Text>
             )}
@@ -2140,35 +2226,89 @@ function TypeRow({
   description,
   quizCount,
   onPress,
+  index = 0,
 }: {
   label: string;
   description: string;
   quizCount: number;
   onPress?: () => void;
+  index?: number;
 }) {
   const { isDark, colors: themeColors } = useTheme();
   const styles = getStyles(isDark);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const entranceAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(18)).current;
+
+  useEffect(() => {
+    const delay = index * 70;
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.spring(entranceAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }),
+      ]).start();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [entranceAnim, slideAnim, index]);
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      tension: 120,
+      friction: 8,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 6,
+    }).start();
+  };
+
   return (
-    <AnimatedPressable
-      style={({ pressed }) => [
-        styles.row,
-        onPress && pressed ? styles.rowPressed : undefined,
-      ]}
-      onPress={onPress}
-      disabled={!onPress}
+    <Animated.View
+      style={{
+        opacity: entranceAnim,
+        transform: [
+          { translateY: slideAnim },
+          { scale: scaleAnim },
+        ],
+      }}
     >
-      <View style={styles.rowIconWrap}>
-        <AppIcon iosName="chart.bar.fill" androidFallback="Q" size={16} color={themeColors.secondary} />
-      </View>
-      <View style={styles.rowMain}>
-        <Text style={styles.rowTitle}>{label}</Text>
-        <Text style={styles.rowSubtitle}>{description}</Text>
-        <Text style={styles.rowMeta}>{quizCount} quiz sessions</Text>
-      </View>
-      {onPress && (
-        <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
-      )}
-    </AnimatedPressable>
+      <AnimatedPressable
+        style={styles.row}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={!onPress}
+      >
+        <View style={styles.rowIconWrap}>
+          <AppIcon iosName="chart.bar.fill" androidFallback="Q" size={16} color={themeColors.secondary} />
+        </View>
+        <View style={styles.rowMain}>
+          <Text style={styles.rowTitle}>{label}</Text>
+          <Text style={styles.rowSubtitle}>{description}</Text>
+          <Text style={styles.rowMeta}>{quizCount} quiz sessions</Text>
+        </View>
+        {onPress && (
+          <AppIcon iosName="chevron.right" androidFallback=">" size={20} color={themeColors.textMuted} />
+        )}
+      </AnimatedPressable>
+    </Animated.View>
   );
 }
 

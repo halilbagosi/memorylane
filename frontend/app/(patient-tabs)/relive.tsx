@@ -153,7 +153,7 @@ export default function ReliveTab() {
   const handleDebugLogout = useCallback(async () => {
     await deletePatientInfo();
     navigation.dispatch(
-      CommonActions.reset({ index: 0, routes: [{ name: 'index' }] }),
+      CommonActions.reset({ index: 0, routes: [{ name: 'index', params: { transition: 'logout' } }] }),
     );
   }, [navigation]);
 
@@ -198,26 +198,28 @@ export default function ReliveTab() {
       {/* Leave a Memory */}
       <LeaveMemorySection patient={patient} onMemorySaved={loadTimeline} />
 
-      {/* Kind filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterContent}
-        style={styles.filterRow}
-      >
-        {filters.map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.chip, kindFilter === f && styles.chipActive]}
-            onPress={() => setKindFilter(f)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.chipText, kindFilter === f && styles.chipTextActive]}>
-              {f === 'ALL' ? 'All' : f === 'PHOTO' ? 'Photos' : f === 'VIDEO' ? 'Videos' : f === 'AUDIO' ? 'Audio' : 'Files'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Kind filter chips — hidden when timeline is empty */}
+      {items.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContent}
+          style={styles.filterRow}
+        >
+          {filters.map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[styles.chip, kindFilter === f && styles.chipActive]}
+              onPress={() => setKindFilter(f)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.chipText, kindFilter === f && styles.chipTextActive]}>
+                {f === 'ALL' ? 'All' : f === 'PHOTO' ? 'Photos' : f === 'VIDEO' ? 'Videos' : f === 'AUDIO' ? 'Audio' : 'Files'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -631,10 +633,10 @@ function LeaveMemorySection({
       {/* Compact trigger row */}
       <TouchableOpacity style={styles.lmTrigger} onPress={() => setIsOpen(true)} activeOpacity={0.72}>
         <View style={styles.lmTriggerIcon}>
-          <AppIcon iosName="heart.fill" androidFallback="♥" size={13} color={themeColors.primary} />
+          <AppIcon iosName="heart.fill" androidFallback="heart" size={13} color={themeColors.primary} />
         </View>
         <Text style={styles.lmTriggerText}>Send a note to your family</Text>
-        <AppIcon iosName="pencil" androidFallback="✏" size={15} color={themeColors.textMuted} />
+        <AppIcon iosName="pencil" androidFallback="pencil-outline" size={15} color={themeColors.textMuted} />
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.lmTrigger, styles.lmMessagesTrigger]}
@@ -642,16 +644,16 @@ function LeaveMemorySection({
         activeOpacity={0.72}
       >
         <View style={styles.lmTriggerIcon}>
-          <AppIcon iosName="note.text" androidFallback="N" size={13} color={themeColors.primary} />
+          <AppIcon iosName="note.text" androidFallback="note-text-outline" size={13} color={themeColors.primary} />
         </View>
         <Text style={styles.lmTriggerText}>Notes you left</Text>
-        <AppIcon iosName="chevron.right" androidFallback=">" size={15} color={themeColors.textMuted} />
+        <AppIcon iosName="chevron.right" androidFallback="chevron-right" size={15} color={themeColors.textMuted} />
       </TouchableOpacity>
 
       {/* Compose modal — centered card */}
       {successVisible && (
         <View style={styles.lmSuccessNotice}>
-          <AppIcon iosName="checkmark.circle.fill" androidFallback="OK" size={15} color="#1E6F43" />
+          <AppIcon iosName="checkmark.circle.fill" androidFallback="check-circle" size={15} color="#1E6F43" />
           <Text style={styles.lmSuccessNoticeText}>Your note was sent to your family.</Text>
         </View>
       )}
@@ -664,7 +666,7 @@ function LeaveMemorySection({
             <View style={styles.lmCardHeader}>
               <Text style={styles.lmCardTitle}>{"What's on your mind?"}</Text>
               <TouchableOpacity style={styles.lmCardClose} onPress={handleClose}>
-                <AppIcon iosName="xmark" androidFallback="✕" size={13} color={themeColors.textMuted} />
+                <AppIcon iosName="xmark" androidFallback="close" size={13} color={themeColors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -689,7 +691,7 @@ function LeaveMemorySection({
                   <View style={styles.lmMediaPlaceholder}>
                     <AppIcon
                       iosName="video.fill"
-                      androidFallback="M"
+                      androidFallback="video"
                       size={20}
                       color={themeColors.primary}
                     />
@@ -699,7 +701,7 @@ function LeaveMemorySection({
                   </View>
                 )}
                 <TouchableOpacity style={styles.lmRemoveMedia} onPress={() => setSelectedMedia(null)}>
-                  <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={22} color="#E74C3C" />
+                  <AppIcon iosName="xmark.circle.fill" androidFallback="close-circle" size={22} color="#E74C3C" />
                 </TouchableOpacity>
               </View>
             )}
@@ -707,11 +709,11 @@ function LeaveMemorySection({
             {/* Labeled media buttons */}
             <View style={styles.lmMediaBtns}>
               <TouchableOpacity style={styles.lmMediaBtn} onPress={() => handlePickMedia('PHOTO')} activeOpacity={0.75}>
-                <AppIcon iosName="camera.fill" androidFallback="P" size={18} color={themeColors.primary} />
+                <AppIcon iosName="camera.fill" androidFallback="camera" size={18} color={themeColors.primary} />
                 <Text style={styles.lmMediaBtnText}>Photo</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.lmMediaBtn} onPress={() => handlePickMedia('VIDEO')} activeOpacity={0.75}>
-                <AppIcon iosName="video.fill" androidFallback="V" size={18} color={themeColors.primary} />
+                <AppIcon iosName="video.fill" androidFallback="video" size={18} color={themeColors.primary} />
                 <Text style={styles.lmMediaBtnText}>Video</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -722,7 +724,7 @@ function LeaveMemorySection({
               >
                 <AppIcon
                   iosName={isRecording ? 'stop.fill' : 'mic.fill'}
-                  androidFallback="A"
+                  androidFallback={isRecording ? 'stop' : 'microphone'}
                   size={18}
                   color={isRecording ? '#fff' : themeColors.primary}
                 />
@@ -756,7 +758,7 @@ function LeaveMemorySection({
             <View style={styles.lmCardHeader}>
               <Text style={styles.lmCardTitle}>Notes you left</Text>
               <TouchableOpacity style={styles.lmCardClose} onPress={() => setMessagesOpen(false)}>
-                <AppIcon iosName="xmark" androidFallback="X" size={13} color={themeColors.textMuted} />
+                <AppIcon iosName="xmark" androidFallback="close" size={13} color={themeColors.textMuted} />
               </TouchableOpacity>
             </View>
             {messagesLoading ? (
@@ -775,7 +777,7 @@ function LeaveMemorySection({
                       setSelectedMessage(message);
                     }}
                   >
-                    <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback="N" size={16} color={themeColors.primary} />
+                    <AppIcon iosName={message.attachment ? 'paperclip' : 'note.text'} androidFallback={message.attachment ? 'paperclip' : 'note-text-outline'} size={16} color={themeColors.primary} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.lmMessagePreview} numberOfLines={2}>{message.content}</Text>
                       <Text style={styles.lmMessageDate}>{new Date(message.createdAt).toLocaleDateString()}</Text>
@@ -799,7 +801,7 @@ function LeaveMemorySection({
           <View style={styles.lmCard}>
             <View style={styles.lmCardHeader}>
               <TouchableOpacity style={styles.lmCardClose} onPress={() => { setSelectedMessage(null); setMessagesOpen(true); }}>
-                <AppIcon iosName="chevron.left" androidFallback="‹" size={16} color={themeColors.primary} />
+                <AppIcon iosName="chevron.left" androidFallback="chevron-left" size={16} color={themeColors.primary} />
               </TouchableOpacity>
               <Text style={styles.lmCardTitle}>Your note</Text>
               <View style={{ width: 28 }} />
@@ -816,7 +818,7 @@ function LeaveMemorySection({
             )}
             {selectedMessage?.attachment?.kind === 'PHOTO' && msgPhotoError && (
               <View style={styles.lmMediaPlaceholder}>
-                <AppIcon iosName="photo" androidFallback="P" size={20} color={themeColors.textMuted} />
+                <AppIcon iosName="photo" androidFallback="image-outline" size={20} color={themeColors.textMuted} />
                 <Text style={styles.lmMediaPlaceholderText}>Photo unavailable</Text>
               </View>
             )}
@@ -825,7 +827,7 @@ function LeaveMemorySection({
                 <VoiceMessagePlayer uri={selectedMessage.attachment.downloadUrl} style={styles.lmVoicePlayer} />
               ) : (
                 <View style={styles.lmMediaPlaceholder}>
-                  <AppIcon iosName={selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback="A" size={20} color={themeColors.primary} />
+                  <AppIcon iosName={selectedMessage.attachment.kind === 'VIDEO' ? 'video.fill' : 'doc.fill'} androidFallback={selectedMessage.attachment.kind === 'VIDEO' ? 'video' : 'file-document'} size={20} color={themeColors.primary} />
                   <Text style={styles.lmMediaPlaceholderText}>{selectedMessage.attachment.kind.toLowerCase()} attached</Text>
                 </View>
               )
@@ -844,7 +846,7 @@ function LeaveMemorySection({
             <Image source={{ uri: fullscreenPhoto }} style={styles.fullscreenImage} resizeMode="contain" />
           )}
           <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenPhoto(null)}>
-            <AppIcon iosName="xmark.circle.fill" androidFallback="X" size={30} color="#fff" />
+            <AppIcon iosName="xmark.circle.fill" androidFallback="close-circle" size={30} color="#fff" />
           </TouchableOpacity>
         </View>
       </Modal>

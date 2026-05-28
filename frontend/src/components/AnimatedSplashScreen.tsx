@@ -1,7 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Animated, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Animated, Easing, useWindowDimensions } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
-import { useTheme } from '../theme/ThemeProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme, type ThemeColors } from '../theme/ThemeProvider';
+import { typography } from '../theme/typography';
+
+const LOGO_IMAGE_SIZE = 90;
+const LOGO_IMAGE_MARGIN_BOTTOM = 10;
+const LOGO_TEXT_LINE_HEIGHT = 24;
+const INDEX_LOGO_MARGIN_TOP = 10;
+const INDEX_LOGO_LOCKUP_HEIGHT = LOGO_IMAGE_SIZE + LOGO_IMAGE_MARGIN_BOTTOM + LOGO_TEXT_LINE_HEIGHT;
 
 interface AnimatedSplashScreenProps {
   onAnimationComplete: () => void;
@@ -10,19 +18,18 @@ interface AnimatedSplashScreenProps {
 }
 
 export default function AnimatedSplashScreen({ onAnimationComplete, fontsLoaded, fontError }: AnimatedSplashScreenProps) {
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const styles = getStyles(colors);
   const [isAppReady, setAppReady] = useState(false);
+  const indexLogoCenterY = insets.top + INDEX_LOGO_MARGIN_TOP + INDEX_LOGO_LOCKUP_HEIGHT / 2;
+  const indexLogoTranslateY = indexLogoCenterY - height / 2;
   
-  // Animation values
-  const logoScale = new Animated.Value(1);
-  const logoTranslateY = new Animated.Value(0);
-  const textOpacity = new Animated.Value(0);
-  const textTranslateY = new Animated.Value(20);
-  
-  const containerOpacity = new Animated.Value(1);
-  const containerScale = new Animated.Value(1);
-
-  const screenWidth = Dimensions.get('window').width;
+  const lockupOpacity = useRef(new Animated.Value(0)).current;
+  const lockupTranslateY = useRef(new Animated.Value(14)).current;
+  const lockupScale = useRef(new Animated.Value(0.96)).current;
+  const containerOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -33,45 +40,39 @@ export default function AnimatedSplashScreen({ onAnimationComplete, fontsLoaded,
   useEffect(() => {
     if (isAppReady) {
       SplashScreen.hideAsync().then(() => {
-        // Phase 1: Shrink logo and reveal text
         Animated.sequence([
           Animated.parallel([
-            Animated.timing(logoScale, {
-              toValue: 0.6,
-              duration: 600,
-              useNativeDriver: true,
-            }),
-            Animated.timing(logoTranslateY, {
-              toValue: -40,
-              duration: 600,
-              useNativeDriver: true,
-            }),
-            Animated.timing(textOpacity, {
+            Animated.timing(lockupOpacity, {
               toValue: 1,
-              duration: 600,
+              duration: 380,
               useNativeDriver: true,
             }),
-            Animated.timing(textTranslateY, {
+            Animated.timing(lockupTranslateY, {
               toValue: 0,
-              duration: 600,
+              duration: 380,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.spring(lockupScale, {
+              toValue: 1,
+              friction: 7,
+              tension: 70,
               useNativeDriver: true,
             }),
           ]),
-          // Hold for a moment to let user read
-          Animated.delay(1000),
-          // Phase 2: Fade out entire splash screen
-          Animated.parallel([
-            Animated.timing(containerOpacity, {
-              toValue: 0,
-              duration: 600,
-              useNativeDriver: true,
-            }),
-            Animated.timing(containerScale, {
-              toValue: 1.15,
-              duration: 600,
-              useNativeDriver: true,
-            })
-          ])
+          Animated.delay(250),
+          Animated.timing(lockupTranslateY, {
+            toValue: indexLogoTranslateY,
+            duration: 700,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(containerOpacity, {
+            toValue: 0,
+            duration: 360,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
         ]).start(() => {
           onAnimationComplete();
         });
@@ -83,44 +84,67 @@ export default function AnimatedSplashScreen({ onAnimationComplete, fontsLoaded,
     <Animated.View
       style={[
         StyleSheet.absoluteFill,
-        {
-          backgroundColor: isDark ? '#0E1712' : '#E8F5EC',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: containerOpacity,
-          transform: [{ scale: containerScale }],
-          zIndex: 9999,
-        },
+        styles.container,
+        { opacity: containerOpacity },
       ]}
     >
-      <Animated.Image
-        source={require('../../assets/logoS.png')}
-        style={{
-          width: '100%',
-          height: '100%',
-          resizeMode: 'contain',
-          position: 'absolute',
-          transform: [
-            { scale: logoScale },
-            { translateY: logoTranslateY }
-          ]
-        }}
-      />
-      <Animated.Text
-        style={{
-          position: 'absolute',
-          fontFamily: 'GothicA1_700Bold',
-          fontSize: 36,
-          color: colors.textDark,
-          opacity: textOpacity,
-          transform: [{ translateY: textTranslateY }],
-          // Position text below the centered logo (which shrinks to 60%)
-          // Since logo is centered and scales down, moving text down from center:
-          marginTop: screenWidth * 0.45,
-        }}
+      <Animated.View
+        style={[
+          styles.logoSection,
+          {
+            opacity: lockupOpacity,
+            transform: [
+              { translateY: lockupTranslateY },
+              { scale: lockupScale },
+            ],
+          },
+        ]}
       >
-        MemoryLane
-      </Animated.Text>
+        <Animated.Image
+          source={require('../../assets/logoS.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
+        <Animated.View style={styles.logoTextRow}>
+          <Animated.Text style={styles.logoTextBold}>Memory</Animated.Text>
+          <Animated.Text style={styles.logoTextLight}>Lane</Animated.Text>
+        </Animated.View>
+      </Animated.View>
     </Animated.View>
   );
 }
+
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.neutral,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+    },
+    logoSection: {
+      alignItems: 'center',
+    },
+    logoImage: {
+      width: LOGO_IMAGE_SIZE,
+      height: LOGO_IMAGE_SIZE,
+      marginBottom: LOGO_IMAGE_MARGIN_BOTTOM,
+    },
+    logoTextRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: 3,
+    },
+    logoTextBold: {
+      fontFamily: typography.fontFamily.bold,
+      fontSize: 20,
+      lineHeight: LOGO_TEXT_LINE_HEIGHT,
+      color: colors.secondary,
+    },
+    logoTextLight: {
+      fontFamily: typography.fontFamily.regular,
+      fontSize: 20,
+      lineHeight: LOGO_TEXT_LINE_HEIGHT,
+      color: colors.secondary,
+    },
+  });
